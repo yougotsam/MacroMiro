@@ -1,0 +1,6 @@
+{
+  "line": "September 18, 2024 was a real Fed cut. Yahoo's daily close, measured from the day before: bitcoin +2.22% that day and +4.36% by the next close. Gold futures +0.24% that day and +0.86% by the next close. The 5-minute and 15-minute prints for that day are gone from the feed. The newest Fed day that still has hourly bars is September 17, 2025: in the hour of the decision window, bitcoin -0.75% and gold -0.98%. Two days. Not a pattern. Not a trade.",
+  "sample": "2 days, daily for 2024 and hourly for 2025. No 5-minute history.",
+  "trade": false,
+  "source": "Yahoo BTC-USD and GC=F. Not the Kalshi settlement index."
+}

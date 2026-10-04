@@ -1,0 +1,56 @@
+{
+  "at": "2026-10-03T22:50:00.000Z",
+  "creditsUsed": 0,
+  "tools": [
+    {
+      "provider": "cmegroup-com",
+      "capability": "fomc-rate-probabilities/futures_settlements",
+      "description": "Use for official daily settlement prices of the Fed Funds or SOFR futures strip, or any CME futures product."
+    },
+    {
+      "provider": "cmegroup-com",
+      "capability": "fomc-rate-probabilities/fedwatch_probability_history",
+      "description": "Use for the probabilities of a specific meeting (take latest) or for how they evolved over time. Meeting dates come from fedwatch_meetings."
+    },
+    {
+      "provider": "cmegroup-com",
+      "capability": "fomc-rate-probabilities/sofr_rates",
+      "description": "Use for the SOFR benchmark levels alongside FedWatch probabilities."
+    },
+    {
+      "provider": "nasdaq-com",
+      "capability": "news/latest_headlines",
+      "description": "What is being published right now across the market, with no ticker or topic filter."
+    },
+    {
+      "provider": "cmegroup-com",
+      "capability": "fomc-rate-probabilities/futures_volume",
+      "description": "Use for liquidity and positioning in the Fed Funds or SOFR futures contracts FedWatch is derived from."
+    },
+    {
+      "provider": "cmegroup-com",
+      "capability": "fomc-rate-probabilities/futures_quotes",
+      "description": "Use for the current futures strip behind FedWatch (product 305, 30 Day Fed Funds) or any other CME futures product id from product_search."
+    },
+    {
+      "provider": "cmegroup-com",
+      "capability": "fomc-rate-probabilities/fedwatch_meetings",
+      "description": "Start here for market-implied probabilities of the next FOMC rate decision and the list of meeting dates to pass to fedwatch_probability_history."
+    },
+    {
+      "provider": "cftc",
+      "capability": "financial/futures-only",
+      "description": "Currencies, Treasury and SOFR futures, equity index futures, VIX: who is long the dollar, how short leveraged funds are in ten-year notes, how asset managers are positioned in S&P futures. Leveraged funds is the hedge-fund column; asset managers is pensions, insurers and mutual funds."
+    },
+    {
+      "provider": "cftc",
+      "capability": "disaggregated/futures-only",
+      "description": "Physical commodities - agriculture, energy, metals - when the question is which kind of participant is positioned, not just speculator versus hedger: managed money is the fund positioning most reports quote, swap dealers carry the index-fund flow, producers and merchants are the physical hedge. Financial futures are not here; use the financial report."
+    },
+    {
+      "provider": "cftc",
+      "capability": "legacy/futures-only",
+      "description": "The report most commentary means by 'the COT': speculators versus hedgers, futures positions only, back to 1986 for every market. Filter by `cftc_contract_market_code` or `commodity_name` and order by `report_date_as_yyyy_mm_dd DESC` for the latest week. Use legacy/combined when options positions matter, and the disaggregated or financial report when the two-way speculator/hedger split is too coarse."
+    }
+  ]
+}

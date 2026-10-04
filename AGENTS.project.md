@@ -1,0 +1,11 @@
+# Envelope project rules
+
+Approved features get implemented and tested. Do not dismiss one because another bot has no published fills.
+
+Unproven ideas are marked experimental and run in shadow mode. They do not place orders.
+
+Live trading stays off until the settlement print matches the contract (BRTI 60-second average for BTC, Pyth GOLD 1-minute close for gold), the shadow log has a real sample, and a human turns the live flag on.
+
+A missing credential blocks a live decision. It does not block building the adapter, the stale check, or the tests.
+
+Indicators confirm a thesis. RSI, a candle name, or a band touch alone is not a trade.

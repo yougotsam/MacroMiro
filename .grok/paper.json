@@ -1,0 +1,107 @@
+{
+  "armed": true,
+  "clipUsd": 15,
+  "cash": 299.94,
+  "pos": null,
+  "ledger": [
+    {
+      "id": "1789967770267-btc",
+      "ts": "01:16",
+      "play": "scalp",
+      "note": "HEART flatten long btc · manual",
+      "delta": -0.06
+    },
+    {
+      "id": "1789960915897-btc",
+      "ts": "23:21",
+      "play": "scalp",
+      "note": "HEART LONG BTC-USD @ 81360.07 · $15 x5 · 3 conf · long · BTC-USD",
+      "delta": 0
+    }
+  ],
+  "book": "btc",
+  "lastTick": "2026-09-21T05:48:41.539Z",
+  "lastNote": "armed · no confirm",
+  "lastFill": "01:16 ET\nFLAT  BTC  -0.06\ncash 299.94",
+  "ticks": 178,
+  "fills": 2,
+  "lastOpenAt": 1789960915897,
+  "positions": [],
+  "board": [
+    {
+      "book": "btc",
+      "last": 81293.2,
+      "stacked": "long",
+      "rsi": 45.65283525717926,
+      "stretch": 0.07553566195391422,
+      "n": 1,
+      "action": "sit",
+      "auto": false,
+      "reason": "range · 1/2",
+      "open": true,
+      "regime": "range",
+      "adx": 3.9046013798125765,
+      "side": null
+    },
+    {
+      "book": "sol",
+      "last": 111.31,
+      "stacked": "long",
+      "rsi": 38.048780487804855,
+      "stretch": 0.5568166680882217,
+      "n": 1,
+      "action": "sit",
+      "auto": false,
+      "reason": "thin tape",
+      "open": false,
+      "regime": "range",
+      "adx": 10.058089371548524,
+      "side": null
+    },
+    {
+      "book": "gold",
+      "last": 4393.4,
+      "stacked": "chop",
+      "rsi": null,
+      "stretch": -0.06180176039026064,
+      "n": 0,
+      "action": "sit",
+      "auto": false,
+      "reason": "saw · skip",
+      "open": false,
+      "regime": "mixed",
+      "adx": null,
+      "side": null
+    },
+    {
+      "book": "es",
+      "last": 7744.5,
+      "stacked": "chop",
+      "rsi": null,
+      "stretch": -0.003004393321436359,
+      "n": 1,
+      "action": "sit",
+      "auto": false,
+      "reason": "saw · skip",
+      "open": false,
+      "regime": "mixed",
+      "adx": null,
+      "side": null
+    },
+    {
+      "book": "oil",
+      "last": 94.29,
+      "stacked": "chop",
+      "rsi": null,
+      "stretch": 0.2077318222893877,
+      "n": 0,
+      "action": "sit",
+      "auto": false,
+      "reason": "thin tape",
+      "open": false,
+      "regime": "mixed",
+      "adx": null,
+      "side": null
+    }
+  ]
+}

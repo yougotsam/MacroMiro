@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* Phosphor desk. Dark is the product. Light tokens exist so contrast can be proven. */
+:root {
+  color-scheme: dark;
+  --background: oklch(0.09 0.012 75);
+  --foreground: oklch(0.93 0.02 90);
+  --card: oklch(0.13 0.014 75);
+  --card-foreground: oklch(0.93 0.02 90);
+  --popover: oklch(0.13 0.014 75);
+  --popover-foreground: oklch(0.93 0.02 90);
+  --primary: oklch(0.78 0.15 62);
+  --primary-foreground: oklch(0.14 0.03 75);
+  --secondary: oklch(0.17 0.014 75);
+  --secondary-foreground: oklch(0.9 0.02 90);
+  --muted: oklch(0.17 0.012 75);
+  --muted-foreground: oklch(0.74 0.03 80);
+  --accent: oklch(0.78 0.15 62);
+  --accent-foreground: oklch(0.14 0.03 75);
+  --destructive: oklch(0.64 0.19 25);
+  --destructive-foreground: oklch(0.97 0.02 90);
+  --success: oklch(0.74 0.17 155);
+  --success-foreground: oklch(0.14 0.03 155);
+  --warning: oklch(0.82 0.14 75);
+  --border: oklch(0.93 0.02 90 / 14%);
+  --input: oklch(0.93 0.02 90 / 16%);
+  --ring: oklch(0.78 0.15 62);
+  --radius: 0.125rem;
+  --shadow-sm: 0 1px 0 oklch(0.93 0.02 90 / 6%);
+  --shadow-lg: 0 16px 40px oklch(0.05 0.02 75 / 55%);
+}
+
+.light {
+  color-scheme: light;
+  --background: oklch(0.97 0.01 85);
+  --foreground: oklch(0.18 0.02 75);
+  --card: oklch(0.99 0.008 85);
+  --card-foreground: oklch(0.18 0.02 75);
+  --popover: oklch(0.99 0.008 85);
+  --popover-foreground: oklch(0.18 0.02 75);
+  --primary: oklch(0.4 0.14 55);
+  --primary-foreground: oklch(0.98 0.01 90);
+  --secondary: oklch(0.94 0.01 85);
+  --secondary-foreground: oklch(0.22 0.02 75);
+  --muted: oklch(0.94 0.01 85);
+  --muted-foreground: oklch(0.4 0.02 75);
+  --accent: oklch(0.4 0.14 55);
+  --accent-foreground: oklch(0.98 0.01 90);
+  --destructive: oklch(0.5 0.18 25);
+  --destructive-foreground: oklch(0.98 0.01 90);
+  --success: oklch(0.45 0.14 155);
+  --success-foreground: oklch(0.98 0.01 90);
+  --warning: oklch(0.55 0.12 75);
+  --border: oklch(0.18 0.02 75 / 16%);
+  --input: oklch(0.18 0.02 75 / 16%);
+  --ring: oklch(0.4 0.14 55);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.09 0.012 75);
+  --foreground: oklch(0.93 0.02 90);
+  --card: oklch(0.13 0.014 75);
+  --card-foreground: oklch(0.93 0.02 90);
+  --primary: oklch(0.78 0.15 62);
+  --primary-foreground: oklch(0.14 0.03 75);
+  --muted: oklch(0.17 0.012 75);
+  --muted-foreground: oklch(0.74 0.03 80);
+  --border: oklch(0.93 0.02 90 / 14%);
+  --ring: oklch(0.78 0.15 62);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-bg: var(--background);
+  --color-fg: var(--foreground);
+  --color-surface: var(--card);
+  --color-surface-2: var(--secondary);
+  --color-subtle: oklch(0.62 0.05 70);
+  --color-armed: var(--success);
+  --color-down: var(--destructive);
+  --color-danger: var(--destructive);
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-heading: "Newsreader", "Times New Roman", serif;
+  --font-display: "Newsreader", "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-xs: var(--radius);
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  .text-muted {
+    color: var(--muted-foreground);
+  }
+
+  html,
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

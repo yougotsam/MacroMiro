@@ -1,0 +1,10 @@
+.grok/secrets/
+node_modules/
+dist/
+.vercel/
+.tanstack/
+test-results/
+*.log
+.env
+.env.local
+

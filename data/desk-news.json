@@ -1,0 +1,139 @@
+{
+  "at": "2026-10-03T23:32:00.000Z",
+  "cost": {
+    "nasdaqHeadlines": 1,
+    "fedwatch": 5,
+    "calendar": 10
+  },
+  "headlines": [
+    {
+      "title": "ASML Holding vs. Qualcomm: What Revenue Trends Tell Investors About These Semiconductor Industry Giants",
+      "ago": "40 minutes ago",
+      "publisher": "The Motley Fool",
+      "symbol": "ASML"
+    },
+    {
+      "title": "Meta's Muse AI: Good or Bad for E-Commerce? Shopify and Amazon Are Taking Opposite Approaches.",
+      "ago": "43 minutes ago",
+      "publisher": "The Motley Fool",
+      "symbol": "AMZN"
+    },
+    {
+      "title": "Here's What a $10,000 Investment in Cameco 5 Years Ago Is Worth Today -- and What the Next 5 Years Could Look Like",
+      "ago": "1 hour ago",
+      "publisher": "The Motley Fool",
+      "symbol": "CCJ"
+    },
+    {
+      "title": "Better International ETF: Vanguard VEA vs. iShares URTH",
+      "ago": "1 hour ago",
+      "publisher": "The Motley Fool",
+      "symbol": "URTH"
+    },
+    {
+      "title": "Why I'm Building My Entire Retirement Around Dividend Stocks in 2026",
+      "ago": "1 hour ago",
+      "publisher": "The Motley Fool",
+      "symbol": "O"
+    },
+    {
+      "title": "Forecasts for Cooler US Weather Lift Nat-Gas Prices",
+      "ago": "1 hour ago",
+      "publisher": "Barchart",
+      "symbol": null
+    }
+  ],
+  "fed": {
+    "asOf": "3 Oct 2026 06:18:50 CT",
+    "meeting": "2026-10-28",
+    "range": "375-400",
+    "ease": 0,
+    "noChange": 77.9,
+    "hike": 22.1
+  },
+  "calendar": {
+    "thisWeek": [
+      {
+        "name": "US Core PCE Price Index m/m",
+        "when": "2026-09-30 7:30am",
+        "actual": "0.2%",
+        "forecast": "0.3%",
+        "previous": "0.2%",
+        "impact": "high"
+      },
+      {
+        "name": "US Final GDP q/q",
+        "when": "2026-09-30 7:30am",
+        "actual": "2.2%",
+        "forecast": "1.5%",
+        "previous": "1.5%",
+        "impact": "high"
+      },
+      {
+        "name": "US Average Hourly Earnings m/m",
+        "when": "2026-10-02 7:30am",
+        "actual": "0.1%",
+        "forecast": "0.3%",
+        "previous": "0.3%",
+        "impact": "high"
+      },
+      {
+        "name": "US Non-Farm Employment Change",
+        "when": "2026-10-02 7:30am",
+        "actual": "29K",
+        "forecast": "89K",
+        "previous": "162K",
+        "impact": "high"
+      },
+      {
+        "name": "US Unemployment Rate",
+        "when": "2026-10-02 7:30am",
+        "actual": "4.2%",
+        "forecast": "4.1%",
+        "previous": "4.1%",
+        "impact": "high"
+      }
+    ],
+    "nextWeek": [
+      {
+        "name": "US FOMC Meeting Minutes",
+        "when": "2026-10-07 1:00pm",
+        "actual": null,
+        "forecast": null,
+        "previous": null,
+        "impact": "high"
+      }
+    ],
+    "cost": 10
+  },
+  "providers": {
+    "benzinga": {
+      "status": "terms",
+      "accept": "https://www.firecrawl.dev/app/alexandria/benzinga",
+      "tool": "news/search",
+      "credits": 30
+    },
+    "fiscalAi": {
+      "status": "terms",
+      "accept": "https://www.firecrawl.dev/app/alexandria/fiscal-ai",
+      "tool": "company/profile"
+    },
+    "fred": {
+      "status": "open",
+      "credits": 5
+    },
+    "hyperliquid": {
+      "status": "not-in-catalog"
+    },
+    "coinbaseNews": {
+      "status": "not-in-catalog"
+    }
+  },
+  "goldReserve": {
+    "asOf": "2026-08-31",
+    "ounces": 261498926,
+    "bookUsd": 11041059958,
+    "sites": 8,
+    "cost": 5
+  }
+}

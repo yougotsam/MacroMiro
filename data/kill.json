@@ -1,0 +1,11 @@
+{
+  "armed": false,
+  "liveEnabled": true,
+  "dailyLossUsd": 0,
+  "dailyLossDate": "2026-10-04",
+  "consecutiveLosses": 0,
+  "pauseUntil": 0,
+  "stale": false,
+  "reason": "accept-restore",
+  "updatedAt": "2026-10-04T05:25:27.908Z"
+}
