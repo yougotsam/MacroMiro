@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { CLIP_USD, START_CASH, clampClip } from "./clip";
 import type { BookScan } from "./board";
 import type { PaperPos, PaperRow } from "./paper";
@@ -110,18 +110,16 @@ export function saveHeart(state: HeartState, persist = true) {
   (globalThis as G).__envelopeHeartMem = state;
   if (!persist) return;
   try {
-    writeFileSync(FILE, JSON.stringify(state));
+    mkdirSync("/workspace/data", { recursive: true });
+    const tmp = `${FILE}.tmp`;
+    writeFileSync(tmp, JSON.stringify(state));
+    renameSync(tmp, FILE);
   } catch {
     try {
-      mkdirSync("/workspace/data", { recursive: true });
-      writeFileSync(FILE, JSON.stringify(state));
+      mkdirSync("/workspace/.grok", { recursive: true });
+      writeFileSync(LEGACY, JSON.stringify(state));
     } catch {
-      try {
-        mkdirSync("/workspace/.grok", { recursive: true });
-        writeFileSync(LEGACY, JSON.stringify(state));
-      } catch {
-        /* memory still holds */
-      }
+      /* memory still holds */
     }
   }
 }

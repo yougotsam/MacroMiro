@@ -153,6 +153,8 @@ export default defineConfig(({ command, isPreview }) => ({
     watch: {
       ignored: [
         "**/.grok/**",
+        "**/data/**",
+        "**/.vercel/**",
         "**/artifacts/**",
         "**/screenshots/**",
         "**/test-results/**",

@@ -165,3 +165,128 @@ export function edgeDecision(i: EdgeIn): EdgeOut {
     why,
   };
 }
+
+export type PerpTicker =
+  | "KXGOLDPERP"
+  | "KXSILVERPERP"
+  | "KXBTCPERP"
+  | "KXETHPERP"
+  | "KXSOLPERP"
+  | "KXXRPPERP"
+  | "KXBNBPERP"
+  | "KXUS500PERP";
+
+export interface PerpMarketState {
+  ticker: PerpTicker;
+  markPrice: number;
+  bidPrice: number;
+  askPrice: number;
+  indexPrice: number;
+  spreadBps: number;
+  maxLeverage: number;
+  fundingRateBps: number;
+  dailyPnLUsd: number;
+}
+
+export interface UserCockpitConfig {
+  selectedLeverage: number;
+  clipUsd: number;
+  tpMultiple: number;
+  slPercent: number; // 8 means 8 percent of the clip, same as the cockpit
+  tauricThreshold: number;
+}
+
+export interface TauricSignal {
+  direction: "LONG" | "SHORT" | "NEUTRAL";
+  confidenceScore: number;
+  catalystAlert: boolean;
+  primaryThesis: string;
+}
+
+export interface KalshiBracketOrder {
+  ticker: PerpTicker;
+  side: "bid" | "ask";
+  count: string;
+  entryPrice: string;
+  takeProfitPrice: string;
+  stopLossPrice: string;
+  effectiveLeverage: number;
+  requiredMarginUsd: number;
+  notionalUsd: number;
+  liquidationDistancePercent: number;
+}
+
+export interface EdgeDecision {
+  action: "EXECUTE" | "SKIP";
+  reason: string;
+  order?: KalshiBracketOrder;
+}
+
+/** Single source of truth decision loop */
+export function evaluatePerpEdge(market: PerpMarketState, tauric: TauricSignal, config: UserCockpitConfig): EdgeDecision {
+  if (tauric.catalystAlert) {
+    return { action: "SKIP", reason: "Catalyst blackout active: High volatility window" };
+  }
+
+  if (market.dailyPnLUsd <= -24.0) {
+    return { action: "SKIP", reason: "Daily loss shield tripped (-$24 cap reached). Cool off active." };
+  }
+
+  if (market.spreadBps > 8.0) {
+    return { action: "SKIP", reason: `Spread too wide (${market.spreadBps.toFixed(1)} bps > 8.0 bps max)` };
+  }
+
+  if (tauric.direction === "NEUTRAL" || tauric.confidenceScore < config.tauricThreshold) {
+    return {
+      action: "SKIP",
+      reason: `Tauric consensus score ${tauric.confidenceScore} is below threshold ${config.tauricThreshold}`,
+    };
+  }
+
+  const effectiveLeverage = Math.min(Math.max(config.selectedLeverage, 1.0), market.maxLeverage);
+
+  const notionalUsd = config.clipUsd * effectiveLeverage;
+  const executionPrice = tauric.direction === "LONG" ? market.askPrice : market.bidPrice;
+
+  if (executionPrice <= 0) {
+    return { action: "SKIP", reason: "Invalid market price data" };
+  }
+
+  const rawCount = notionalUsd / executionPrice;
+  const count = rawCount.toFixed(6);
+  const actualNotional = parseFloat(count) * executionPrice;
+  const requiredMargin = actualNotional / effectiveLeverage;
+  const slPct = config.slPercent / 100;
+  const priceMovePctForSL = slPct / effectiveLeverage;
+  const priceMovePctForTP = (slPct * config.tpMultiple) / effectiveLeverage;
+
+  let takeProfitPrice: number;
+  let stopLossPrice: number;
+
+  if (tauric.direction === "LONG") {
+    takeProfitPrice = executionPrice * (1 + priceMovePctForTP);
+    stopLossPrice = executionPrice * (1 - priceMovePctForSL);
+  } else {
+    takeProfitPrice = executionPrice * (1 - priceMovePctForTP);
+    stopLossPrice = executionPrice * (1 + priceMovePctForSL);
+  }
+
+  const liquidationDistancePercent = (1 / effectiveLeverage) * 90;
+
+  return {
+    action: "EXECUTE",
+    reason: `Tauric ${tauric.direction} signal confirmed (${tauric.confidenceScore}/100) at ${effectiveLeverage.toFixed(1)}x leverage`,
+    order: {
+      ticker: market.ticker,
+      side: tauric.direction === "LONG" ? "bid" : "ask",
+      count,
+      entryPrice: executionPrice.toFixed(4),
+      takeProfitPrice: takeProfitPrice.toFixed(4),
+      stopLossPrice: stopLossPrice.toFixed(4),
+      effectiveLeverage,
+      requiredMarginUsd: Math.round(requiredMargin * 100) / 100,
+      notionalUsd: Math.round(actualNotional * 100) / 100,
+      liquidationDistancePercent: Math.round(liquidationDistancePercent * 10) / 10,
+    },
+  };
+}

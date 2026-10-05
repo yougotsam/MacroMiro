@@ -25,6 +25,8 @@ import { Route as ApiLiveGrokRouteImport } from './routes/api/live/grok'
 import { Route as ApiLiveHeartRouteImport } from './routes/api/live/heart'
 import { Route as ApiLiveKalshiRouteImport } from './routes/api/live/kalshi'
 import { Route as ApiLiveKalshiOrderRouteImport } from './routes/api/live/kalshi-order'
+import { Route as ApiLiveLeverageRouteImport } from './routes/api/live/leverage'
+import { Route as ApiLivePerpFireRouteImport } from './routes/api/live/perp-fire'
 import { Route as ApiLivePmusRouteImport } from './routes/api/live/pmus'
 import { Route as ApiLivePriceRouteImport } from './routes/api/live/price'
 import { Route as ApiLivePythRouteImport } from './routes/api/live/pyth'
@@ -113,6 +115,16 @@ const ApiLiveKalshiOrderRoute = ApiLiveKalshiOrderRouteImport.update({
   path: '/api/live/kalshi-order',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLiveLeverageRoute = ApiLiveLeverageRouteImport.update({
+  id: '/api/live/leverage',
+  path: '/api/live/leverage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLivePerpFireRoute = ApiLivePerpFireRouteImport.update({
+  id: '/api/live/perp-fire',
+  path: '/api/live/perp-fire',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiLivePmusRoute = ApiLivePmusRouteImport.update({
   id: '/api/live/pmus',
   path: '/api/live/pmus',
@@ -166,6 +178,8 @@ export interface FileRoutesByFullPath {
   '/api/live/heart': typeof ApiLiveHeartRoute
   '/api/live/kalshi': typeof ApiLiveKalshiRoute
   '/api/live/kalshi-order': typeof ApiLiveKalshiOrderRoute
+  '/api/live/leverage': typeof ApiLiveLeverageRoute
+  '/api/live/perp-fire': typeof ApiLivePerpFireRoute
   '/api/live/pmus': typeof ApiLivePmusRoute
   '/api/live/price': typeof ApiLivePriceRoute
   '/api/live/pyth': typeof ApiLivePythRoute
@@ -191,6 +205,8 @@ export interface FileRoutesByTo {
   '/api/live/heart': typeof ApiLiveHeartRoute
   '/api/live/kalshi': typeof ApiLiveKalshiRoute
   '/api/live/kalshi-order': typeof ApiLiveKalshiOrderRoute
+  '/api/live/leverage': typeof ApiLiveLeverageRoute
+  '/api/live/perp-fire': typeof ApiLivePerpFireRoute
   '/api/live/pmus': typeof ApiLivePmusRoute
   '/api/live/price': typeof ApiLivePriceRoute
   '/api/live/pyth': typeof ApiLivePythRoute
@@ -217,6 +233,8 @@ export interface FileRoutesById {
   '/api/live/heart': typeof ApiLiveHeartRoute
   '/api/live/kalshi': typeof ApiLiveKalshiRoute
   '/api/live/kalshi-order': typeof ApiLiveKalshiOrderRoute
+  '/api/live/leverage': typeof ApiLiveLeverageRoute
+  '/api/live/perp-fire': typeof ApiLivePerpFireRoute
   '/api/live/pmus': typeof ApiLivePmusRoute
   '/api/live/price': typeof ApiLivePriceRoute
   '/api/live/pyth': typeof ApiLivePythRoute
@@ -244,6 +262,8 @@ export interface FileRouteTypes {
     | '/api/live/heart'
     | '/api/live/kalshi'
     | '/api/live/kalshi-order'
+    | '/api/live/leverage'
+    | '/api/live/perp-fire'
     | '/api/live/pmus'
     | '/api/live/price'
     | '/api/live/pyth'
@@ -269,6 +289,8 @@ export interface FileRouteTypes {
     | '/api/live/heart'
     | '/api/live/kalshi'
     | '/api/live/kalshi-order'
+    | '/api/live/leverage'
+    | '/api/live/perp-fire'
     | '/api/live/pmus'
     | '/api/live/price'
     | '/api/live/pyth'
@@ -294,6 +316,8 @@ export interface FileRouteTypes {
     | '/api/live/heart'
     | '/api/live/kalshi'
     | '/api/live/kalshi-order'
+    | '/api/live/leverage'
+    | '/api/live/perp-fire'
     | '/api/live/pmus'
     | '/api/live/price'
     | '/api/live/pyth'
@@ -320,6 +344,8 @@ export interface RootRouteChildren {
   ApiLiveHeartRoute: typeof ApiLiveHeartRoute
   ApiLiveKalshiRoute: typeof ApiLiveKalshiRoute
   ApiLiveKalshiOrderRoute: typeof ApiLiveKalshiOrderRoute
+  ApiLiveLeverageRoute: typeof ApiLiveLeverageRoute
+  ApiLivePerpFireRoute: typeof ApiLivePerpFireRoute
   ApiLivePmusRoute: typeof ApiLivePmusRoute
   ApiLivePriceRoute: typeof ApiLivePriceRoute
   ApiLivePythRoute: typeof ApiLivePythRoute
@@ -443,6 +469,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLiveKalshiOrderRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/live/leverage': {
+      id: '/api/live/leverage'
+      path: '/api/live/leverage'
+      fullPath: '/api/live/leverage'
+      preLoaderRoute: typeof ApiLiveLeverageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/live/perp-fire': {
+      id: '/api/live/perp-fire'
+      path: '/api/live/perp-fire'
+      fullPath: '/api/live/perp-fire'
+      preLoaderRoute: typeof ApiLivePerpFireRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/live/pmus': {
       id: '/api/live/pmus'
       path: '/api/live/pmus'
@@ -512,6 +552,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiLiveHeartRoute: ApiLiveHeartRoute,
   ApiLiveKalshiRoute: ApiLiveKalshiRoute,
   ApiLiveKalshiOrderRoute: ApiLiveKalshiOrderRoute,
+  ApiLiveLeverageRoute: ApiLiveLeverageRoute,
+  ApiLivePerpFireRoute: ApiLivePerpFireRoute,
   ApiLivePmusRoute: ApiLivePmusRoute,
   ApiLivePriceRoute: ApiLivePriceRoute,
   ApiLivePythRoute: ApiLivePythRoute,

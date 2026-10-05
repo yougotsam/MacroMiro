@@ -287,7 +287,7 @@ export function ensureHeart() {
   g.__heartClock = true;
   ensurePerpSocket();
   setInterval(() => {
-    void tickHeartInner(false);
+    void tickHeartInner(false).catch(() => null);
   }, 15_000);
 }
 

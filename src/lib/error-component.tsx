@@ -8,7 +8,7 @@ export function AppErrorComponent({ error }: ErrorComponentProps) {
         <TriangleAlert className="size-10" strokeWidth={2} />
       </span>
       <h1 className="font-display text-2xl italic">Broke</h1>
-      <p className="max-w-md text-sm break-words text-muted">{error.message || "Reload."}</p>
+      <p className="max-w-md text-sm break-words text-muted">{error instanceof Error ? error.message : "Reload."}</p>
     </main>
   );
 }

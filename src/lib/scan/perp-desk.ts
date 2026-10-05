@@ -7,6 +7,8 @@ export type PerpCall = {
   ticker: string;
   side: "bid" | "ask" | null;
   pushOverNoise: number;
+  /** Leverage we will actually use. Lower than the contract max on purpose. */
+  useLev: number;
   why: string;
 };
 
@@ -30,9 +32,17 @@ function stdev(xs: number[]) {
   return Math.sqrt(v);
 }
 
+/** 3x rides noise. 5x is a normal push. The contract max is only for a sniper push. */
+export function pickLeverage(maxLev: number, pushOverNoise: number) {
+  const max = Math.min(20, Math.max(1, maxLev));
+  if (pushOverNoise >= 3) return Number(max.toFixed(2));
+  if (pushOverNoise >= 2.4) return Number(Math.min(5, max).toFixed(2));
+  return Number(Math.min(3, max).toFixed(2));
+}
+
 /** Three finished minutes, all the same way, and the push is at least twice the recent noise. Bear kills a wide book or a reward under 2:1. */
 export function perpDecision(ticker: string, bid: number, ask: number, lev: number): PerpCall {
-  const sit = (why: string): PerpCall => ({ take: false, ticker, side: null, pushOverNoise: 0, why });
+  const sit = (why: string): PerpCall => ({ take: false, ticker, side: null, pushOverNoise: 0, useLev: 0, why });
   if (!(bid > 0) || !(ask > 0) || ask < bid) return sit("no book");
   const mid = (bid + ask) / 2;
   const spread = (ask - bid) / mid;
@@ -52,10 +62,15 @@ export function perpDecision(ticker: string, bid: number, ask: number, lev: numb
   const push = Math.abs(last3.reduce((a, b) => a + b, 0));
   const ratio = noise > 0 ? push / noise : 0;
   if (!(noise > 0) || ratio < 2) return sit("push inside the noise");
-  const risk = 0.1;
-  const reward = 0.2;
-  if (reward / risk < 2) return sit("reward under 2 to 1");
-  return { take: true, ticker, side: up ? "bid" : "ask", pushOverNoise: ratio, why: `${up ? "long" : "short"} · ${(push * 100).toFixed(2)}% / noise ${(noise * 100).toFixed(2)}% · ${lev.toFixed(1)}x` };
+  const useLev = pickLeverage(lev, ratio);
+  return {
+    take: true,
+    ticker,
+    side: up ? "bid" : "ask",
+    pushOverNoise: ratio,
+    useLev,
+    why: `${up ? "long" : "short"} · ${(push * 100).toFixed(2)}% / noise ${(noise * 100).toFixed(2)}% · ${useLev.toFixed(1)}x of ${lev.toFixed(1)}x max`,
+  };
 }
 
 export function perpCount(price: number, contractSize: number, lev: number, marginUsd = 30) {

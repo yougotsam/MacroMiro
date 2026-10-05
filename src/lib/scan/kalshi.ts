@@ -173,7 +173,7 @@ function decide(
   r: Omit<UpDownRound, "take" | "leg" | "chip" | "reason" | "confirms" | "missing">,
   news: { kill: boolean; name: string | null },
   tape: Tape1,
-): Pick<UpDownRound, "take" | "leg" | "chip" | "reason" | "confirms" | "missing"> {
+): Pick<UpDownRound, "take" | "leg" | "chip" | "reason" | "confirms" | "missing" | "cross" | "catalyst"> {
   const { leftSec, moveBps, up, down, winner } = r;
   const withTape = winner !== "tie" && (tape.body === winner || tape.ticks === winner || tape.engulf === winner);
   const fight = winner !== "tie" && (tape.engulf === (winner === "up" ? "down" : "up") || (tape.ticks && tape.ticks !== winner));

@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { liveExecutionAllowed, liveFlagOn } from "@/lib/envelope/kill.server";
 import { kalshiGet, kalshiPost, kalshiPut } from "./kalshi-auth";
 
-const ORDER_PATH = "/trade-api/v2/margin/orders";
+export { buildPerpBracketPayload, calculateMarginRequirement } from "./perp-margin";
+export type { PerpOrderConfig } from "./perp-margin";
 
 export type PerpSide = "bid" | "ask";
 
@@ -23,7 +24,8 @@ export async function marginCash(): Promise<number> {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Long is bid. Short is ask. Immediate or cancel. Does not rest. */
+const ORDER_PATH = "/trade-api/v2/margin/orders";
+
 export async function placePerpOrder(order: PerpOrder) {
   if (!liveExecutionAllowed()) throw new Error(liveFlagOn() ? "not begun" : "live path off");
   if (!(order.price > 0) || !(order.count > 0)) throw new Error("perp order empty");
@@ -55,7 +57,7 @@ export async function placePerpOrder(order: PerpOrder) {
   return { orderId: res.data.order_id ?? res.data.order?.order_id ?? body.client_order_id, body };
 }
 
-/** Exchange stop and target. 10% of margin is the stop. 20% of margin is the first target. */
+/** Stop is 8% of the clip. Target is 2.5 times that. Both go out with the order group. */
 export async function armPerpBracket(ticker: string, stop: number, takeProfit: number) {
   const path = `/trade-api/v2/margin/cross/positions/${encodeURIComponent(ticker)}/exit_trigger`;
   const res = await kalshiPut<{ ok?: boolean }>(path, {

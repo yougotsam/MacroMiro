@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowRight, Radio, RefreshCw, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BrokerPanel, CalendarCompact, CatalystRadar, InboxCompact, liveAnalog } from "@/components/desk-panels";
+import { PerpCockpit } from "@/components/PerpCockpit";
 import { LoopPanel } from "@/components/loop";
 import { Fail, Quiet } from "@/components/fail";
 import type { Opinion, PlayId } from "@/lib/envelope/opinion";
-import { loadPaper, savePaper } from "@/lib/envelope/paper";
+import { savePaper } from "@/lib/envelope/paper";
 import { CLIP_CHOICES, CLIP_USD, DAILY_STOP_USD, START_CASH, clampClip, notional } from "@/lib/envelope/clip";
 import { BOOK_LABEL, type BookScan } from "@/lib/envelope/board";
 import { ScanBoard } from "@/components/scan-board";
@@ -81,7 +82,7 @@ type HeartPayload = {
   begun?: boolean;
 };
 
-export function Envelope() {
+export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
   const [tab, setTab] = useState<Tab>("floor");
   const [brokerId, setBrokerId] = useState<BrokerChoice["id"]>("paper");
   const [book, setBook] = useState<BookId>("btc");
@@ -110,34 +111,23 @@ export function Envelope() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [round, setRound] = useState<UpDownRound | null>(null);
   const [liveKalshi, setLiveKalshi] = useState(false);
-  const [begun, setBegun] = useState(false);
-  const [skillRows, setSkillRows] = useState<
-    { book: string; ticker?: string; leftSec?: number | null; action?: string; reason: string; up?: number | null; down?: number | null; prob?: { label: string; modelPYes: number | null; netEdge: number | null; noTrade: string[] } }[] | null
-  >(null);
+  const [begun, setBegun] = useState(initialBegun);
   const [tapeKey, setTapeKey] = useState(0);
-  useEffect(() => {
-    let stop = false;
-    const pull = () => {
-      void fetch("/api/live/skill")
-        .then((r) => r.json())
-        .then((j: { rows?: { book: string; ticker?: string; leftSec?: number | null; action?: string; reason: string; up?: number | null; down?: number | null; prob?: { label: string; modelPYes: number | null; netEdge: number | null; noTrade: string[] } }[] }) => {
-          if (!stop) setSkillRows(j.rows ?? []);
-        })
-        .catch(() => {
-          if (!stop) setSkillRows([]);
-        });
-    };
-    pull();
-    const id = setInterval(pull, 5_000);
-    return () => {
-      stop = true;
-      clearInterval(id);
-    };
-  }, []);
   const deskSig = useRef("");
   const scanSig = useRef("");
   const heartSig = useRef("");
   const wantBegin = useRef<boolean | null>(null);
+
+  useLayoutEffect(() => {
+    try {
+      if (sessionStorage.getItem("envelope.begun") === "1") {
+        setBegun(true);
+        setArmed(true);
+      }
+    } catch {
+      /* private window */
+    }
+  }, []);
 
   const applyHeart = useCallback((h: HeartPayload) => {
     if (wantBegin.current != null) {
@@ -174,8 +164,14 @@ export function Envelope() {
     if (h.clipUsd) setClipUsd(clampClip(h.clipUsd));
     if (h.round !== undefined) setRound(h.round ?? null);
     if (h.live != null) setLiveKalshi(h.live);
-    if (h.begun != null) setBegun(h.begun);
-    if (h.live) setClipUsd(1);
+    if (h.begun != null) {
+      setBegun(h.begun);
+      try {
+        sessionStorage.setItem("envelope.begun", h.begun ? "1" : "0");
+      } catch {
+        /* private window */
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -314,7 +310,7 @@ export function Envelope() {
         });
     };
     pull();
-    const id = setInterval(pull, 2_000);
+    const id = setInterval(pull, 15_000);
     return () => {
       gone = true;
       clearInterval(id);
@@ -578,6 +574,11 @@ export function Envelope() {
     wantBegin.current = next;
     setBegun(next);
     setArmed(next);
+    try {
+      sessionStorage.setItem("envelope.begun", next ? "1" : "0");
+    } catch {
+      /* private window */
+    }
     void fetch("/api/live/heart", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -876,16 +877,19 @@ function NewsPull() {
 function PerpsLater() {
   const [rows, setRows] = useState<Array<{ ticker: string; bid: number; ask: number; lev: number; contractSize: number }>>([]);
   const [note, setNote] = useState("Reading the margin book…");
+  const [cash, setCash] = useState(0);
+  const [fireNote, setFireNote] = useState("");
   useEffect(() => {
     let stop = false;
     const pull = () => {
       void fetch("/api/live/kalshi")
         .then((r) => r.json())
-        .then((j: { perps?: Array<{ ticker: string; bid: number; ask: number; lev: number; contractSize: number }> }) => {
+        .then((j: { cashUsd?: number; perps?: Array<{ ticker: string; bid: number; ask: number; lev: number; contractSize: number }> }) => {
           if (stop) return;
           const list = j.perps ?? [];
           setRows(list);
-          setNote(list.length ? "Live Kalshi margin. A push can send an order. This is not the 15-minute ticket." : "The margin book did not answer.");
+          if (typeof j.cashUsd === "number") setCash(j.cashUsd);
+          setNote(list.length ? "Live Kalshi margin. The buttons below send the bracket you set." : "The margin book did not answer.");
         })
         .catch(() => {
           if (!stop) setNote("The margin book did not answer.");
@@ -898,6 +902,8 @@ function PerpsLater() {
       clearInterval(id);
     };
   }, []);
+  const book = rows.find((r) => r.ticker === "KXGOLDPERP") ?? rows[0];
+  const price = book ? (book.bid + book.ask) / 2 || book.ask || book.bid : 0;
   return (
     <section className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
       <p className="font-mono text-xs uppercase tracking-widest text-subtle">Separate book · not the 15-minute ticket</p>
@@ -913,9 +919,35 @@ function PerpsLater() {
           </li>
         ))}
       </ul>
-      <p className="mt-4 text-sm leading-6 text-muted">
-        Gold, bitcoin, ether, solana, silver, and the S&P book trade here when three minutes push and the margin account has cash. Stop is about 10% of the margin. The 15-minute ticket uses a different balance.
-      </p>
+      <div className="mt-4">
+        <PerpCockpit
+          key={book?.ticker ?? "KXGOLDPERP"}
+          ticker={book?.ticker ?? "KXGOLDPERP"}
+          maxLeverage={book && book.lev >= 1 ? book.lev : 15.2}
+          currentPrice={price > 0 ? price : 0}
+          balanceUsd={cash}
+          dailyPnL={0}
+          onDispatchOrder={(cfg: { side: "bid" | "ask"; leverage: number; clipSizeUsd: number; tpMultiple: number; slPercent: number }) => {
+            setFireNote("Sending the bracket…");
+            void fetch("/api/live/perp-fire", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...cfg,
+                ticker: book?.ticker ?? "KXGOLDPERP",
+                price,
+                bid: book?.bid ?? price,
+                ask: book?.ask ?? price,
+                maxLeverage: book?.lev ?? 15.2,
+              }),
+            })
+              .then((r) => r.json())
+              .then((j: { why?: string; orderId?: string }) => setFireNote(j.orderId ? `${j.why} · ${j.orderId}` : (j.why ?? "no answer")))
+              .catch(() => setFireNote("The fire route did not answer."));
+          }}
+        />
+      </div>
+      {fireNote ? <p className="mt-3 text-sm leading-6 text-muted">{fireNote}</p> : null}
     </section>
   );
 }
@@ -1247,19 +1279,19 @@ function Floor({
     };
   }, [book, tf]);
   const draw = spot && spot.book === book ? spot : null;
-  const marks =
-    draw && draw.fib236 !== draw.fib618
-      ? [
-          { label: "50", price: draw.fib50 },
-          { label: "62", price: draw.fib618 },
-          { label: "70.5", price: draw.fib618 + (draw.fib786 - draw.fib618) * ((0.705 - 0.618) / (0.786 - 0.618)) },
-          { label: "79", price: draw.fib786 },
-        ]
-      : [];
-  const candles = useMemo(
-    () => (draw ? candlePath(draw.bars, 640, 180, settings, marks) : null),
-    [draw, settings, marks],
-  );
+  const candles = useMemo(() => {
+    if (!draw) return null;
+    const marks =
+      draw.fib236 !== draw.fib618
+        ? [
+            { label: "50", price: draw.fib50 },
+            { label: "62", price: draw.fib618 },
+            { label: "70.5", price: draw.fib618 + (draw.fib786 - draw.fib618) * ((0.705 - 0.618) / (0.786 - 0.618)) },
+            { label: "79", price: draw.fib786 },
+          ]
+        : [];
+    return candlePath(draw.bars, 640, 180, settings, marks);
+  }, [draw, settings]);
 
   if (err && !desk && !tape) return <Fail message={`Live desk failed: ${err}. Refresh in a moment.`} />;
   if (!desk || !tape) {

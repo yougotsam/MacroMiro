@@ -91,7 +91,15 @@ export async function placeEventOrder(order: EventOrder): Promise<EventFill> {
         res: {
           host: "",
           status: 404,
-          data: {} as { order_id?: string; order?: { order_id?: string } },
+          data: {} as {
+            order_id?: string;
+            order?: { order_id?: string };
+            fill_count?: string;
+            fill_count_fp?: string;
+            remaining_count?: string;
+            remaining_count_fp?: string;
+            average_fill_price?: string;
+          },
           text,
         },
       };
