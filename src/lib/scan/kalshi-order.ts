@@ -1,4 +1,5 @@
 import { liveExecutionAllowed } from "@/lib/envelope/kill.server";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { kalshiDelete, kalshiGet, kalshiPost, liveFlagOn, probeKalshi } from "./kalshi-auth";
 import { DEAD, DONE_FILL, eventCancelPath, mayCancel, orderStatusOf, type ExchangeOrder } from "./kalshi-order-status";
 import type { UpDownLeg } from "./updown";
@@ -30,6 +31,16 @@ function money(n: number) {
   return n.toFixed(4);
 }
 
+function orderLog(line: string) {
+  console.log(line);
+  try {
+    mkdirSync("/workspace/data", { recursive: true });
+    appendFileSync("/workspace/data/scan.log", `${line}\n`);
+  } catch {
+    /* the order still goes out */
+  }
+}
+
 /** YES-only book: bid = buy YES (up). ask = sell YES = buy NO (down) at 1 − price. */
 export function yesBook(leg: UpDownLeg, yesPaid: number): { side: "bid" | "ask"; price: number } {
   if (leg === "up") return { side: "bid", price: yesPaid };
@@ -53,23 +64,26 @@ export async function pollOrder(orderId: string, tries = 12, waitMs = 400): Prom
 
 export async function placeEventOrder(order: EventOrder): Promise<EventFill> {
   if (!liveExecutionAllowed()) throw new Error(liveFlagOn() ? "not begun" : "live path off");
-  if (order.yes < 0.2 || order.yes > 0.45) throw new Error("yes out of band");
+  if (!/^KX(?:BTC|ETH|SOL|GOLD)15M-.+/.test(order.ticker)) throw new Error("ticker not from the open book");
+  if (order.yes < 0.04 || order.yes > 0.75) throw new Error("yes out of band");
   const pay = Number(order.yes.toFixed(4));
   const { side, price } = yesBook(order.leg, pay);
   const count = Math.max(1, Math.floor(order.sizeUsd / Math.max(pay, 0.01)));
   const clientOrderId = randomUUID();
-  async function post(id: string, exchangeIndex: number) {
-    const body = {
+  async function post(id: string, exchangeIndex: number | null) {
+    const body: Record<string, string | number | boolean> = {
       ticker: order.ticker,
       client_order_id: id,
       side,
       count: count.toFixed(2),
       price: money(price),
-      time_in_force: "immediate_or_cancel" as const,
-      self_trade_prevention_type: "taker_at_cross" as const,
+      time_in_force: "immediate_or_cancel",
+      self_trade_prevention_type: "taker_at_cross",
       post_only: false,
-      exchange_index: exchangeIndex,
     };
+    if (exchangeIndex != null) body.exchange_index = exchangeIndex;
+    const shard = exchangeIndex == null ? "omit" : String(exchangeIndex);
+    orderLog(`[ORDER] POST ${PATH} ticker=${order.ticker} side=${side} count=${body.count} price=${body.price} exchange_index=${shard} auth=signed-not-printed`);
     try {
       const res = await kalshiPost<{
         order_id?: string;
@@ -86,11 +100,12 @@ export async function placeEventOrder(order: EventOrder): Promise<EventFill> {
       return { body, res };
     } catch (e) {
       const text = e instanceof Error ? e.message : String(e);
+      const status = Number(text.match(/\s(\d{3})\s/)?.[1] ?? 0);
       return {
         body,
         res: {
           host: "",
-          status: 404,
+          status,
           data: {} as {
             order_id?: string;
             order?: { order_id?: string };
@@ -105,15 +120,26 @@ export async function placeEventOrder(order: EventOrder): Promise<EventFill> {
       };
     }
   }
-  let { body, res } = await post(clientOrderId, 2);
-  const missing = res.status === 404 || /not_found/.test(res.text ?? "");
-  if (missing) {
-    ({ body, res } = await post(randomUUID(), -1));
+  // Omit first so Kalshi routes the ticker. -1 is the documented auto route. 2 is the crypto shard that filled SOL.
+  const tries: Array<{ id: string; shard: number | null }> = [
+    { id: clientOrderId, shard: null },
+    { id: randomUUID(), shard: -1 },
+    { id: randomUUID(), shard: 2 },
+  ];
+  let body: Record<string, string | number | boolean> | null = null;
+  let res: Awaited<ReturnType<typeof post>>["res"] | null = null;
+  for (const attempt of tries) {
+    const sent = await post(attempt.id, attempt.shard);
+    body = sent.body;
+    res = sent.res;
+    const missing = res.status === 404 || /not_found/.test(res.text ?? "");
+    if (!missing) break;
+    orderLog(`[ORDER] FAIL exchange_index=${attempt.shard == null ? "omit" : attempt.shard} ${res.text.slice(0, 180)}`);
   }
-  if (res.status !== 201 && res.status !== 200) {
-    throw new Error(`Kalshi ${res.status} ${res.text.slice(0, 220)}`);
+  if (!body || !res || (res.status !== 201 && res.status !== 200)) {
+    throw new Error(`Kalshi ${res?.status ?? 0} ${(res?.text ?? "no response").slice(0, 220)}`);
   }
-  const orderId = res.data.order_id ?? res.data.order?.order_id ?? body.client_order_id;
+  const orderId = res.data.order_id ?? res.data.order?.order_id ?? String(body.client_order_id);
   const postedFill = Number(res.data.fill_count_fp ?? res.data.fill_count ?? 0);
   const postedLeft = Number(res.data.remaining_count_fp ?? res.data.remaining_count ?? count);
   const postedAvg = Number(res.data.average_fill_price ?? 0);

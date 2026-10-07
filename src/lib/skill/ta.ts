@@ -97,3 +97,39 @@ export function halfHourTape(bars: { c: number; h: number; l: number; closed: bo
   const avg = prior.reduce((a, b) => a + width(b), 0) / prior.length;
   return { bias, push: width(now) >= avg && width(now) > 0 };
 }
+
+export type IndexBar = { o: number; h: number; l: number; c: number };
+export type StructureFib = "none" | "236" | "382" | "500" | "618";
+
+/** RSI, 20/50 EMA, the 0.618 zone, and the last finished candle. Built from the settlement index, not the ticket. */
+export function indexStructure(bars: IndexBar[]): {
+  rsi: number | null;
+  ema20: number | null;
+  ema50: number | null;
+  fibZone: StructureFib;
+  engulf: "up" | "down" | null;
+  rejection: "up" | "down" | null;
+} {
+  const closed = bars.filter((b) => b.c > 0 && b.h >= b.l);
+  const closes = closed.map((b) => b.c);
+  const last = closes.at(-1) ?? 0;
+  const fib = fibConfluence(closes, last);
+  const fibZone: StructureFib =
+    fib.zone === "0.618" ? "618" : fib.zone === "0.5" ? "500" : fib.zone === "0.382" ? "382" : fib.zone === "0.236" ? "236" : "none";
+  const prev = closed.at(-2);
+  const bar = closed.at(-1);
+  let engulf: "up" | "down" | null = null;
+  let rejection: "up" | "down" | null = null;
+  if (bar && prev) {
+    const body = Math.abs(bar.c - bar.o);
+    const prevBody = Math.abs(prev.c - prev.o);
+    const range = bar.h - bar.l;
+    const upper = bar.h - Math.max(bar.o, bar.c);
+    const lower = Math.min(bar.o, bar.c) - bar.l;
+    if (range > 0 && lower > body * 2 && body / range < 0.35) rejection = "up";
+    else if (range > 0 && upper > body * 2 && body / range < 0.35) rejection = "down";
+    if (bar.c > bar.o && prev.c < prev.o && body > prevBody && bar.c >= prev.o && bar.o <= prev.c) engulf = "up";
+    if (bar.c < bar.o && prev.c > prev.o && body > prevBody && bar.o >= prev.c && bar.c <= prev.o) engulf = "down";
+  }
+  return { rsi: rsi(closes, 14), ema20: ema(closes, 20), ema50: ema(closes, 50), fibZone, engulf, rejection };
+}

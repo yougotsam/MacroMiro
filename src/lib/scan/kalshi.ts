@@ -1,103 +1,39 @@
 import { type UpDownRound } from "./updown";
 import type { BookId } from "@/lib/live/types";
-import { loadPerps } from "./kalshi-perps";
-import { macroNewsKill } from "./news-kill";
+import { loadPerps, perpCacheAge } from "./kalshi-perps";
 import { edgeDecision } from "./edge";
 import { inEventBlackout } from "./blackout";
-import { ema } from "@/lib/skill/ta";
-import { loadMicro, featuresOf } from "./kalshi-shadow";
+import { loadMicro } from "./kalshi-shadow";
 import { brtiStatus, ensureBrti, ethRtiStatus, solRtiStatus } from "@/lib/skill/brti-socket.server";
 import { ensurePyth, pythStatus } from "@/lib/skill/pyth-socket.server";
+import { indexStructure } from "@/lib/skill/ta";
 
 const BASE = "https://api.elections.kalshi.com/trade-api/v2";
 const UA = "Mozilla/5.0 (compatible; EnvelopeScan/1.0)";
 const WINDOW = 900;
-const LATE_SEC = 40;
-const TOO_LATE = 60;
-/** Sit the first minute. The last minute is the settlement average, so that sits too. */
-const OPEN_SIT = 840;
-const LATE_BPS = 2.5;
-const MOM_BPS = 5;
-const HARD_BPS = 8;
-/** Paper late fills were 0.77–0.84. Skip only ≥0.86 (99¢ trophies). */
-const MAX_YES = 0.85;
-const MIN_YES_LATE = 0.75;
-const MIN_YES_GAP = 0.4;
-const MAX_YES_GAP = 0.85;
+const indexTrail = new Map<string, { t: number; px: number }[]>();
 
-const KLINE_SYM: Partial<Record<BookId, string>> = {
-  btc: "BTCUSDT",
-  eth: "ETHUSDT",
-  sol: "SOLUSDT",
-  gold: "PAXGUSDT",
-  silver: "PAXGUSDT",
-};
+/** Keep the settlement index so the next pass can see where it was 30 seconds ago. */
+export function noteIndex(book: string, px: number, now = Date.now()) {
+  if (!(px > 0)) return;
+  const row = indexTrail.get(book) ?? [];
+  const last = row[row.length - 1];
+  if (!last || now - last.t >= 1000) row.push({ t: now, px });
+  const cut = now - 120_000;
+  while (row.length && row[0].t < cut) row.shift();
+  indexTrail.set(book, row);
+}
 
-type MiniBar = { o: number; h: number; l: number; c: number };
-type Tape1 = {
-  last: MiniBar | null;
-  prior: MiniBar | null;
-  engulf: "up" | "down" | null;
-  ticks: "up" | "down" | null;
-  body: "up" | "down" | null;
-  ok: boolean;
-};
-const tapeCache: Record<string, { at: number; data: Tape1 }> = {};
-
-async function loadTape1(book: BookId): Promise<Tape1> {
-  const empty: Tape1 = { last: null, prior: null, engulf: null, ticks: null, body: null, ok: false };
-  const sym = KLINE_SYM[book];
-  if (!sym) return empty;
-  const hit = tapeCache[sym];
-  if (hit && Date.now() - hit.at < 15_000) return hit.data;
-  try {
-    const url = `https://api.binance.us/api/v3/klines?symbol=${sym}&interval=1m&limit=8`;
-    const res = await fetch(url, {
-      headers: { Accept: "application/json", "User-Agent": UA },
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!res.ok) return empty;
-    const rows = (await res.json()) as unknown;
-    if (!Array.isArray(rows)) return empty;
-    const bars: MiniBar[] = [];
-    for (const row of rows) {
-      if (!Array.isArray(row) || row.length < 5) continue;
-      const o = Number(row[1]);
-      const h = Number(row[2]);
-      const l = Number(row[3]);
-      const c = Number(row[4]);
-      if (![o, h, l, c].every((x) => Number.isFinite(x) && x > 0)) continue;
-      bars.push({ o, h, l, c });
-    }
-    const last = bars.at(-1) ?? null;
-    const prior = bars.at(-2) ?? null;
-    let engulf: Tape1["engulf"] = null;
-    if (last && prior) {
-      const lastBull = last.c > last.o;
-      const priorBear = prior.c < prior.o;
-      const lastBear = last.c < last.o;
-      const priorBull = prior.c > prior.o;
-      const lastBody = Math.abs(last.c - last.o);
-      const priorBody = Math.abs(prior.c - prior.o);
-      if (lastBull && priorBear && last.o <= prior.c && last.c >= prior.o && lastBody >= priorBody) engulf = "up";
-      if (lastBear && priorBull && last.o >= prior.c && last.c <= prior.o && lastBody >= priorBody) engulf = "down";
-    }
-    const closes = bars.slice(-4).map((b) => b.c);
-    let ticks: Tape1["ticks"] = null;
-    if (closes.length >= 3) {
-      const a = closes[closes.length - 3];
-      const b = closes[closes.length - 2];
-      const d = closes[closes.length - 1];
-      if (d > b && b > a) ticks = "up";
-      if (d < b && b < a) ticks = "down";
-    }
-    const body: Tape1["body"] = last ? (last.c > last.o ? "up" : last.c < last.o ? "down" : null) : null;
-    const data: Tape1 = { last, prior, engulf, ticks, body, ok: bars.length >= 2 };
-    tapeCache[sym] = { at: Date.now(), data };
-    return data;
-  } catch {
-    return empty;
+/** Newest saved index at least 30 seconds old, and not older than 50 seconds. */
+export function index30sAgo(book: string, now = Date.now()): number | null {
+  const row = indexTrail.get(book) ?? [];
+  const target = now - 30_000;
+  let best: { t: number; px: number } | null = null;
+  for (const p of row) {
+    if (p.t <= target && (!best || p.t > best.t)) best = p;
   }
+  if (!best || target - best.t > 20_000) return null;
+  return best.px;
 }
 
 export const KALSHI_BOOKS: { series: string; book: BookId }[] = [
@@ -153,96 +89,21 @@ const PERP_SPOT: Partial<Record<BookId, string>> = {
   silver: "KXSILVERPERP",
 };
 
-/** Implied index from Kalshi's own perp (bid / contract_size). Not licensed BRTI 60s TWAP. Same venue as the 15m. */
-async function kalshiIndex(ticker: string): Promise<number> {
-  const perps = await loadPerps();
+/** Implied index from Kalshi's own perp. Backup tape only. It does not settle the 15-minute ticket. */
+async function kalshiIndex(ticker: string): Promise<{ px: number; ageMs: number | null }> {
+  const perps = await loadPerps(false, 2_000);
+  const ageMs = perpCacheAge();
   const p = perps.find((x) => x.ticker === ticker);
-  if (!p) return 0;
+  if (!p) return { px: 0, ageMs };
   const px = p.ask || p.bid;
   const size = p.contractSize;
-  return size ? px / size : 0;
+  return { px: size ? px / size : 0, ageMs };
 }
 
-async function spotFor(book: BookId): Promise<number> {
+async function spotFor(book: BookId): Promise<{ px: number; ageMs: number | null }> {
   const ticker = PERP_SPOT[book];
   if (ticker) return kalshiIndex(ticker);
-  return 0;
-}
-
-function decide(
-  r: Omit<UpDownRound, "take" | "leg" | "chip" | "reason" | "confirms" | "missing">,
-  news: { kill: boolean; name: string | null },
-  tape: Tape1,
-): Pick<UpDownRound, "take" | "leg" | "chip" | "reason" | "confirms" | "missing" | "cross" | "catalyst"> {
-  const { leftSec, moveBps, up, down, winner } = r;
-  const withTape = winner !== "tie" && (tape.body === winner || tape.ticks === winner || tape.engulf === winner);
-  const fight = winner !== "tie" && (tape.engulf === (winner === "up" ? "down" : "up") || (tape.ticks && tape.ticks !== winner));
-  const late = leftSec <= LATE_SEC;
-  const need = late ? LATE_BPS : tape.engulf === winner ? LATE_BPS : withTape ? MOM_BPS : HARD_BPS;
-  const c1 = winner !== "tie" && !!r.beat && !!r.spot;
-  const c2 = Math.abs(moveBps) >= need && !fight;
-  const c3 = !news.kill;
-  const n = [c1, c2, c3].filter(Boolean).length;
-  const missing = !c1
-    ? "no side vs strike"
-    : fight
-      ? "1m tape fights"
-      : !c2
-        ? `move ${moveBps.toFixed(1)}bp < ${need}`
-        : !c3
-          ? `news ${news.name}`
-          : null;
-
-  if (!r.beat || !r.spot) return { take: false, leg: null, chip: null, confirms: n, missing, reason: `0/3 · no beat/spot` };
-  if (leftSec <= TOO_LATE) return { take: false, leg: null, chip: null, confirms: n, missing, reason: `${n}/3 · ${leftSec}s too late` };
-  if (leftSec > OPEN_SIT) return { take: false, leg: null, chip: null, confirms: n, missing, reason: `${n}/3 · first 1m sit` };
-  if (!c3) return { take: false, leg: null, chip: null, confirms: n, missing, reason: `${n}/3 · news sit · ${news.name}` };
-  if (!c1) return { take: false, leg: null, chip: null, confirms: n, missing, reason: `${n}/3 · sitting on the line` };
-  if (fight) {
-    return { take: false, leg: null, chip: null, confirms: n, missing, reason: `${n}/3 · 1m ${tape.ticks ?? tape.engulf ?? tape.body} vs ${winner}` };
-  }
-  if (!c2) {
-    return {
-      take: false,
-      leg: null,
-      chip: null,
-      confirms: n,
-      missing,
-      reason: `${n}/3 · ${leftSec}s · ${moveBps >= 0 ? "+" : ""}${moveBps.toFixed(1)}bp · need ${need}${tape.engulf ? " engulf" : tape.ticks ? " ticks" : ""}`,
-    };
-  }
-  if (up >= MAX_YES && down >= MAX_YES) {
-    return { take: false, leg: null, chip: null, confirms: n, missing: "book too rich", reason: `${n}/3 · too rich UP ${up.toFixed(3)}` };
-  }
-  const tag = tape.engulf === winner ? "engulf" : tape.ticks === winner ? "3x1m" : tape.body === winner ? "1m" : "dist";
-  if (late) {
-    const yes = winner === "up" ? up : down;
-    if (yes > MAX_YES || yes < MIN_YES_LATE) {
-      return { take: false, leg: null, chip: null, confirms: n, missing: "late price", reason: `${n}/3 · late ${yes.toFixed(3)} skip` };
-    }
-    return {
-      take: true,
-      leg: winner,
-      chip: "late-window",
-      confirms: 3,
-      missing: null,
-      reason: `3/3 late ${leftSec}s · ${winner.toUpperCase()} ${yes.toFixed(3)} · ${tag}`,
-    };
-  }
-  if (moveBps >= need && up >= MIN_YES_GAP && up <= MAX_YES_GAP && winner === "up") {
-    return { take: true, leg: "up", chip: "mom-gap", confirms: 3, missing: null, reason: `3/3 ${tag} +${moveBps.toFixed(1)}bp · BUY YES ${up.toFixed(3)}` };
-  }
-  if (moveBps <= -need && down >= MIN_YES_GAP && down <= MAX_YES_GAP && winner === "down") {
-    return { take: true, leg: "down", chip: "mom-gap", confirms: 3, missing: null, reason: `3/3 ${tag} ${moveBps.toFixed(1)}bp · SELL YES ${down.toFixed(3)}` };
-  }
-  return {
-    take: false,
-    leg: null,
-    chip: null,
-    confirms: n,
-    missing: "price band",
-    reason: `${n}/3 · ${leftSec}s · ${moveBps >= 0 ? "+" : ""}${moveBps.toFixed(1)}bp · UP ${up.toFixed(3)}`,
-  };
+  return { px: 0, ageMs: null };
 }
 
 /** Kalshi taker fee: 7% of C * p * (1-p), cents rounded up. */
@@ -251,11 +112,18 @@ export function kalshiFee(yes: number, contracts: number) {
   return Math.ceil(0.07 * contracts * p * (1 - p) * 100) / 100;
 }
 
-export function kalshiPnl(sizeUsd: number, yes: number, settle: number) {
+/** Whole contracts the order can buy. The clip is not one contract. */
+export function contractCount(sizeUsd: number, yes: number) {
+  if (!(yes > 0)) return 0;
+  return Math.max(0, Math.floor(sizeUsd / yes));
+}
+
+export function kalshiPnl(sizeUsd: number, yes: number, settle: number, contracts?: number) {
   if (!yes) return 0;
-  const contracts = sizeUsd / yes;
-  const fee = kalshiFee(yes, contracts);
-  return Number((contracts * (settle - yes) - fee).toFixed(2));
+  const c = contracts != null && contracts > 0 ? contracts : contractCount(sizeUsd, yes);
+  if (!c) return 0;
+  const fee = kalshiFee(yes, c);
+  return Number((c * (settle - yes) - fee).toFixed(2));
 }
 
 async function loadFifteen(series: string, book: BookId, force: boolean): Promise<UpDownRound> {
@@ -273,37 +141,53 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
       return open && active && m.ticker;
     }) ?? null;
 
-  const perp = await spotFor(book);
+  const perpQuote = await spotFor(book);
+  const perp = perpQuote.px;
+  const perpFresh = perp > 0 && perpQuote.ageMs != null && perpQuote.ageMs <= 2_000;
   let last = perp;
   let modelSpot: number | null = null;
   let spotSource: "cf-brti-60s" | "cf-eth-60s" | "cf-sol-60s" | "pyth-gold-1m" | "kalshi-perp" | "none" = "none";
   let volBps1m: number | null = null;
   let bias30: "up" | "down" | "flat" | null = null;
   let push: boolean | null = null;
+  let spotFallback = false;
+  let minutes: { o: number; h: number; l: number; c: number }[] = [];
   if (book === "btc" || book === "eth" || book === "sol") {
     ensureBrti();
     const rti = book === "btc" ? brtiStatus() : book === "eth" ? ethRtiStatus() : solRtiStatus();
     const source = book === "btc" ? "cf-brti-60s" : book === "eth" ? "cf-eth-60s" : "cf-sol-60s";
     bias30 = rti.bias30;
     push = rti.push;
+    volBps1m = rti.volBps;
+    minutes = rti.minutes ?? [];
     if (rti.healthy && rti.trailing60 != null) {
       last = rti.trailing60;
       modelSpot = rti.trailing60;
       spotSource = source;
-      volBps1m = rti.volBps;
+    } else if (perpFresh) {
+      last = perp;
+      modelSpot = perp;
+      spotSource = "kalshi-perp";
+      spotFallback = true;
     }
   } else if (book === "gold") {
     ensurePyth();
     const pyth = pythStatus();
+    volBps1m = pyth.volBps;
+    bias30 = pyth.bias30;
+    push = pyth.push;
+    minutes = pyth.minutes ?? [];
     if (pyth.spot != null) last = pyth.spot;
     if (pyth.healthy && pyth.candleClose != null) {
       modelSpot = pyth.candleClose;
       spotSource = "pyth-gold-1m";
-      volBps1m = pyth.volBps;
+    } else if (perpFresh) {
+      last = perp;
+      modelSpot = perp;
+      spotSource = "kalshi-perp";
+      spotFallback = true;
     }
-    bias30 = pyth.bias30;
-    push = pyth.push;
-  } else if (perp) {
+  } else if (perpFresh) {
     modelSpot = perp;
     spotSource = "kalshi-perp";
   }
@@ -360,61 +244,35 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
     down,
     yesBid,
     winner,
-    decided: Math.abs(moveBps) >= LATE_BPS,
+    decided: Math.abs(moveBps) >= 2.5,
     venue: "kalshi",
     ticker: live.ticker,
     result: live.result === "yes" || live.result === "no" ? live.result : null,
     book,
     series,
   };
-  const news = await macroNewsKill();
-  const tape = await loadTape1(book);
-  let picked = decide(base, news, tape);
-  if (!tape.ok) {
-    picked = { take: false, leg: null, chip: null, confirms: picked.confirms, missing: "stale tape", reason: `0/3 · no 1m tape` };
-  }
-  if (!last || !beat) {
-    picked = { take: false, leg: null, chip: null, confirms: picked.confirms, missing: "no settlement ref", reason: `0/3 · no strike/spot` };
-  }
-  if (!news.ok) {
-    picked = { take: false, leg: null, chip: null, confirms: picked.confirms, missing: "calendar fail", reason: `0/3 · news feed down` };
-  }
-  if (now >= end * 1000 || now < start * 1000) {
-    picked = { take: false, leg: null, chip: null, confirms: picked.confirms, missing: "closed", reason: `0/3 · market closed` };
-  }
+  let picked: Pick<UpDownRound, "take" | "leg" | "chip" | "reason" | "confirms" | "missing" | "cross" | "catalyst" | "clipScale"> = {
+    take: false,
+    leg: null,
+    chip: null,
+    confirms: 0,
+    missing: "no market",
+    reason: "sit",
+  };
   if ((book === "btc" || book === "gold" || book === "eth" || book === "sol") && live.ticker) {
     let rules = live.rules_primary || "";
     if (!rules) {
       const one = await grab<{ market?: KalshiMarket }>(`/markets/${encodeURIComponent(live.ticker)}`);
       rules = one?.market?.rules_primary || "";
     }
-    let bookImb: number | null = null;
-    let rsi: number | null = null;
-    let bbWidth: number | null = null;
-    let fibZone: "none" | "236" | "382" | "500" | "618" | null = null;
     let volume: number | null = null;
-    let engulf: "up" | "down" | null = null;
-    let ema7: number | null = null;
-    let ema14: number | null = null;
     try {
-      const micro = await loadMicro(live.event_ticker ? series : series, live.ticker);
-      bookImb = micro.bookImb;
-      const closes = micro.bars.map((b) => b.c);
-      ema7 = ema(closes, 7);
-      ema14 = ema(closes, 14);
-      const feat = featuresOf(
-        { ...base, take: false, leg: null, chip: null, reason: "" },
-        micro,
-        !news.ok,
-      );
-      rsi = feat.rsi;
-      bbWidth = feat.bbWidth;
-      fibZone = feat.fibZone;
-      volume = feat.volume;
-      engulf = feat.engulf;
+      const micro = await loadMicro(series, live.ticker);
+      volume = micro.bars.reduce((sum, bar) => sum + bar.v, 0);
     } catch {
-      bookImb = null;
+      volume = null;
     }
+    const structure = indexStructure(minutes);
     const edge = edgeDecision({
       book,
       status: live.status || "active",
@@ -430,20 +288,25 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
       yesBid,
       noAsk: down,
       volBps1m,
-      tapeOk: spotSource === "kalshi-perp" || spotSource === "none" ? tape.ok : true,
-      newsOk: news.ok,
-      bookImb,
-      rsi,
-      bbWidth,
-      fibZone,
+      tapeOk: spotSource !== "none" && (spotSource !== "kalshi-perp" || perpFresh),
+      newsOk: true,
+      bookImb: null,
+      rsi: structure.rsi,
+      bbWidth: null,
+      fibZone: structure.fibZone,
       volume,
-      engulf,
-      fresh: spotSource === "kalshi-perp" || spotSource === "none" ? tape.ok : true,
-      ema7,
-      ema14,
+      engulf: structure.engulf,
+      rejection: structure.rejection,
+      fresh: spotSource !== "none" && (spotSource !== "kalshi-perp" || perpFresh),
+      ema7: structure.ema20,
+      ema14: structure.ema50,
+      ema20: structure.ema20,
+      ema50: structure.ema50,
       bias30,
       push,
       blackout: inEventBlackout(now),
+      fallback: spotFallback,
+      spot30: modelSpot != null && modelSpot > 0 ? (noteIndex(book, modelSpot, now), index30sAgo(book, now)) : null,
     });
     picked = {
       take: edge.take,
@@ -454,9 +317,10 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
       reason: `${edge.strategy} · ${edge.settlement} · ${edge.why}`,
       cross: edge.cross,
       catalyst: edge.catalyst,
+      clipScale: edge.clipScale,
     };
   }
-  const data: UpDownRound = { ...base, ...picked };
+  const data: UpDownRound = { ...base, ...picked, volBps1m, bias30 };
   caches[series] = { at: Date.now(), data };
   return data;
 }

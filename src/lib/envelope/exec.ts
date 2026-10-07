@@ -24,7 +24,7 @@ export type BinaryFill = {
 
 /** Paper only until both switches are on. Once they are, a failed broker check throws. It does not invent a paper fill. */
 export async function submitBinary(intent: BinaryIntent): Promise<BinaryFill> {
-  if (!intent.ticker || intent.yes < 0.2 || intent.yes > 0.45) {
+  if (!intent.ticker || intent.yes < 0.04 || intent.yes > 0.75) {
     throw new Error("no market");
   }
   if (!liveExecutionAllowed()) {

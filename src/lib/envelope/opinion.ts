@@ -32,14 +32,14 @@ export function scoreOpinion(desk: DeskPayload, tape: Tape, cash: number): Opini
     id: "sit",
     score: 40,
     title: "Sit",
-    why: "No push through the line, or the ticket is outside 25¢–45¢.",
+    why: "The 30-second move is against the line, or the ticket is outside 4¢–75¢.",
   };
   const scalp: Play = {
     id: "scalp",
     score: live ? 36 : 12,
     title: "15m",
     why: live
-      ? `${tape.symbol} is live. Buy only if the official index has already moved and the ticket is 25¢–45¢.`
+      ? `${tape.symbol} is live. Price range: 4¢–75¢. Clock: 5s after open to 30s before close. The last 30 seconds must agree.`
       : "This book is not in a live session.",
   };
   const event: Play = {
@@ -47,12 +47,12 @@ export function scoreOpinion(desk: DeskPayload, tape: Tape, cash: number): Opini
     score: shock ? 72 : 14,
     title: "Catalyst",
     why: shock
-      ? `${desk.next?.name ?? "Print"} window. 20¢–40¢ and four times the clip. Still not a direction by itself.`
+      ? `${desk.next?.name ?? "Print"} window. Price range stays 4¢–75¢ and the clip is four times larger. Still not a direction by itself.`
       : "No CPI, jobs, or Fed window.",
   };
   if (tape.regime === "trend" && live) {
     scalp.score += 8;
-    scalp.why = `${tape.symbol} trend is on. The ticket price still has to be 25¢–45¢.`;
+    scalp.why = `${tape.symbol} trend is on. The ticket price still has to be 4¢–75¢.`;
   }
   const plays = [sit, scalp, event].sort((a, b) => b.score - a.score);
   const pick = plays[0];

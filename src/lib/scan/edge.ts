@@ -33,17 +33,27 @@ export type EdgeIn = {
   fibZone: "none" | "236" | "382" | "500" | "618" | null;
   ema7: number | null;
   ema14: number | null;
-  /** Last 30 minutes of the official index. This picks the side. */
+  /** 1-minute settlement index. Continuation needs price on the correct side of this. */
+  ema20?: number | null;
+  /** 1-minute settlement index. Confirms the 20 when both exist. */
+  ema50?: number | null;
+  /** Wick rejection on the last finished index candle. */
+  rejection?: "up" | "down" | null;
+  /** Last 30 minutes of the official index. Sizes the clip. Does not pick the side. */
   bias30?: "up" | "down" | "flat" | null;
   /** Last finished minute is at least as wide as the two before it. */
   push?: boolean | null;
-  /** Ticket volume. A note. The push above is the size check. */
+  /** Ticket volume. A note only. It does not sit the contract. */
   volume?: number | null;
-  /** Last two ticket candles. A note. It does not block. */
+  /** Last two ticket candles. Counter-trend only, when they flip against the lean. */
   engulf?: "up" | "down" | null;
   fresh: boolean;
-  /** CPI, NFP, or the Fed decision minute. Stand down. Not a direction. */
+  /** Same index, about 30 seconds earlier. Missing means use the distance hurdle. */
+  spot30?: number | null;
+  /** CPI, NFP, or the Fed decision minute. Same 4¢–75¢ band. Four times the clip. Not a direction. */
   blackout?: boolean;
+  /** Official index socket is down. The Kalshi perp mark is the distance only. It does not settle the ticket. */
+  fallback?: boolean;
 };
 
 export type EdgeOut = {
@@ -61,6 +71,8 @@ export type EdgeOut = {
   cross: boolean;
   /** CPI, jobs, or the Fed minute. Cheap ticket, four times the clip. Not a sit. */
   catalyst: boolean;
+  /** 1 when the 30-minute lean matches the print. 0.5 when that lean is flat, opposed, or the tape is the perp mark. */
+  clipScale: number;
   why: string;
 };
 
@@ -100,55 +112,83 @@ export function edgeDecision(i: EdgeIn): EdgeOut {
     spread: null,
     cross: false,
     catalyst: false,
+    clipScale: 1,
     why,
   });
 
   const st = i.status.toLowerCase();
   if (st && st !== "active" && st !== "open") return sit("market not active");
   if (!(i.now >= i.openTs && i.now < i.closeTs)) return sit("market closed");
-  if (i.leftSec < 90 || i.leftSec > 880) return sit("outside entry window");
+  if (i.leftSec <= 30 || i.leftSec > 895) return sit("outside entry window");
   if (!i.fresh || !i.tapeOk) return sit("stale tape");
   if (settlement === "unknown") return sit("settlement rule unknown");
-  if (i.spotSource !== settlement) return sit(`spot ${i.spotSource} ≠ ${settlement}`);
+  const bridge = Boolean(i.fallback) && i.spotSource === "kalshi-perp";
+  if (i.spotSource !== settlement && !bridge) return sit(`spot ${i.spotSource} ≠ ${settlement}`);
   if (!i.beat || !i.spot) return sit("no strike");
 
   const moveBps = ((i.spot - i.beat) / i.beat) * 10_000;
+  if (i.volBps1m != null && i.volBps1m > 200) return sit("volatility extreme");
   const vol = i.volBps1m != null && i.volBps1m > 0 && i.volBps1m <= 200 ? i.volBps1m : null;
-  if (vol == null) return sit("wiggle unreadable");
-  if (i.leftSec <= 180 && Math.abs(moveBps) < vol * 2) return sit("too close to the line");
-  const print: "up" | "down" = moveBps > 0 ? "up" : "down";
-  const pushed = Math.abs(moveBps) > vol;
-  const lean = i.bias30 === "up" || i.bias30 === "down" ? i.bias30 : pushed ? print : null;
   const cents = `up ${Math.round(i.yesAsk * 100)}¢ down ${Math.round(i.noAsk * 100)}¢`;
-  if (!lean) return sit(`no push and no day lean · ${cents}`);
+  const above = i.spot > i.beat;
+  const below = i.spot < i.beat;
+  const ema20 = i.ema20 ?? null;
+  const ema50 = i.ema50 ?? null;
+  const rsi = i.rsi;
+  const rejection = i.rejection ?? null;
+  const engulf = i.engulf ?? null;
+  if (rsi == null && ema20 == null) return sit("indicators unread");
 
-  const stretched = Math.abs(moveBps) > vol * 1.5;
-  const stalledHigh = lean === "up" && (i.engulf === "down" || (i.push === false && print === "up" && stretched));
-  const stalledLow = lean === "down" && (i.engulf === "up" || (i.push === false && print === "down" && stretched));
-  let leg: "up" | "down" | null = null;
-  let kind = "";
-  if (stalledHigh && i.leftSec >= 180 && pushed) {
-    leg = "down";
-    kind = "counter";
-  } else if (stalledLow && i.leftSec >= 180 && pushed) {
-    leg = "up";
-    kind = "counter";
-  } else if (print === lean && pushed) {
-    leg = lean;
-    kind = "with";
+  const upTrend = ema20 != null && i.spot > ema20 && (ema50 == null || ema20 >= ema50) && above;
+  const downTrend = ema20 != null && i.spot < ema20 && (ema50 == null || ema20 <= ema50) && below;
+  const bullCandle = rejection === "up" || engulf === "up";
+  const bearCandle = rejection === "down" || engulf === "down";
+  const fib = i.fibZone === "618";
+  let print: "up" | "down";
+  let tech: string;
+  if (rsi != null && rsi < 30 && bullCandle) {
+    print = "up";
+    tech = `YES: RSI bounce at ${rsi.toFixed(0)} + ${rejection === "up" ? "bullish rejection" : "bullish engulf"}`;
+  } else if (rsi != null && rsi > 70 && bearCandle) {
+    print = "down";
+    tech = `NO: RSI fade at ${rsi.toFixed(0)} + ${rejection === "down" ? "bearish rejection" : "bearish engulf"}`;
+  } else if (fib && (bullCandle || (ema20 != null && i.spot > ema20))) {
+    print = "up";
+    tech = "YES: fib 0.618 bounce";
+  } else if (fib && (bearCandle || (ema20 != null && i.spot < ema20))) {
+    print = "down";
+    tech = "NO: fib 0.618 bounce";
+  } else if (upTrend && rsi != null && rsi >= 70) {
+    return sit("SIT: RSI overbought, no continuation");
+  } else if (downTrend && rsi != null && rsi <= 30) {
+    return sit("SIT: RSI oversold, no continuation");
+  } else if (upTrend) {
+    if (i.leftSec <= 60 && vol != null && Math.abs(moveBps) < vol * 0.5) return sit("too close to the line");
+    print = "up";
+    tech = `YES: 20-EMA breakout + RSI ${rsi == null ? "n/a" : rsi.toFixed(0)}`;
+  } else if (downTrend) {
+    if (i.leftSec <= 60 && vol != null && Math.abs(moveBps) < vol * 0.5) return sit("too close to the line");
+    print = "down";
+    tech = `NO: 20-EMA breakdown + RSI ${rsi == null ? "n/a" : rsi.toFixed(0)}`;
+  } else {
+    return sit("SIT: no structure");
   }
-  if (!leg) return sit(`day lean ${lean} but this contract is not pushing · ${cents}`);
-  if (i.volume === 0) return sit("no volume");
 
-  const marketP = leg === "up" ? i.yesAsk : i.noAsk;
-  const spread = i.yesBid > 0 ? Math.max(0, i.yesAsk - i.yesBid) : i.yesAsk;
-  if (spread > 0.08) return sit("spread too wide");
+  const leg = print;
+  const matched = i.bias30 === print;
+  let clipScale = matched ? 1 : 0.5;
+  if (bridge) clipScale = 0.5;
+
+  if (!(i.yesAsk > 0 && i.yesBid > 0)) return sit(`no quote · ${cents}`);
+  const spread = i.yesAsk - i.yesBid;
   const catalyst = Boolean(i.blackout);
-  const low = catalyst ? 0.2 : 0.25;
-  const high = catalyst ? 0.4 : 0.45;
+  const low = 0.04;
+  const high = 0.75;
+  const marketP = leg === "up" ? i.yesAsk : i.noAsk;
   if (marketP < low || marketP > high) return sit(`payout not worth it · ${cents}`);
   const fee = feeProb(marketP);
-  const why = `${catalyst ? "catalyst " : ""}${kind} ${leg} · day ${lean} · index ${moveBps.toFixed(1)} bps · ticket ${(marketP * 100).toFixed(0)}¢ · take · fee ${(fee * 100).toFixed(1)}¢ · ${cents}`;
+  const day = i.bias30 === "up" || i.bias30 === "down" || i.bias30 === "flat" ? i.bias30 : "none";
+  const why = `${catalyst ? "catalyst " : ""}${tech}${clipScale < 1 ? " · half clip" : ""}${bridge ? " · perp tape" : ""} · day ${day} · fee ${(fee * 100).toFixed(1)}¢ · ticket ${(marketP * 100).toFixed(0)}¢ · ${cents}`;
   return {
     take: true,
     leg,
@@ -162,6 +202,7 @@ export function edgeDecision(i: EdgeIn): EdgeOut {
     spread: Number(spread.toFixed(4)),
     cross: true,
     catalyst,
+    clipScale,
     why,
   };
 }
@@ -230,10 +271,6 @@ export function evaluatePerpEdge(market: PerpMarketState, tauric: TauricSignal, 
 
   if (market.dailyPnLUsd <= -24.0) {
     return { action: "SKIP", reason: "Daily loss shield tripped (-$24 cap reached). Cool off active." };
-  }
-
-  if (market.spreadBps > 8.0) {
-    return { action: "SKIP", reason: `Spread too wide (${market.spreadBps.toFixed(1)} bps > 8.0 bps max)` };
   }
 
   if (tauric.direction === "NEUTRAL" || tauric.confidenceScore < config.tauricThreshold) {

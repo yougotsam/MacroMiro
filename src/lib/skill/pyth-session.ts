@@ -172,6 +172,10 @@ export function xauStatus(session: XauSession, now: number) {
     volBps: volOf(session.bars),
     bias30: tape.bias,
     push: tape.push,
+    minutes: session.bars
+      .filter((b) => b.closed && b.c > 0)
+      .slice(-80)
+      .map((b) => ({ o: b.o, h: b.h, l: b.l, c: b.c })),
     malformed: session.malformed,
     reconnects: session.reconnects,
     subscriptions: session.subscriptions,

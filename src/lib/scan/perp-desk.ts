@@ -40,13 +40,10 @@ export function pickLeverage(maxLev: number, pushOverNoise: number) {
   return Number(Math.min(3, max).toFixed(2));
 }
 
-/** Three finished minutes, all the same way, and the push is at least twice the recent noise. Bear kills a wide book or a reward under 2:1. */
+/** Three finished minutes, all the same way, and the push is at least twice the recent noise. Spread width does not sit. */
 export function perpDecision(ticker: string, bid: number, ask: number, lev: number): PerpCall {
   const sit = (why: string): PerpCall => ({ take: false, ticker, side: null, pushOverNoise: 0, useLev: 0, why });
   if (!(bid > 0) || !(ask > 0) || ask < bid) return sit("no book");
-  const mid = (bid + ask) / 2;
-  const spread = (ask - bid) / mid;
-  if (spread > 0.0015) return sit("spread too wide");
   if (!(lev >= 2)) return sit("leverage unread");
   const rows = tapes.get(ticker) ?? [];
   if (rows.length < 4) return sit("need three finished minutes");

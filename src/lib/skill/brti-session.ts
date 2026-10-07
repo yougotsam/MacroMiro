@@ -345,6 +345,10 @@ export function publicStatus(session: Session, now: number, symbol: RtiSymbol = 
     volReady: session.volBps != null,
     bias30: tape.bias,
     push: tape.push,
+    minutes: session.bars
+      .filter((b) => b.closed && b.c > 0)
+      .slice(-80)
+      .map((b) => ({ o: b.o, h: b.h, l: b.l, c: b.c })),
     settlement,
     settlementValue: print,
     settlementWhy,

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { evaluatePerpEdge } from "./edge.ts";
 
 describe("pasted perp edge", () => {
-  it("keeps the pasted numbers: 8 bps, -$24, and a whole contract floor", () => {
+  it("does not sit a wide book, and still keeps the -$24 shield and a whole contract floor", () => {
     const go = evaluatePerpEdge(
       {
         ticker: "KXGOLDPERP",
@@ -39,6 +39,6 @@ describe("pasted perp edge", () => {
       },
       { direction: "LONG", confidenceScore: 80, catalystAlert: false, primaryThesis: "up" },
       { selectedLeverage: 5, clipUsd: 25, tpMultiple: 2.5, slPercent: 8, tauricThreshold: 68 },
-    ).action, "SKIP");
+    ).action, "EXECUTE");
   });
 });

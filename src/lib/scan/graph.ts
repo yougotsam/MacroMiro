@@ -128,10 +128,6 @@ export function runGraph(opts: {
       rows.push(row(venue, "watch", m.question, m.yes, `minute 0–2 · wait · ${left}`, 0, link));
       continue;
     }
-    if (m.spread > 0.04) {
-      rows.push(row(venue, "cancel", m.question, m.yes, `spread ${m.spread.toFixed(3)} · too wide`, 0, link));
-      continue;
-    }
     rows.push(
       row(
         venue,

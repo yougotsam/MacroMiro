@@ -1,5 +1,6 @@
-import { type UpDownRound } from "@/lib/scan/updown";
-import { kalshiPnl, kalshiResult, loadKalshiBooks } from "@/lib/scan/kalshi";
+import { appendFileSync } from "node:fs";
+import { type UpDownRound, scanLines } from "@/lib/scan/updown";
+import { contractCount, kalshiPnl, kalshiResult, loadKalshiBooks } from "@/lib/scan/kalshi";
 import { submitBinary } from "./exec";
 import { sendTelegram, telegramReady } from "@/lib/scan/telegram";
 import { CLIP_USD, DAILY_STOP_USD, START_CASH, clampClip, sniperClip } from "./clip";
@@ -66,14 +67,15 @@ async function settleClosed(state: HeartState, rounds: UpDownRound[]) {
     const won = pos.leg === "up" ? result === "yes" : result === "no";
     const settlePx = won ? 1 : 0;
     const entry = pos.yes || pos.entry;
-    const delta = kalshiPnl(pos.sizeUsd, entry, settlePx);
+    const contracts = pos.count && pos.count > 0 ? pos.count : contractCount(pos.sizeUsd, entry);
+    const delta = kalshiPnl(pos.sizeUsd, entry, settlePx, contracts);
     recordPnl(delta);
     state.cash = Number((state.cash + pos.sizeUsd + delta).toFixed(2));
     state.ledger.unshift({
       id: `${Date.now()}-${pos.ticker}`,
       ts: etNow(),
       play: "scalp",
-      note: `RESOLVE ${pos.leg.toUpperCase()} ${won ? "WIN" : "LOSS"} · settle ${settlePx.toFixed(2)} vs ${entry.toFixed(3)} · window close · ${pos.ticker}`,
+      note: `RESOLVE ${pos.leg.toUpperCase()} ${won ? "WIN" : "LOSS"} · ${contracts} contracts · pays $${(contracts * settlePx).toFixed(2)} · entry ${entry.toFixed(3)} · ${pos.ticker}`,
       delta,
     });
     appendLedger({ kind: "settle", note: state.ledger[0].note, market_ticker: pos.ticker, realized_pnl: delta, mode: pos.mode === "live" ? "live" : "paper", settlement_result: result });
@@ -83,8 +85,26 @@ async function settleClosed(state: HeartState, rounds: UpDownRound[]) {
   state.ledger = state.ledger.slice(0, 200);
 }
 
+function logDesk(line: string | string[]) {
+  const text = Array.isArray(line) ? line.join("\n") : line;
+  console.log(text);
+  try {
+    appendFileSync("/workspace/data/scan.log", text.endsWith("\n") ? text : `${text}\n`);
+  } catch {
+    /* the terminal line already printed */
+  }
+}
+
+function emitScan(rounds: UpDownRound[]) {
+  for (const round of rounds) {
+    if (round.book !== "btc" && round.book !== "eth" && round.book !== "sol" && round.book !== "gold") continue;
+    logDesk(scanLines(round));
+  }
+}
+
 async function tickHeartInner(execute: boolean): Promise<HeartState> {
   const rounds = await loadKalshiBooks(true);
+  emitScan(rounds);
   const btc = rounds.find((r) => r.book === "btc") ?? rounds[0];
   const state = loadHeart();
   const liveGate = await liveReadyNow();
@@ -130,6 +150,8 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
   const canExecute = execute && liveExecutionAllowed();
   const blocked = killBlocksTrade(state.positions.filter((p) => p.venue === "kalshi15m").reduce((a, p) => a + p.sizeUsd, 0));
   const tradable = rounds.filter((r) => r.book === "btc" || r.book === "gold" || r.book === "eth" || r.book === "sol");
+  if (tradable.some((r) => r.take) && !canExecute) logDesk("[STATUS] -> QUALIFIED -> HOLD (scan only)");
+  if (canExecute && !blocked.ok) logDesk(`[STATUS] -> SIT: ${blocked.why}`);
   const newsDown = tradable.some((r) => r.reason.includes("news feed down") || r.reason.includes("news unknown"));
   if (newsDown) markStale(true, "news feed down");
   else markStale(false, "feeds ok");
@@ -138,7 +160,7 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
     const kept: RestingBid[] = [];
     for (const bid of state.resting ?? []) {
       const round = rounds.find((r) => (r.ticker || r.slug) === bid.ticker);
-      const cancel = !round || round.leftSec < 90;
+      const cancel = !round || round.leftSec <= 30;
       try {
         const seen = await watchRest(bid.orderId, bid.ticker, cancel);
         if (seen.kind === "fill") {
@@ -175,21 +197,50 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
       if (!round.book || !LIVE_BOOKS.has(round.book)) continue;
       if (!round.take || !round.leg || !round.chip) continue;
       const yes = round.leg === "down" ? round.down : round.up;
-      const low = round.catalyst ? 0.2 : 0.25;
-      const high = round.catalyst ? 0.4 : 0.45;
-      if (yes < low || yes > high) continue;
-      const clip = (liveGate.ok ? sniperClip(state.cash, yes, true) : Math.min(clipWanted, 5)) * (round.catalyst ? 4 : 1);
-      if (state.cash < clip) break;
-      const ticker = round.ticker || round.slug;
-      if (!ticker) continue;
+      const label = round.ticker || round.slug;
+      if (yes < 0.04 || yes > 0.75) {
+        logDesk(`[STATUS] ${label} -> SIT: price_band`);
+        continue;
+      }
+      const clipScale = round.clipScale === 0.5 ? 0.5 : 1;
+      const clip = (liveGate.ok ? sniperClip(state.cash, yes, true) : Math.min(clipWanted, 5)) * (round.catalyst ? 4 : 1) * clipScale;
+      if (state.cash < clip) {
+        logDesk(`[STATUS] ${label} -> SIT: cash`);
+        break;
+      }
+      const ticker = round.ticker ?? "";
+      if (!/^KX(?:BTC|ETH|SOL|GOLD)15M-.+/.test(ticker)) {
+        logDesk(`[STATUS] ${label} -> SIT: no_ticker`);
+        continue;
+      }
       const onTicker = state.positions.filter((p) => p.ticker === ticker && p.venue === "kalshi15m");
-      if (onTicker.length >= 2) continue;
-      if (onTicker.length === 1 && onTicker[0].leg !== round.leg) continue;
-      if (onTicker.length === 1 && Date.now() - state.lastOpenAt < 60_000) continue;
-      if (onTicker.length === 1 && yes >= (onTicker[0].yes || onTicker[0].entry)) continue;
-      if ((state.resting ?? []).some((b) => b.ticker === ticker)) continue;
+      if (onTicker.length >= 2) {
+        logDesk(`[STATUS] ${label} -> SIT: max_clips`);
+        continue;
+      }
+      if (onTicker.length === 1 && onTicker[0].leg !== round.leg) {
+        logDesk(`[STATUS] ${label} -> SIT: opposite_leg`);
+        continue;
+      }
+      if (onTicker.length === 1 && Date.now() - state.lastOpenAt < 60_000) {
+        logDesk(`[STATUS] ${label} -> SIT: add_wait`);
+        continue;
+      }
+      if (onTicker.length === 1 && yes >= (onTicker[0].yes || onTicker[0].entry)) {
+        logDesk(`[STATUS] ${label} -> SIT: not_cheaper`);
+        continue;
+      }
+      if ((state.resting ?? []).some((b) => b.ticker === ticker)) {
+        logDesk(`[STATUS] ${label} -> SIT: already_resting`);
+        continue;
+      }
       const misses = state.ledger.filter((r) => r.note.includes("MISS") && r.note.includes(ticker)).length;
-      if (misses >= 2) continue;
+      if (misses >= 2) {
+        logDesk(`[STATUS] ${label} -> SIT: two_misses`);
+        continue;
+      }
+      const side = round.leg === "down" ? "NO" : "YES";
+      logDesk(`[STATUS] -> QUALIFIED -> DISPATCH BUY ${side} @ ${Math.round(yes * 100)}¢ (Clip: $${clip.toFixed(2)})`);
       let fill;
       try {
         fill = await submitBinary({

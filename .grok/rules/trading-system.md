@@ -6,7 +6,7 @@ Unproven ideas are experimental and stay in shadow mode. They do not place order
 
 Live trading stays off until the settlement print matches the contract, the shadow log has a real sample, and a human turns the live flag on.
 
-BTC settlement is the 60-second average of CF Benchmarks BRTI. The live model uses that trailing average. The final minute's 60-print is the settlement. A Binance print is not the settlement.
+BTC settlement in the final minute is CF Benchmarks `last_60s_windowed_average_15min` when that window has 60 prints. The live decision uses the trailing 60-second average (`avg_60s_data`), not that quarter-hour field and not a Binance print.
 
 Gold uses the Pyth GOLD 1-minute close named in the contract rules. A tick, a 401, or the wrong feed id blocks gold.
 

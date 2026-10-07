@@ -13,4 +13,4 @@ Host: `https://external-api.kalshi.com/trade-api/v2`. Orders: `POST /margin/orde
 
 Names: KXGOLDPERP, KXBTCPERP, KXETHPERP, KXSOLPERP, KXXRPPERP, KXBNBPERP, KXSILVERPERP, KXUS500PERP.
 
-Need three finished minutes the same way, and the push at least twice the recent noise. The bear in `src/lib/agent/tauric-debate.ts` kills a wide spread. Collateral is $25 to $35, and only if the margin account has at least $25. Do not move 15-minute cash into this account. Stop is about 10% of the margin. First target is about 20%.
+Need three finished minutes the same way, and the push at least twice the recent noise. The bear in `src/lib/agent/tauric-debate.ts` does not sit a wide spread. Collateral is $25 to $35, and only if the margin account has at least $25. Do not move 15-minute cash into this account. Stop is about 10% of the margin. First target is about 20%.
