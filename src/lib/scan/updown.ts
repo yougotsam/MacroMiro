@@ -31,12 +31,14 @@ export type UpDownRound = {
   series?: string;
   /** Index already through the line. Pay the ask. Quiet books rest. */
   cross?: boolean;
-  /** Calendar shock. Same 4¢–75¢ band, four times the clip. */
+  /** Calendar shock. Same 4¢–75¢ band. Does not raise the $5 cap. */
   catalyst?: boolean;
   /** 1 when the 30-minute lean matches the print. 0.5 when that lean is flat, opposed, or the tape is the perp mark. */
   clipScale?: number;
   volBps1m?: number | null;
   bias30?: "up" | "down" | "flat" | null;
+  /** Shard on the open market. The order sends this number first. */
+  exchangeIndex?: number;
 };
 
 export function markYes(sizeUsd: number, entry: number, now: number, _fee = 0.02) {
@@ -103,16 +105,18 @@ export function scanLines(r: UpDownRound): string[] {
       : `Flat -> 0.5x Clip`;
   const text = `${r.reason} ${r.missing ?? ""}`;
   let status = "[STATUS] -> QUALIFIED";
-  if (!r.take) {
+  if (r.take) {
+    const code = text.match(/(?:YES|NO): [a-z0-9_]+/);
+    if (code) status = `[STATUS] -> QUALIFIED ${code[0]}`;
+  } else if (!r.take) {
     if (/outside entry window/.test(text)) status = "[STATUS] -> SIT: window_boundary";
     else if (/too close to the line|not clearing the line/.test(text)) {
       const target = /too close to the line/.test(text) ? noise : half;
-      const cmp = target != null ? ` (${cash(delta)} < ${cash(target)})` : "";
+      const cmp = target != null && Math.abs(delta) < target ? ` (${cash(delta)} < ${cash(target)})` : "";
       status = `[STATUS] -> SIT: delta_under_noise${cmp}`;
-    } else if (/RSI overbought/.test(text)) status = "[STATUS] -> SIT: rsi_overbought";
-    else if (/RSI oversold/.test(text)) status = "[STATUS] -> SIT: rsi_oversold";
-    else if (/indicators unread/.test(text)) status = "[STATUS] -> SIT: indicators_unread";
-    else if (/no structure/.test(text)) status = "[STATUS] -> SIT: no_structure";
+    } else if (/rsi_exhaustion/.test(text)) status = "[STATUS] -> SIT: rsi_exhaustion";
+    else if (/counter_trend_ema/.test(text)) status = "[STATUS] -> SIT: counter_trend_ema";
+    else if (/momentum_against/.test(text)) status = "[STATUS] -> SIT: momentum_against";
     else if (/payout not worth it/.test(text)) {
       const ticket = text.match(/ticket (\d+)¢/);
       status = `[STATUS] -> SIT: price_band${ticket ? ` (${ticket[1]}¢ outside 4¢–75¢)` : ""}`;

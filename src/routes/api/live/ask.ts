@@ -9,7 +9,7 @@ const PLAYS = ["sit", "scalp", "event"] as const;
 const CLERK =
   "You are the desk clerk. Repeat docs/STRATEGY.md. Do not invent a second rule. " +
   "A normal ticket is 25 cents to 45 cents and is held to the clock. " +
-  "During CPI, the jobs report, or the Fed, the band is 20 cents to 40 cents and the size is four times. " +
+  "During CPI, the jobs report, or the Fed, the band stays 4 cents to 75 cents and the size stays $5 or less. " +
   "Perpetuals are a separate Kalshi margin book. Spark is a sentence, not a vote. " +
   "JSON only: plays [{id sit|scalp|event, score 0-100, title, why}], pick, sizeUsd (0 if sit, otherwise 1 to 20).";
 

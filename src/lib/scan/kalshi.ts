@@ -1,10 +1,10 @@
 import { type UpDownRound } from "./updown";
 import type { BookId } from "@/lib/live/types";
 import { loadPerps, perpCacheAge } from "./kalshi-perps";
-import { edgeDecision } from "./edge";
+import { evaluateEdge, type TechnicalFrame } from "./edge";
 import { inEventBlackout } from "./blackout";
 import { loadMicro } from "./kalshi-shadow";
-import { brtiStatus, ensureBrti, ethRtiStatus, solRtiStatus } from "@/lib/skill/brti-socket.server";
+import { brtiStatus, ensureBrti, ethRtiStatus, solRtiStatus, xrpRtiStatus } from "@/lib/skill/brti-socket.server";
 import { ensurePyth, pythStatus } from "@/lib/skill/pyth-socket.server";
 import { indexStructure } from "@/lib/skill/ta";
 
@@ -36,11 +36,60 @@ export function index30sAgo(book: string, now = Date.now()): number | null {
   return best.px;
 }
 
+function toTechnicalFrame(
+  spot: number,
+  strike: number,
+  volBps: number | null,
+  minutes: { o: number; h: number; l: number; c: number }[],
+  structure: ReturnType<typeof indexStructure>,
+  spot30: number | null,
+): TechnicalFrame {
+  const bar = minutes.at(-1);
+  const prev = minutes.at(-2);
+  const range = bar ? bar.h - bar.l : 0;
+  let bull = false;
+  let bear = false;
+  if (bar && prev) {
+    const body = Math.abs(bar.c - bar.o);
+    const prevBody = Math.abs(prev.c - prev.o);
+    bull = bar.c > bar.o && prev.c < prev.o && body > prevBody && bar.c >= prev.o && bar.o <= prev.c;
+    bear = bar.c < bar.o && prev.c > prev.o && body > prevBody && bar.o >= prev.c && bar.c <= prev.o;
+  }
+  const closes = minutes.map((m) => m.c).filter((c) => c > 0);
+  let fib618: number | undefined;
+  if (closes.length >= 8) {
+    const hi = Math.max(...closes);
+    const lo = Math.min(...closes);
+    if (hi > lo) fib618 = hi - (hi - lo) * 0.618;
+  }
+  return {
+    spot,
+    strike,
+    noise1m: volBps != null && volBps > 0 && spot > 0 ? (volBps / 10_000) * spot : 0,
+    rsi14: structure.rsi ?? undefined,
+    ema20: structure.ema20 ?? undefined,
+    ema50: structure.ema50 ?? undefined,
+    fib618,
+    candle: {
+      open: bar?.o ?? spot,
+      high: bar?.h ?? spot,
+      low: bar?.l ?? spot,
+      close: bar?.c ?? spot,
+      isEngulfingBull: bull || undefined,
+      isEngulfingBear: bear || undefined,
+      lowerWickRatio: bar && range > 0 ? (Math.min(bar.o, bar.c) - bar.l) / range : undefined,
+      upperWickRatio: bar && range > 0 ? (bar.h - Math.max(bar.o, bar.c)) / range : undefined,
+    },
+    spot30sAgo: spot30 ?? undefined,
+  };
+}
+
 export const KALSHI_BOOKS: { series: string; book: BookId }[] = [
   { series: "KXBTC15M", book: "btc" },
   { series: "KXGOLD15M", book: "gold" },
   { series: "KXSOL15M", book: "sol" },
   { series: "KXETH15M", book: "eth" },
+  { series: "KXXRP15M", book: "xrp" },
 ];
 
 type KalshiMarket = {
@@ -55,6 +104,7 @@ type KalshiMarket = {
   no_ask_dollars?: string;
   last_price_dollars?: string;
   floor_strike?: number;
+  exchange_index?: number;
   open_time?: string;
   close_time?: string;
   result?: string | null;
@@ -85,6 +135,7 @@ const PERP_SPOT: Partial<Record<BookId, string>> = {
   btc: "KXBTCPERP",
   eth: "KXETHPERP",
   sol: "KXSOLPERP",
+  xrp: "KXXRPPERP",
   gold: "KXGOLDPERP",
   silver: "KXSILVERPERP",
 };
@@ -146,16 +197,16 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
   const perpFresh = perp > 0 && perpQuote.ageMs != null && perpQuote.ageMs <= 2_000;
   let last = perp;
   let modelSpot: number | null = null;
-  let spotSource: "cf-brti-60s" | "cf-eth-60s" | "cf-sol-60s" | "pyth-gold-1m" | "kalshi-perp" | "none" = "none";
+  let spotSource: "cf-brti-60s" | "cf-eth-60s" | "cf-sol-60s" | "cf-xrp-60s" | "pyth-gold-1m" | "kalshi-perp" | "none" = "none";
   let volBps1m: number | null = null;
   let bias30: "up" | "down" | "flat" | null = null;
   let push: boolean | null = null;
   let spotFallback = false;
   let minutes: { o: number; h: number; l: number; c: number }[] = [];
-  if (book === "btc" || book === "eth" || book === "sol") {
+  if (book === "btc" || book === "eth" || book === "sol" || book === "xrp") {
     ensureBrti();
-    const rti = book === "btc" ? brtiStatus() : book === "eth" ? ethRtiStatus() : solRtiStatus();
-    const source = book === "btc" ? "cf-brti-60s" : book === "eth" ? "cf-eth-60s" : "cf-sol-60s";
+    const rti = book === "btc" ? brtiStatus() : book === "eth" ? ethRtiStatus() : book === "sol" ? solRtiStatus() : xrpRtiStatus();
+    const source = book === "btc" ? "cf-brti-60s" : book === "eth" ? "cf-eth-60s" : book === "sol" ? "cf-sol-60s" : "cf-xrp-60s";
     bias30 = rti.bias30;
     push = rti.push;
     volBps1m = rti.volBps;
@@ -250,6 +301,7 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
     result: live.result === "yes" || live.result === "no" ? live.result : null,
     book,
     series,
+    exchangeIndex: Number.isInteger(Number(live.exchange_index)) ? Number(live.exchange_index) : undefined,
   };
   let picked: Pick<UpDownRound, "take" | "leg" | "chip" | "reason" | "confirms" | "missing" | "cross" | "catalyst" | "clipScale"> = {
     take: false,
@@ -259,7 +311,7 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
     missing: "no market",
     reason: "sit",
   };
-  if ((book === "btc" || book === "gold" || book === "eth" || book === "sol") && live.ticker) {
+  if ((book === "btc" || book === "gold" || book === "eth" || book === "sol" || book === "xrp") && live.ticker) {
     let rules = live.rules_primary || "";
     if (!rules) {
       const one = await grab<{ market?: KalshiMarket }>(`/markets/${encodeURIComponent(live.ticker)}`);
@@ -273,7 +325,9 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
       volume = null;
     }
     const structure = indexStructure(minutes);
-    const edge = edgeDecision({
+    const spot30 = modelSpot != null && modelSpot > 0 ? (noteIndex(book, modelSpot, now), index30sAgo(book, now)) : null;
+    const frame = toTechnicalFrame(modelSpot ?? 0, beat, volBps1m, minutes, structure, spot30);
+    const edge = evaluateEdge({
       book,
       status: live.status || "active",
       leftSec,
@@ -306,8 +360,8 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
       push,
       blackout: inEventBlackout(now),
       fallback: spotFallback,
-      spot30: modelSpot != null && modelSpot > 0 ? (noteIndex(book, modelSpot, now), index30sAgo(book, now)) : null,
-    });
+      spot30,
+    }, frame);
     picked = {
       take: edge.take,
       leg: edge.leg,

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { writeFileSync } from "node:fs";
 import { clampClip } from "@/lib/envelope/clip";
 import { executeHeart, flattenBook, readHeart, setArmed, tickHeart, ensureHeart } from "@/lib/envelope/heart.server";
-import { beginFlagOn, liveExecutionAllowed, liveFlagOn } from "@/lib/envelope/kill.server";
+import { beginFlagOn, liveExecutionAllowed, liveFlagOn, readKill } from "@/lib/envelope/kill.server";
 import { loadHeart } from "@/lib/envelope/store.server";
 import type { BookId } from "@/lib/live/types";
 
@@ -12,12 +12,16 @@ export const Route = createFileRoute("/api/live/heart")({
       GET: async () => {
         ensureHeart();
         const state = loadHeart();
+        const kill = readKill();
         return Response.json({
           ...state,
           execute: false,
           livePath: liveFlagOn(),
           begun: beginFlagOn(),
           liveExecution: liveExecutionAllowed(),
+          dayLoss: kill.dailyLossUsd,
+          pauseUntil: kill.pauseUntil,
+          losses: kill.consecutiveLosses,
         });
       },
       POST: async ({ request }) => {
@@ -41,12 +45,16 @@ export const Route = createFileRoute("/api/live/heart")({
         }
         if (body.execute) return Response.json(await executeHeart());
         const state = body.tick ? await tickHeart(true) : await readHeart();
+        const kill = readKill();
         return Response.json({
           ...state,
           execute: false,
           livePath: liveFlagOn(),
           begun: beginFlagOn(),
           liveExecution: liveExecutionAllowed(),
+          dayLoss: kill.dailyLossUsd,
+          pauseUntil: kill.pauseUntil,
+          losses: kill.consecutiveLosses,
         });
       },
     },

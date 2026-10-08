@@ -1,9 +1,9 @@
 import type { AnalogLive } from "./empirical";
 
-export type BookId = "btc" | "sol" | "eth" | "gold" | "silver" | "es" | "oil";
+export type BookId = "btc" | "sol" | "eth" | "xrp" | "gold" | "silver" | "es" | "oil";
 
 export function bookAlwaysOpen(book: BookId) {
-  return book === "btc" || book === "sol" || book === "eth";
+  return book === "btc" || book === "sol" || book === "eth" || book === "xrp";
 }
 
 
@@ -26,8 +26,8 @@ export type Tape = {
   last: number;
   changePct: number | null;
   bars: Bar[];
-  ema9: number;
-  ema21: number;
+  ema20: number;
+  ema50: number;
   vwap: number;
   fib236: number;
   fib382: number;

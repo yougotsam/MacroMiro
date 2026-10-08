@@ -16,6 +16,7 @@ const g = globalThis as typeof globalThis & {
     session: Session;
     eth: Session;
     sol: Session;
+    xrp: Session;
     socket: Socket | null;
     timer: ReturnType<typeof setTimeout> | null;
     stall: ReturnType<typeof setInterval> | null;
@@ -26,12 +27,12 @@ const g = globalThis as typeof globalThis & {
 
 const BAR_FILE = "/workspace/data/rti-bars.json";
 
-function savedBars(): { btc: MinuteBar[]; eth: MinuteBar[]; sol: MinuteBar[] } {
+function savedBars(): { btc: MinuteBar[]; eth: MinuteBar[]; sol: MinuteBar[]; xrp: MinuteBar[] } {
   try {
-    const raw = JSON.parse(readFileSync(BAR_FILE, "utf8")) as { btc?: MinuteBar[]; eth?: MinuteBar[]; sol?: MinuteBar[] };
-    return { btc: raw.btc ?? [], eth: raw.eth ?? [], sol: raw.sol ?? [] };
+    const raw = JSON.parse(readFileSync(BAR_FILE, "utf8")) as { btc?: MinuteBar[]; eth?: MinuteBar[]; sol?: MinuteBar[]; xrp?: MinuteBar[] };
+    return { btc: raw.btc ?? [], eth: raw.eth ?? [], sol: raw.sol ?? [], xrp: raw.xrp ?? [] };
   } catch {
-    return { btc: [], eth: [], sol: [] };
+    return { btc: [], eth: [], sol: [], xrp: [] };
   }
 }
 
@@ -42,7 +43,7 @@ function saveBars(box: NonNullable<(typeof g)["__brti"]>) {
   lastBarSave = now;
   try {
     mkdirSync("/workspace/data", { recursive: true });
-    writeFileSync(BAR_FILE, JSON.stringify({ btc: box.session.bars, eth: box.eth.bars, sol: box.sol.bars }));
+    writeFileSync(BAR_FILE, JSON.stringify({ btc: box.session.bars, eth: box.eth.bars, sol: box.sol.bars, xrp: box.xrp.bars }));
   } catch {
     /* the next print tries again */
   }
@@ -54,6 +55,7 @@ function slot() {
       session: seedBars(emptySession(), saved.btc),
       eth: seedBars(emptySession(), saved.eth),
       sol: seedBars(emptySession(), saved.sol),
+      xrp: seedBars(emptySession(), saved.xrp),
       socket: null,
       timer: null,
       stall: null,
@@ -63,6 +65,7 @@ function slot() {
   }
   if (!g.__brti.eth) g.__brti.eth = emptySession();
   if (!g.__brti.sol) g.__brti.sol = emptySession();
+  if (!g.__brti.xrp) g.__brti.xrp = emptySession();
   return g.__brti;
 }
 
@@ -73,6 +76,7 @@ function armStall() {
     box.session = apply(box.session, { type: "tick" }, Date.now());
     box.eth = apply(box.eth, { type: "tick" }, Date.now(), "ETHUSD_RTI");
     box.sol = apply(box.sol, { type: "tick" }, Date.now(), "SOLUSD_RTI");
+    box.xrp = apply(box.xrp, { type: "tick" }, Date.now(), "XRPUSD_RTI");
   }, 1_000);
 }
 
@@ -86,6 +90,10 @@ export function ethRtiStatus(now = Date.now()) {
 
 export function solRtiStatus(now = Date.now()) {
   return publicStatus(slot().sol, now, "SOLUSD_RTI");
+}
+
+export function xrpRtiStatus(now = Date.now()) {
+  return publicStatus(slot().xrp, now, "XRPUSD_RTI");
 }
 
 export function stopBrti() {
@@ -134,13 +142,14 @@ function open() {
       JSON.stringify({
         id: 1,
         cmd: "subscribe",
-        params: { channels: ["cfbenchmarks_value"], index_ids: ["BRTI", "ETHUSD_RTI", "SOLUSD_RTI"] },
+        params: { channels: ["cfbenchmarks_value"], index_ids: ["BRTI", "ETHUSD_RTI", "SOLUSD_RTI", "XRPUSD_RTI"] },
       }),
     );
     const now = Date.now();
     box.session = apply(box.session, { type: "subscribed" }, now, "BRTI");
     box.eth = apply(box.eth, { type: "subscribed" }, now, "ETHUSD_RTI");
     box.sol = apply(box.sol, { type: "subscribed" }, now, "SOLUSD_RTI");
+    box.xrp = apply(box.xrp, { type: "subscribed" }, now, "XRPUSD_RTI");
     armStall();
   });
   ws.on("message", (buf: unknown) => {
@@ -160,8 +169,8 @@ function open() {
     }
     const index = frameIndex(raw);
     const now = Date.now();
-    if (index === "ETHUSD_RTI" || index === "SOLUSD_RTI") {
-      const key = index === "ETHUSD_RTI" ? "eth" : "sol";
+    if (index === "ETHUSD_RTI" || index === "SOLUSD_RTI" || index === "XRPUSD_RTI") {
+      const key = index === "ETHUSD_RTI" ? "eth" : index === "SOLUSD_RTI" ? "sol" : "xrp";
       box[key] = apply(box[key], { type: "frame", raw, mode: "live" }, now, index as RtiSymbol);
       saveBars(box);
       return;
@@ -174,6 +183,7 @@ function open() {
     box.session = apply(box.session, { type: "closed" }, Date.now(), "BRTI");
     box.eth = apply(box.eth, { type: "closed" }, Date.now(), "ETHUSD_RTI");
     box.sol = apply(box.sol, { type: "closed" }, Date.now(), "SOLUSD_RTI");
+    box.xrp = apply(box.xrp, { type: "closed" }, Date.now(), "XRPUSD_RTI");
     if (!box.stopped) schedule();
   });
   ws.on("error", () => {

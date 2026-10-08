@@ -104,6 +104,32 @@ export function readMirofish(): MiroRead | null {
   }
 }
 
+/** What the last knock saved. This does not call the town and does not invent a probability. */
+export function miroSnapshot() {
+  const state = readState();
+  return {
+    url: base(),
+    headline: state.headline,
+    stage: state.stage,
+    error: state.error,
+    probability: state.probability,
+    projectId: state.projectId,
+    at: state.at,
+  };
+}
+
+/** True only when something on port 5001 answers. A refusal is down, not a guess. */
+export async function probeMirofish(): Promise<{ up: boolean; url: string; detail: string }> {
+  const url = base();
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
+    return { up: res.status < 500, url, detail: `http ${res.status}` };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "down";
+    return { up: false, url, detail: msg };
+  }
+}
+
 function sparkHeadline() {
   try {
     if (!existsSync(SPARK)) return "";
@@ -212,7 +238,7 @@ export async function syncMirofish(): Promise<MiroRead | null> {
     state.error = "";
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    state.error = /fetch|ECONNREFUSED|network/i.test(msg)
+    state.error = /fetch|ECONNREFUSED|network|aborted|timeout/i.test(msg)
       ? "MiroFish is not running. It needs its own LLM_API_KEY and ZEP_API_KEY. This desk does not invent the swarm."
       : msg;
     state.probability = null;

@@ -12,6 +12,7 @@ export type BinaryIntent = {
   slotEnd: number;
   chip: string;
   cross?: boolean;
+  exchangeIndex?: number;
 };
 
 export type BinaryFill = {
@@ -43,6 +44,7 @@ export async function submitBinary(intent: BinaryIntent): Promise<BinaryFill> {
     yes: intent.yes,
     sizeUsd: intent.sizeUsd,
     cross: intent.cross,
+    exchangeIndex: intent.exchangeIndex,
   });
   return {
     mode: "live",

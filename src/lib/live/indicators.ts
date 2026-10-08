@@ -6,7 +6,7 @@ export type TapeSettings = {
   rsiPeriod: number;
 };
 
-export const DEFAULT_TAPE: TapeSettings = { emaFast: 7, emaSlow: 14, rsiPeriod: 14 };
+export const DEFAULT_TAPE: TapeSettings = { emaFast: 20, emaSlow: 50, rsiPeriod: 14 };
 
 export function clampPeriod(n: number, min: number, max: number) {
   if (!Number.isFinite(n)) return min;
@@ -44,8 +44,8 @@ export function readTape(
       last: px,
       changePct,
       bars: usable,
-      ema9: px,
-      ema21: px,
+      ema20: px,
+      ema50: px,
       vwap: px,
       fib236: px,
       fib382: px,
@@ -114,8 +114,8 @@ export function readTape(
     last: px,
     changePct,
     bars: usable.slice(-80),
-    ema9: emaFast,
-    ema21: emaSlow,
+    ema20: emaFast,
+    ema50: emaSlow,
     vwap,
     fib236,
     fib382,

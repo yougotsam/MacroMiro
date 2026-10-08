@@ -18,12 +18,9 @@ export const LIVE_CLIP_CAP = 2;
 export const LIVE_CROSS_USD = 4;
 
 /** Under $50 the clip is $1 to $5. A cheap, fast ticket gets the larger clip. Never the whole balance. */
-export function sniperClip(cash: number, price: number, strong: boolean): number {
-  if (cash >= 100) return Math.min(20, Math.max(5, Math.round(cash * (strong ? 0.2 : 0.1))));
-  if (cash >= 50) return Math.min(15, Math.max(5, Math.round(cash * (strong ? 0.15 : 0.1))));
-  if (strong && price <= 0.35) return 5;
-  if (strong) return 3;
-  if (price <= 0.35) return 2;
+export function sniperClip(_cash: number, price: number, matched: boolean): number {
+  if (matched && price <= 0.35) return 5;
+  if (matched) return 2;
   return 1;
 }
 export const LIVE_BOOK_CAP = 10;
@@ -36,6 +33,7 @@ export const LEV: Record<BookId, number> = {
   btc: 5,
   sol: 5,
   eth: 5,
+  xrp: 5,
   gold: 10,
   silver: 10,
   es: 10,
@@ -43,7 +41,7 @@ export const LEV: Record<BookId, number> = {
 };
 
 export function bucket(book: BookId): "crypto" | "metal" | "index" | "energy" {
-  if (book === "btc" || book === "sol" || book === "eth") return "crypto";
+  if (book === "btc" || book === "sol" || book === "eth" || book === "xrp") return "crypto";
   if (book === "gold" || book === "silver") return "metal";
   if (book === "es") return "index";
   return "energy";

@@ -27,7 +27,7 @@ export type WindowPrint = {
   windowSize: number | null;
 };
 
-export type RtiSymbol = "BRTI" | "ETHUSD_RTI" | "SOLUSD_RTI";
+export type RtiSymbol = "BRTI" | "ETHUSD_RTI" | "SOLUSD_RTI" | "XRPUSD_RTI";
 
 export type Observation = {
   symbol: RtiSymbol;

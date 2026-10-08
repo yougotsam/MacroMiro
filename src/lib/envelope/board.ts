@@ -21,6 +21,7 @@ export const BOOK_LABEL: Record<BookId, string> = {
   btc: "BTC",
   sol: "SOL",
   eth: "ETH",
+  xrp: "XRP",
   gold: "GC",
   silver: "SI",
   es: "ES",

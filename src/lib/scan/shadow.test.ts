@@ -29,9 +29,10 @@ describe("shadow lanes do not trade", () => {
     assert.doesNotMatch(src, /placeEventOrder|submitBinary|kalshiPost|kalshiDelete/);
   });
 
-  it("mean reversion stays a feature, not a live vote in decide()", () => {
+  it("the live scan does not keep the old decider or the unused indicators", () => {
     const src = readFileSync(new URL("./kalshi.ts", import.meta.url), "utf8");
-    const decide = src.slice(src.indexOf("function decide("), src.indexOf("export function kalshiFee"));
-    assert.doesNotMatch(decide, /rsi|fibZone|bbWidth|bookImb/);
+    assert.equal(src.includes("function decide("), false);
+    assert.equal(src.includes("featuresOf"), false);
+    assert.equal(src.includes("ema("), false);
   });
 });

@@ -47,7 +47,7 @@ export function scoreOpinion(desk: DeskPayload, tape: Tape, cash: number): Opini
     score: shock ? 72 : 14,
     title: "Catalyst",
     why: shock
-      ? `${desk.next?.name ?? "Print"} window. Price range stays 4¢–75¢ and the clip is four times larger. Still not a direction by itself.`
+      ? `${desk.next?.name ?? "Print"} window. Price range stays 4¢–75¢. The clip stays $5 or less. Still not a direction by itself.`
       : "No CPI, jobs, or Fed window.",
   };
   if (tape.regime === "trend" && live) {
@@ -56,7 +56,6 @@ export function scoreOpinion(desk: DeskPayload, tape: Tape, cash: number): Opini
   }
   const plays = [sit, scalp, event].sort((a, b) => b.score - a.score);
   const pick = plays[0];
-  const base = cash >= 50 ? Math.min(5, Math.max(1, Math.round(cash * 0.1))) : 1;
-  const sizeUsd = pick.id === "sit" ? 0 : shock && pick.id === "event" ? base * 4 : base;
+  const sizeUsd = pick.id === "sit" ? 0 : 1;
   return { pick, plays, sizeUsd, clerk: "local" };
 }

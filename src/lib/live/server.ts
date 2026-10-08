@@ -15,6 +15,7 @@ type Quotes = {
   sol: Pack | null;
   eth: Pack | null;
   gold: Pack | null;
+  xrp: Pack | null;
   silver: Pack | null;
   es: Pack | null;
   oil: Pack | null;
@@ -291,17 +292,19 @@ async function kalshiPack(series: string): Promise<Pack | null> {
 
 async function loadQuotes(force: boolean): Promise<Quotes> {
   if (!force && quotesCache && Date.now() - quotesCache.at < QUOTE_MS) return quotesCache.data;
-  const [btc, eth, sol, gold] = await Promise.all([
+  const [btc, eth, sol, gold, xrp] = await Promise.all([
     kalshiPack("KXBTC15M"),
     kalshiPack("KXETH15M"),
     kalshiPack("KXSOL15M"),
     kalshiPack("KXGOLD15M"),
+    kalshiPack("KXXRP15M"),
   ]);
   const data: Quotes = {
     btc,
     sol,
     eth,
     gold,
+    xrp,
     silver: null,
     es: null,
     oil: null,
@@ -325,6 +328,7 @@ function stitchQuotes(prev: Quotes | null, next: Quotes): Quotes {
     sol: pack(prev.sol, next.sol),
     eth: pack(prev.eth, next.eth),
     gold: pack(prev.gold, next.gold),
+    xrp: pack(prev.xrp, next.xrp),
     silver: pack(prev.silver, next.silver),
     es: pack(prev.es, next.es),
     oil: pack(prev.oil, next.oil),
@@ -424,6 +428,7 @@ function assemble(now: Date, quotes: Quotes, context: Context, analogs: AnalogLi
       sol: mk("sol", "KXSOL15M", "Kalshi", quotes.sol),
       eth: mk("eth", "KXETH15M", "Kalshi", quotes.eth),
       gold: mk("gold", "KXGOLD15M", "Kalshi", quotes.gold),
+      xrp: mk("xrp", "KXXRP15M", "Kalshi", quotes.xrp),
       silver: mk("silver", "none", "not this desk", null),
       es: mk("es", "none", "not this desk", null),
       oil: mk("oil", "none", "not this desk", null),
@@ -442,6 +447,7 @@ const BOOK_SERIES: Partial<Record<BookId, string>> = {
   eth: "KXETH15M",
   sol: "KXSOL15M",
   gold: "KXGOLD15M",
+  xrp: "KXXRP15M",
 };
 
 export async function loadTape(book: BookId, tfId: string): Promise<Tape> {
@@ -460,6 +466,7 @@ const SPOT: Partial<Record<BookId, { coinbase?: string; yahoo?: string }>> = {
   btc: { coinbase: "BTC-USD" },
   eth: { coinbase: "ETH-USD" },
   sol: { coinbase: "SOL-USD" },
+  xrp: { coinbase: "XRP-USD" },
   gold: { yahoo: "GC=F" },
 };
 

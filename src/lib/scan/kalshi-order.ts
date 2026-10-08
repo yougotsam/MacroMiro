@@ -14,6 +14,8 @@ export type EventOrder = {
   sizeUsd: number;
   /** Pay the ask. Used only when the index has already broken the line. */
   cross?: boolean;
+  /** Shard from the open market. Missing means Kalshi routes it with -1. */
+  exchangeIndex?: number;
 };
 
 export type EventFill = {
@@ -64,7 +66,7 @@ export async function pollOrder(orderId: string, tries = 12, waitMs = 400): Prom
 
 export async function placeEventOrder(order: EventOrder): Promise<EventFill> {
   if (!liveExecutionAllowed()) throw new Error(liveFlagOn() ? "not begun" : "live path off");
-  if (!/^KX(?:BTC|ETH|SOL|GOLD)15M-.+/.test(order.ticker)) throw new Error("ticker not from the open book");
+  if (!/^KX(?:BTC|ETH|SOL|XRP|GOLD)15M-.+/.test(order.ticker)) throw new Error("ticker not from the open book");
   if (order.yes < 0.04 || order.yes > 0.75) throw new Error("yes out of band");
   const pay = Number(order.yes.toFixed(4));
   const { side, price } = yesBook(order.leg, pay);
@@ -120,19 +122,23 @@ export async function placeEventOrder(order: EventOrder): Promise<EventFill> {
       };
     }
   }
-  // Omit first so Kalshi routes the ticker. -1 is the documented auto route. 2 is the crypto shard that filled SOL.
-  const tries: Array<{ id: string; shard: number | null }> = [
-    { id: clientOrderId, shard: null },
-    { id: randomUUID(), shard: -1 },
-    { id: randomUUID(), shard: 2 },
-  ];
+  // The shard comes from the market we just read. -1 is the documented auto-route if that post is not found.
+  const known = Number.isInteger(order.exchangeIndex) ? (order.exchangeIndex as number) : null;
+  const tries: Array<{ id: string; shard: number }> =
+    known == null
+      ? [{ id: clientOrderId, shard: -1 }]
+      : [
+          { id: clientOrderId, shard: known },
+          { id: randomUUID(), shard: -1 },
+        ];
   let body: Record<string, string | number | boolean> | null = null;
   let res: Awaited<ReturnType<typeof post>>["res"] | null = null;
   for (const attempt of tries) {
     const sent = await post(attempt.id, attempt.shard);
     body = sent.body;
     res = sent.res;
-    const missing = res.status === 404 || /not_found/.test(res.text ?? "");
+    orderLog(`[ORDER] RESULT status=${res.status} exchange_index=${attempt.shard == null ? "omit" : attempt.shard}`);
+    const missing = res.status === 404 || /not_found|\s404\s/.test(res.text ?? "");
     if (!missing) break;
     orderLog(`[ORDER] FAIL exchange_index=${attempt.shard == null ? "omit" : attempt.shard} ${res.text.slice(0, 180)}`);
   }

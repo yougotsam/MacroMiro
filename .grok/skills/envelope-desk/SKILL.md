@@ -20,9 +20,9 @@ The chart can show the coin or the metal. The thing that pays the ticket is the 
 
 The written numbers are in `docs/STRATEGY.md`. Do not put 25¢–45¢, a first-20-second skip, or a last-90-second skip back.
 
-The side is the 1-minute index. YES continuation is above the line and above the 20 EMA, with RSI under 70. NO continuation is the mirror. An RSI under 30 with a bullish rejection can buy a cheap YES under the line. An RSI over 70 with a bearish candle can buy NO. A 0.618 bounce with the candle or the 20 EMA also takes. Missing RSI and 20 EMA sits. The spread width does not sit. The ticket is 4¢ to 75¢. Skip the first 5 seconds and the last 30 seconds. Noise above 200 basis points sits. A win pays $1 per contract.
+The side comes from the 1-minute frame in `evaluateEdge`. YES breakout: at or above the 20 EMA, at or above the strike, not falling over 30 seconds, RSI 48 to 78. RSI above 78 sits. A 4¢–35¢ YES wick needs RSI at or under 38 and a lower wick of at least 0.40 or a bullish engulf. NO is the mirror. If the 20 EMA and RSI are both missing, use half the 1-minute noise as the distance hurdle. The spread width does not sit. The ticket is 4¢ to 75¢. Skip the first 5 seconds and the last 30 seconds. Noise above 200 basis points sits. A win pays $1 per contract.
 
-Size is $1 to $5 under $50 cash. A second clip only if the price got cheaper, after 60 seconds. No third. Three losses pause every order for 60 minutes. The day stops at $15 down. A filled ticket is held to the clock. Every order pays the ask and cancels if it does not fill. The heart prints `[SCAN]` and `[STATUS]` on every pass. A sit names the gate. `volume_zero` and `lean_mismatch` are not gates.
+Size is $1 to $5 under $50 cash. One open ticket per contract. No second bite on the same contract. The day stops at $15 down. A count of losing trades does not stop it. A filled ticket is held to the clock. Every order pays the ask and cancels if it does not fill. The heart prints `[SCAN]` and `[STATUS]` on every pass. A sit names the gate. `volume_zero` and `lean_mismatch` are not gates.
 
 ## Tools
 

@@ -76,7 +76,6 @@ export function runPulse(opts: {
   const cashOk = opts.cash > CASH_KILL;
   const dayOk = opts.dayPnl > -DAILY_STOP_USD;
   const live = bookAlwaysOpen(tape.book) || opts.desk.session.globex === "open";
-  const streak = coldStreak(opts.ledger);
   const thinBreak = tape.volRatio < 0.45 && tape.fibZone === "none";
 
   let side: "long" | "short" | null = stacked === "chop" ? null : stacked;
@@ -127,7 +126,7 @@ export function runPulse(opts: {
     { id: "vol", ok: volOk && !thinBreak, note: thinBreak ? "thin tape" : volOk ? `atr ${(atrPct * 100).toFixed(2)}%` : "saw · skip" },
     { id: "heat", ok: heatOk, note: `heat ${opts.desk.heat}` },
     { id: "fresh", ok: !stale, note: stale ? "stale" : "live" },
-    { id: "cash", ok: cashOk && dayOk && !streak, note: streak ? `${STREAK_SIT} losers · sit` : dayOk ? `cash ${opts.cash.toFixed(0)}` : `day ${opts.dayPnl.toFixed(0)} kill` },
+    { id: "cash", ok: cashOk && dayOk, note: dayOk ? `cash ${opts.cash.toFixed(0)}` : `day ${opts.dayPnl.toFixed(0)} kill` },
     {
       id: "news",
       ok: !printKill,
@@ -155,7 +154,7 @@ export function runPulse(opts: {
     reason = `${regime} ${side} · ${edge} conf · ${tape.symbol}`;
   }
 
-  const auto = action === "scalp" && rails && edge >= need && live && !analogBlocks && volOk && !!side && !streak && !printKill;
+  const auto = action === "scalp" && rails && edge >= need && live && !analogBlocks && volOk && !!side && !printKill;
   const sizeUsd = action === "scalp" ? opts.clipUsd || CLIP_USD : 0;
   return { chips, n: edge, action, auto, reason, sizeUsd: Math.round(sizeUsd), side: auto || action === "scalp" ? side : null };
 }

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BrokerPanel, CalendarCompact, CatalystRadar, InboxCompact, liveAnalog } from "@/components/desk-panels";
 import { PerpCockpit } from "@/components/PerpCockpit";
+import { SwarmPanel } from "@/components/swarm-panel";
 import { LoopPanel } from "@/components/loop";
 import { Fail, Quiet } from "@/components/fail";
 import type { Opinion, PlayId } from "@/lib/envelope/opinion";
@@ -24,11 +25,12 @@ import type { ScanPayload, ScanRow } from "@/lib/scan/types";
 import { EtClock } from "@/components/et-clock";
 import { cn } from "@/lib/utils";
 
-type Tab = "floor" | "scan" | "print" | "book" | "perps";
+type Tab = "floor" | "scan" | "print" | "book" | "perps" | "swarm";
 
 const TABS: { id: Tab; label: string; title: string; line: string }[] = [
   { id: "floor", label: "Desk", title: "Desk", line: "Chart, the open ticket, and the last decision." },
   { id: "print", label: "News", title: "News", line: "Calendar and Spark. A note. Not an order." },
+  { id: "swarm", label: "Swarm", title: "Swarm", line: "MiroFish. A crowd read. Not an order." },
   { id: "perps", label: "Perps", title: "Perps", line: "Kalshi margin. Own cash." },
 ];
 
@@ -61,6 +63,7 @@ const BOOKS: { id: BookId; label: string }[] = [
   { id: "btc", label: "BTC" },
   { id: "eth", label: "ETH" },
   { id: "sol", label: "SOL" },
+  { id: "xrp", label: "XRP" },
   { id: "gold", label: "Gold" },
 ];
 
@@ -80,6 +83,7 @@ type HeartPayload = {
   round?: UpDownRound | null;
   live?: boolean;
   begun?: boolean;
+  dayLoss?: number;
 };
 
 export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
@@ -112,6 +116,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
   const [round, setRound] = useState<UpDownRound | null>(null);
   const [liveKalshi, setLiveKalshi] = useState(false);
   const [begun, setBegun] = useState(initialBegun);
+  const [dayLoss, setDayLoss] = useState(0);
   const [tapeKey, setTapeKey] = useState(0);
   const deskSig = useRef("");
   const scanSig = useRef("");
@@ -145,6 +150,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       clip: h.clipUsd,
       r: h.round ? `${h.round.slug}:${h.round.leftSec}:${h.round.up}:${h.round.take}` : "",
       live: h.live,
+      loss: h.dayLoss,
     });
     if (sig === heartSig.current) return;
     heartSig.current = sig;
@@ -164,6 +170,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
     if (h.clipUsd) setClipUsd(clampClip(h.clipUsd));
     if (h.round !== undefined) setRound(h.round ?? null);
     if (h.live != null) setLiveKalshi(h.live);
+    if (typeof h.dayLoss === "number") setDayLoss(h.dayLoss);
     if (h.begun != null) {
       setBegun(h.begun);
       try {
@@ -632,10 +639,10 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            { job: "Scan", line: clock - Date.parse(heartTick ?? "") > 90_000 ? "scanner asleep" : board.length ? "Four tickets" : "Waiting" },
-            { job: "Context", line: "Facts first. Spark expires." },
-            { job: "Risk", line: (board[0]?.reason ?? "Clear").split(" · ").slice(2).join(" · ") || "Clear" },
-            { job: "Exit", line: pos ? "Open until the window dies" : begun ? "Flat" : "Off" },
+            { job: "Scan", line: clock - Date.parse(heartTick ?? "") > 90_000 ? "Scanner asleep" : "Watching five books" },
+            { job: "Day", line: `Down $${dayLoss.toFixed(2)} of $15` },
+            { job: "Stop", line: `$${(15 - dayLoss).toFixed(2)} left of $15` },
+            { job: "Open", line: positions.length ? `${positions.length} ticket${positions.length === 1 ? "" : "s"}` : "Flat" },
           ].map((seat) => (
             <div key={seat.job} className="min-w-0 rounded-sm bg-card/40 px-3 py-2">
               <p className="font-mono text-xs uppercase tracking-widest text-subtle">{seat.job}</p>
@@ -646,10 +653,10 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         <p className="mt-3 font-mono text-xs text-subtle">
           {round?.ticker ?? "no ticket"}
           {round ? ` · ${Math.floor(round.leftSec / 60)}:${String(round.leftSec % 60).padStart(2, "0")} left` : ""}
-          {pos ? ` · ${pos.side.toUpperCase()} ${pos.book}` : " · flat"}
+          {pos ? ` · ${positions.length} open` : " · flat"}
         </p>
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4" title={heartNote}>
-          {(["btc", "eth", "sol", "gold"] as BookId[]).map((id) => {
+        <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-5" title={heartNote}>
+          {(["btc", "eth", "sol", "xrp", "gold"] as BookId[]).map((id) => {
             const row = board.find((b) => b.book === id);
             const hot = row?.action === "scalp";
             const why = row?.reason ?? "waiting";
@@ -665,6 +672,21 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
             );
           })}
         </div>
+        {positions.length ? (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {positions.map((p) => {
+              const paid = p.yes ?? p.entry;
+              const mult = paid > 0 ? (1 / paid).toFixed(2) : "—";
+              return (
+                <li key={p.ticker ?? `${p.book}-${p.opened}`} className="rounded-sm border border-border px-3 py-1 font-mono text-xs tabular-nums">
+                  {BOOK_LABEL[p.book]} {p.leg === "down" ? "NO" : "YES"} {Math.round(paid * 100)}¢ · {mult}x · ${p.sizeUsd.toFixed(0)}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-2 font-mono text-xs text-subtle">No open tickets.</p>
+        )}
         <AccountLine />
         <nav className="mt-3 flex items-center gap-1 overflow-x-auto">
           {TABS.map((t, i) => (
@@ -696,7 +718,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         {gear ? (
           <div className="mt-3 rounded-sm border border-border bg-card p-4">
             <p className="font-mono text-xs uppercase tracking-widest text-primary">Broker</p>
-            <p className="mt-1 text-sm text-muted">Orders leave only when the begin file is on, the desk is armed, and the math clears. Clip is $1.</p>
+            <p className="mt-1 text-sm text-muted">Orders leave only when live is on. Size is $1, $2 if the lean matches, $5 only at 35¢ or cheaper.</p>
             <div className="mt-3">
               <BrokerPanel selected={brokerId} onSelect={setBrokerId} />
             </div>
@@ -761,6 +783,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
           <CatalystRadar />
         </div>
       ) : null}
+      {tab === "swarm" ? <SwarmPanel /> : null}
       {tab === "perps" ? <PerpsLater /> : null}
     </div>
   );
@@ -1017,14 +1040,11 @@ function AccountLine() {
             setLine("Kalshi account did not answer. No order was sent.");
             return;
           }
-          const path = j.livePath ? "Live path on" : "Live path off";
-          const begun = j.begun ? "BEGUN" : "not begun";
-          const shard = j.shard2 == null ? "shard 2 unread" : `shard 2 $${Number(j.shard2).toFixed(2)}`;
-          const btc = j.btcRule?.ticker || j.round?.ticker || "no BTC 15m";
-          const gold = j.goldRule?.ticker || j.gold15m?.ticker || "no gold 15m";
-          const orders = j.openOrders == null ? "orders unread" : `${j.openOrders} open orders`;
-          const pos = j.marketPositions == null ? "" : ` · ${j.marketPositions} positions`;
-          setLine(`${path} · ${begun} · ${shard} · ${btc} ${j.btcRule?.status ?? ""} · ${gold} ${j.goldRule?.status ?? ""} · ${orders}${pos}`);
+          const path = j.livePath ? "Live on" : "Live off";
+          const shard = j.shard2 == null ? "shard unread" : `$${Number(j.shard2).toFixed(2)} on the crypto book`;
+          const orders = j.openOrders == null ? "" : ` · ${j.openOrders} resting`;
+          const pos = j.marketPositions == null ? "" : ` · ${j.marketPositions} on Kalshi`;
+          setLine(`${path} · ${shard}${orders}${pos}`);
         })
         .catch(() => {
           if (!stop) setLine("Kalshi account unread. No order was sent.");
@@ -1041,7 +1061,7 @@ function AccountLine() {
 }
 
 function chartNote(book: BookId) {
-  if (book === "btc" || book === "eth" || book === "sol" || book === "gold") {
+  if (book === "btc" || book === "eth" || book === "sol" || book === "xrp" || book === "gold") {
     return "These candles are the coin. The bet is the 15-minute Kalshi ticket, not this chart.";
   }
   return "This book is not on the desk.";
@@ -1286,6 +1306,7 @@ function Floor({
         ? [
             { label: "50", price: draw.fib50 },
             { label: "62", price: draw.fib618 },
+            { label: "VWAP", price: draw.vwap },
             { label: "70.5", price: draw.fib618 + (draw.fib786 - draw.fib618) * ((0.705 - 0.618) / (0.786 - 0.618)) },
             { label: "79", price: draw.fib786 },
           ]
@@ -1404,7 +1425,7 @@ function Floor({
         <p className="mt-2 font-mono text-xs text-subtle">
           RSI {draw?.rsi == null ? "—" : draw.rsi.toFixed(0)}
           {" · "}
-          EMA 7/14 {draw?.stacked ?? "—"}
+          EMA 20/50 {draw?.stacked ?? "—"}
           {" · "}
           Fib {draw?.fibZone ?? "—"}
           {draw && draw.bars.length > 2 ? ` · ${candleName(draw.bars)}` : ""}

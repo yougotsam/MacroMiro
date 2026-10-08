@@ -7,11 +7,12 @@ export const STRATEGY_BTC = "btc-brti-vol-book";
 export const STRATEGY_GOLD = "gold-pyth-vol-book";
 export const STRATEGY_ETH = "eth-rti-vol-book";
 export const STRATEGY_SOL = "sol-rti-vol-book";
+export const STRATEGY_XRP = "xrp-rti-vol-book";
 
-export type SpotSource = "cf-brti-60s" | "cf-eth-60s" | "cf-sol-60s" | "pyth-gold-1m" | "kalshi-perp" | "binance-us" | "none";
+export type SpotSource = "cf-brti-60s" | "cf-eth-60s" | "cf-sol-60s" | "cf-xrp-60s" | "pyth-gold-1m" | "kalshi-perp" | "binance-us" | "none";
 
 export type EdgeIn = {
-  book: "btc" | "gold" | "eth" | "sol";
+  book: "btc" | "gold" | "eth" | "sol" | "xrp";
   status: string;
   leftSec: number;
   openTs: number;
@@ -50,7 +51,7 @@ export type EdgeIn = {
   fresh: boolean;
   /** Same index, about 30 seconds earlier. Missing means use the distance hurdle. */
   spot30?: number | null;
-  /** CPI, NFP, or the Fed decision minute. Same 4¢–75¢ band. Four times the clip. Not a direction. */
+  /** CPI, NFP, or the Fed decision minute. Same 4¢–75¢ band. Does not raise the $5 cap. */
   blackout?: boolean;
   /** Official index socket is down. The Kalshi perp mark is the distance only. It does not settle the ticket. */
   fallback?: boolean;
@@ -60,7 +61,7 @@ export type EdgeOut = {
   take: boolean;
   leg: "up" | "down" | null;
   strategy: string;
-  settlement: "cf-brti-60s" | "cf-eth-60s" | "cf-sol-60s" | "pyth-gold-1m" | "unknown";
+  settlement: "cf-brti-60s" | "cf-eth-60s" | "cf-sol-60s" | "cf-xrp-60s" | "pyth-gold-1m" | "unknown";
   modelP: number | null;
   marketP: number | null;
   gross: number | null;
@@ -69,7 +70,7 @@ export type EdgeOut = {
   spread: number | null;
   /** True when the index has already broken the line. Cross the ask. Quiet books still rest. */
   cross: boolean;
-  /** CPI, jobs, or the Fed minute. Cheap ticket, four times the clip. Not a sit. */
+  /** CPI, jobs, or the Fed minute. Same 4¢–75¢ band. Does not raise the $5 cap. */
   catalyst: boolean;
   /** 1 when the 30-minute lean matches the print. 0.5 when that lean is flat, opposed, or the tape is the perp mark. */
   clipScale: number;
@@ -81,6 +82,7 @@ export function settlementOf(rules: string, book: EdgeIn["book"]): EdgeOut["sett
   if (book === "btc" && t.includes("cf benchmarks") && t.includes("brti")) return "cf-brti-60s";
   if (book === "eth" && t.includes("cf benchmarks") && t.includes("eth")) return "cf-eth-60s";
   if (book === "sol" && t.includes("cf benchmarks") && t.includes("sol")) return "cf-sol-60s";
+  if (book === "xrp" && t.includes("cf benchmarks") && t.includes("xrp")) return "cf-xrp-60s";
   if (book === "gold" && t.includes("pyth") && t.includes("gold")) return "pyth-gold-1m";
   return "unknown";
 }
@@ -95,9 +97,119 @@ function feeProb(p: number) {
   return Math.ceil(0.07 * x * (1 - x) * 100) / 100;
 }
 
+export interface TechnicalFrame {
+  spot: number;
+  strike: number;
+  noise1m: number;
+  rsi14?: number;
+  ema20?: number;
+  ema50?: number;
+  fib618?: number;
+  candle: {
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    isEngulfingBull?: boolean;
+    isEngulfingBear?: boolean;
+    /** (min(open, close) - low) / (high - low) */
+    lowerWickRatio?: number;
+    /** (high - max(open, close)) / (high - low) */
+    upperWickRatio?: number;
+  };
+  spot30sAgo?: number;
+}
+
+/** Rebuild the frame from a flat edge row. The live scan passes a real frame instead. */
+export function frameFromEdge(i: EdgeIn): TechnicalFrame {
+  const spot = i.spot ?? 0;
+  const bull = i.rejection === "up" || i.engulf === "up";
+  const bear = i.rejection === "down" || i.engulf === "down";
+  return {
+    spot,
+    strike: i.beat,
+    noise1m: i.volBps1m != null && i.volBps1m > 0 && spot > 0 ? (i.volBps1m / 10_000) * spot : 0,
+    rsi14: i.rsi ?? undefined,
+    ema20: i.ema20 ?? undefined,
+    ema50: i.ema50 ?? undefined,
+    fib618: i.fibZone === "618" ? spot : undefined,
+    candle: {
+      open: spot,
+      high: spot,
+      low: spot,
+      close: spot,
+      isEngulfingBull: i.engulf === "up" ? true : undefined,
+      isEngulfingBear: i.engulf === "down" ? true : undefined,
+      lowerWickRatio: bull ? 0.55 : 0,
+      upperWickRatio: bear ? 0.55 : 0,
+    },
+    spot30sAgo: i.spot30 != null && i.spot30 > 0 ? i.spot30 : undefined,
+  };
+}
+
+function structureCall(
+  frame: TechnicalFrame,
+  yesAsk: number,
+  noAsk: number,
+): { leg: "up" | "down"; code: string } | { sit: string } {
+  const spot = frame.spot;
+  const strike = frame.strike;
+  if (!Number.isFinite(spot) || !Number.isFinite(strike)) return { sit: "wiggle unreadable" };
+  if (spot === strike) return { sit: "on the line" };
+  const rsi = frame.rsi14;
+  const ago = frame.spot30sAgo;
+  const notFalling = ago == null || spot >= ago;
+  const notRising = ago == null || spot <= ago;
+  const noise = Number.isFinite(frame.noise1m) ? frame.noise1m : 0;
+  if (!(noise > 0)) return { sit: "wiggle unreadable" };
+  if (Math.abs(spot - strike) < noise * 0.5) return { sit: "not clearing the line" };
+  const sideUp = spot > strike;
+  const floor = ago ?? spot - 0.5 * noise;
+  const ceil = ago ?? spot + 0.5 * noise;
+  const yesRegime =
+    frame.ema20 == null || spot >= frame.ema20 || (frame.ema50 != null && frame.ema20 > frame.ema50);
+  const noRegime =
+    frame.ema20 == null || spot <= frame.ema20 || (frame.ema50 != null && frame.ema20 < frame.ema50);
+  const lower = frame.candle.lowerWickRatio ?? 0;
+  const upper = frame.candle.upperWickRatio ?? 0;
+  const aboveFibOrStrike = frame.fib618 != null ? spot >= frame.fib618 || spot >= strike : spot >= strike;
+  const belowFibOrStrike = frame.fib618 != null ? spot <= frame.fib618 || spot <= strike : spot <= strike;
+  const yesWick =
+    yesRegime &&
+    yesAsk >= 0.04 &&
+    yesAsk <= 0.35 &&
+    (rsi == null || rsi <= 38) &&
+    (lower >= 0.4 || frame.candle.isEngulfingBull === true) &&
+    aboveFibOrStrike;
+  const noWick =
+    noRegime &&
+    noAsk >= 0.04 &&
+    noAsk <= 0.35 &&
+    (rsi == null || rsi >= 62) &&
+    (upper >= 0.4 || frame.candle.isEngulfingBear === true) &&
+    belowFibOrStrike;
+  const yesBreak = yesRegime && spot >= strike && spot >= floor && (rsi == null || (rsi >= 48 && rsi <= 78));
+  const noBreak = noRegime && spot <= strike && spot <= ceil && (rsi == null || rsi <= 52);
+  const yesExhaust = sideUp && rsi != null && rsi > 78;
+  if (sideUp && !notFalling) return { sit: "SIT: momentum_against" };
+  if (!sideUp && !notRising) return { sit: "SIT: momentum_against" };
+  if (yesExhaust) return { sit: "SIT: rsi_exhaustion" };
+  if (sideUp && yesWick) return { leg: "up", code: "YES: wick_reversal_fib" };
+  if (!sideUp && noWick) return { leg: "down", code: "NO: wick_rejection_fib" };
+  if (sideUp && yesBreak) return { leg: "up", code: "YES: trend_breakout_rsi" };
+  if (!sideUp && noBreak) return { leg: "down", code: "NO: trend_breakdown_rsi" };
+  if (sideUp) return { leg: "up", code: "YES: index_side" };
+  return { leg: "down", code: "NO: index_side" };
+}
+
 export function edgeDecision(i: EdgeIn): EdgeOut {
+  return evaluateEdge(i, frameFromEdge(i));
+}
+
+/** 15-minute ticket. The frame decides. Spread width does not. Price stays 4¢–75¢. */
+export function evaluateEdge(i: EdgeIn, frame: TechnicalFrame): EdgeOut {
   const strategy =
-    i.book === "btc" ? STRATEGY_BTC : i.book === "eth" ? STRATEGY_ETH : i.book === "sol" ? STRATEGY_SOL : STRATEGY_GOLD;
+    i.book === "btc" ? STRATEGY_BTC : i.book === "eth" ? STRATEGY_ETH : i.book === "sol" ? STRATEGY_SOL : i.book === "xrp" ? STRATEGY_XRP : STRATEGY_GOLD;
   const settlement = settlementOf(i.rules, i.book);
   const sit = (why: string): EdgeOut => ({
     take: false,
@@ -126,56 +238,13 @@ export function edgeDecision(i: EdgeIn): EdgeOut {
   if (i.spotSource !== settlement && !bridge) return sit(`spot ${i.spotSource} ≠ ${settlement}`);
   if (!i.beat || !i.spot) return sit("no strike");
 
-  const moveBps = ((i.spot - i.beat) / i.beat) * 10_000;
   if (i.volBps1m != null && i.volBps1m > 200) return sit("volatility extreme");
-  const vol = i.volBps1m != null && i.volBps1m > 0 && i.volBps1m <= 200 ? i.volBps1m : null;
   const cents = `up ${Math.round(i.yesAsk * 100)}¢ down ${Math.round(i.noAsk * 100)}¢`;
-  const above = i.spot > i.beat;
-  const below = i.spot < i.beat;
-  const ema20 = i.ema20 ?? null;
-  const ema50 = i.ema50 ?? null;
-  const rsi = i.rsi;
-  const rejection = i.rejection ?? null;
-  const engulf = i.engulf ?? null;
-  if (rsi == null && ema20 == null) return sit("indicators unread");
+  const call = structureCall(frame, i.yesAsk, i.noAsk);
+  if ("sit" in call) return sit(`${call.sit} · ${cents}`);
 
-  const upTrend = ema20 != null && i.spot > ema20 && (ema50 == null || ema20 >= ema50) && above;
-  const downTrend = ema20 != null && i.spot < ema20 && (ema50 == null || ema20 <= ema50) && below;
-  const bullCandle = rejection === "up" || engulf === "up";
-  const bearCandle = rejection === "down" || engulf === "down";
-  const fib = i.fibZone === "618";
-  let print: "up" | "down";
-  let tech: string;
-  if (rsi != null && rsi < 30 && bullCandle) {
-    print = "up";
-    tech = `YES: RSI bounce at ${rsi.toFixed(0)} + ${rejection === "up" ? "bullish rejection" : "bullish engulf"}`;
-  } else if (rsi != null && rsi > 70 && bearCandle) {
-    print = "down";
-    tech = `NO: RSI fade at ${rsi.toFixed(0)} + ${rejection === "down" ? "bearish rejection" : "bearish engulf"}`;
-  } else if (fib && (bullCandle || (ema20 != null && i.spot > ema20))) {
-    print = "up";
-    tech = "YES: fib 0.618 bounce";
-  } else if (fib && (bearCandle || (ema20 != null && i.spot < ema20))) {
-    print = "down";
-    tech = "NO: fib 0.618 bounce";
-  } else if (upTrend && rsi != null && rsi >= 70) {
-    return sit("SIT: RSI overbought, no continuation");
-  } else if (downTrend && rsi != null && rsi <= 30) {
-    return sit("SIT: RSI oversold, no continuation");
-  } else if (upTrend) {
-    if (i.leftSec <= 60 && vol != null && Math.abs(moveBps) < vol * 0.5) return sit("too close to the line");
-    print = "up";
-    tech = `YES: 20-EMA breakout + RSI ${rsi == null ? "n/a" : rsi.toFixed(0)}`;
-  } else if (downTrend) {
-    if (i.leftSec <= 60 && vol != null && Math.abs(moveBps) < vol * 0.5) return sit("too close to the line");
-    print = "down";
-    tech = `NO: 20-EMA breakdown + RSI ${rsi == null ? "n/a" : rsi.toFixed(0)}`;
-  } else {
-    return sit("SIT: no structure");
-  }
-
-  const leg = print;
-  const matched = i.bias30 === print;
+  const leg = call.leg;
+  const matched = i.bias30 === leg;
   let clipScale = matched ? 1 : 0.5;
   if (bridge) clipScale = 0.5;
 
@@ -188,7 +257,7 @@ export function edgeDecision(i: EdgeIn): EdgeOut {
   if (marketP < low || marketP > high) return sit(`payout not worth it · ${cents}`);
   const fee = feeProb(marketP);
   const day = i.bias30 === "up" || i.bias30 === "down" || i.bias30 === "flat" ? i.bias30 : "none";
-  const why = `${catalyst ? "catalyst " : ""}${tech}${clipScale < 1 ? " · half clip" : ""}${bridge ? " · perp tape" : ""} · day ${day} · fee ${(fee * 100).toFixed(1)}¢ · ticket ${(marketP * 100).toFixed(0)}¢ · ${cents}`;
+  const why = `${catalyst ? "catalyst " : ""}${call.code}${clipScale < 1 ? " · half clip" : ""}${bridge ? " · perp tape" : ""} · day ${day} · fee ${(fee * 100).toFixed(1)}¢ · ticket ${(marketP * 100).toFixed(0)}¢ · ${cents}`;
   return {
     take: true,
     leg,

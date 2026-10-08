@@ -1,12 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { edgeDecision, reasonDead, type EdgeIn } from "./edge.ts";
+import { edgeDecision, evaluateEdge, reasonDead, type EdgeIn, type TechnicalFrame } from "./edge.ts";
 import { scanLines, type UpDownRound } from "./updown.ts";
 import { inEventBlackout } from "./blackout.ts";
 import { NOT_LIVE_YET, SETTLED_REPLAY } from "./replay-fixture.ts";
 import { appendLedger, readLedger } from "../envelope/ledger.server.ts";
 import { readKill, setArmedKill, beginFlagOn, liveExecutionAllowed, liveFlagOn } from "../envelope/kill.server.ts";
+import { sniperClip } from "../envelope/clip.ts";
 import { reconcileOrder } from "./kalshi-order-status.ts";
 
 function base(over: Partial<EdgeIn> = {}): EdgeIn {
@@ -146,7 +147,7 @@ describe("pilot acceptance", () => {
     assert.match(expensive.why, /payout not worth it/);
     const hot = edgeDecision(base({ rsi: 85 }));
     assert.equal(hot.take, false);
-    assert.match(hot.why, /RSI overbought/);
+    assert.match(hot.why, /rsi_exhaustion/);
     assert.match(edgeDecision(base({ yesBid: 0 })).why, /no quote/);
   });
 
@@ -156,26 +157,70 @@ describe("pilot acceptance", () => {
     assert.match(cheap.why, /payout not worth it/);
   });
 
-  it("buys a cheap YES on an oversold wick and sits a bare RSI print", () => {
-    const snipe = edgeDecision(
-      base({ spot: 99.4, rsi: 28, rejection: "up", yesAsk: 0.08, yesBid: 0.06, noAsk: 0.94, ema20: 100.2, ema50: 100.4 }),
-    );
-    assert.equal(snipe.take, true);
-    assert.equal(snipe.leg, "up");
-    assert.match(snipe.why, /RSI bounce at 28/);
-    const bare = edgeDecision(base({ spot: 99.4, rsi: 28, ema20: 100.2, ema50: 100.4 }));
-    assert.equal(bare.take, false);
-    assert.match(bare.why, /no structure|RSI oversold/);
-    const fade = edgeDecision(base({ rsi: 78, engulf: "down", yesAsk: 0.7, yesBid: 0.68, noAsk: 0.32 }));
-    assert.equal(fade.take, true);
-    assert.equal(fade.leg, "down");
-    assert.match(fade.why, /RSI fade at 78/);
+  it("rejects a YES breakout when RSI is over 78", () => {
+    const hot = edgeDecision(base({ rsi: 79, spot30: 100 }));
+    assert.equal(hot.take, false);
+    assert.match(hot.why, /rsi_exhaustion/);
   });
 
-  it("stands down when the print is still on the line in the last minute", () => {
-    const mud = edgeDecision(base({ leftSec: 50, spot: 100.02, volBps1m: 20 }));
+  it("buys a 10¢ YES when price tests the 0.618 with a bullish wick", () => {
+    const frame: TechnicalFrame = {
+      spot: 102,
+      strike: 101,
+      noise1m: 0.4,
+      rsi14: 32,
+      ema20: 99,
+      ema50: 98,
+      fib618: 100,
+      spot30sAgo: 101.5,
+      candle: { open: 101.4, high: 102.2, low: 101.1, close: 102, isEngulfingBull: true, lowerWickRatio: 0.55 },
+    };
+    const out = evaluateEdge(base({ spot: 102, beat: 101, rsi: 32, ema20: 99, ema50: 98, yesAsk: 0.1, yesBid: 0.08, noAsk: 0.92 }), frame);
+    assert.equal(out.take, true);
+    assert.equal(out.leg, "up");
+    assert.match(out.why, /YES: wick_reversal_fib/);
+  });
+
+  it("buys a 15¢ NO when price rejects the 20 EMA with an upper wick", () => {
+    const frame: TechnicalFrame = {
+      spot: 100,
+      strike: 101,
+      noise1m: 0.4,
+      rsi14: 66,
+      ema20: 100,
+      ema50: 101,
+      fib618: 100.5,
+      spot30sAgo: 100.2,
+      candle: { open: 100.3, high: 100.8, low: 99.9, close: 100, isEngulfingBear: true, upperWickRatio: 0.48 },
+    };
+    const out = evaluateEdge(base({ spot: 100, beat: 101, rsi: 66, ema20: 100, ema50: 101, yesAsk: 0.85, yesBid: 0.84, noAsk: 0.15 }), frame);
+    assert.equal(out.take, true);
+    assert.equal(out.leg, "down");
+    assert.match(out.why, /NO: wick_rejection_fib/);
+  });
+
+  it("cold-starts on the distance hurdle without throwing when the indicators are missing", () => {
+    const blank: TechnicalFrame = { spot: 100.2, strike: 100, noise1m: 0, candle: { open: 0, high: 0, low: 0, close: 0 } };
+    const quiet = evaluateEdge(base({ rsi: null, ema20: null, ema50: null, spot30: null }), blank);
+    assert.equal(quiet.take, false);
+    assert.match(quiet.why, /wiggle unreadable/);
+    const go = evaluateEdge(base({ rsi: null, ema20: null, ema50: null, spot: 101, beat: 100 }), {
+      spot: 101,
+      strike: 100,
+      noise1m: 1,
+      candle: { open: 101, high: 101, low: 101, close: 101 },
+    });
+    assert.equal(go.take, true);
+    assert.equal(go.leg, "up");
+    const near = edgeDecision(base({ rsi: null, ema20: null, ema50: null, spot: 100.01, volBps1m: 80 }));
+    assert.equal(near.take, false);
+    assert.match(near.why, /not clearing the line/);
+  });
+
+  it("sits when the last 30 seconds are against the breakout", () => {
+    const mud = edgeDecision(base({ spot: 100.2, spot30: 100.5, rsi: 55 }));
     assert.equal(mud.take, false);
-    assert.match(mud.why, /too close to the line/);
+    assert.match(mud.why, /momentum_against/);
   });
 
   it("a calendar shock uses the same price band and does not sit", () => {
@@ -193,6 +238,21 @@ describe("pilot acceptance", () => {
     assert.equal(out.take, true);
     assert.equal(out.leg, "up");
     assert.equal(out.clipScale, 1);
+  });
+
+  it("does not buy the wrong side of the line and the clip stays at $5", () => {
+    const above = edgeDecision(base({ spot: 100.05, beat: 100, volBps1m: 4, yesAsk: 0.4, yesBid: 0.38, noAsk: 0.62 }));
+    assert.equal(above.take, true);
+    assert.equal(above.leg, "up");
+    const penny = edgeDecision(base({ spot: 100.01, beat: 100, volBps1m: 80, rsi: null, ema20: null, ema50: null }));
+    assert.equal(penny.take, false);
+    assert.match(penny.why, /not clearing the line/);
+    assert.equal(sniperClip(62, 0.56, true), 2);
+    assert.equal(sniperClip(62, 0.2, true), 5);
+    assert.equal(sniperClip(62, 0.56, false), 1);
+    assert.ok(sniperClip(200, 0.1, true) <= 5);
+    const heart = readFileSync(new URL("../envelope/heart.server.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(heart, /add_wait|not_cheaper|sniperClip\(state\.cash, yes, true\)|\* \(round\.catalyst \? 4/);
   });
 
   it("buys the side of the line against the 30-minute lean at half clip", () => {
@@ -226,12 +286,14 @@ describe("pilot acceptance", () => {
     assert.doesNotMatch(edgeDecision(base({ leftSec: 45 })).why, /outside entry window/);
     assert.doesNotMatch(edgeDecision(base({ leftSec: 890 })).why, /outside entry window/);
     assert.match(edgeDecision(base({ volBps1m: 201 })).why, /volatility extreme/);
-    assert.match(edgeDecision(base({ rsi: null, ema20: null, ema50: null })).why, /indicators unread/);
+    const cold = edgeDecision(base({ rsi: null, ema20: null, ema50: null, spot: 100.01, volBps1m: 80 }));
+    assert.equal(cold.take, false);
+    assert.equal(typeof cold.why, "string");
     const heart = readFileSync(new URL("../envelope/heart.server.ts", import.meta.url), "utf8");
     assert.match(heart, /leftSec <= 30/);
     assert.doesNotMatch(heart, /leftSec < 90/);
     assert.match(heart, /yes < 0\.04 \|\| yes > 0\.75/);
-    assert.match(heart, /clipScale === 0\.5 \? 0\.5 : 1/);
+    assert.match(heart, /clipScale !== 0\.5/);
     assert.match(heart, /scanLines\(round\)/);
   });
 
@@ -272,8 +334,8 @@ describe("pilot acceptance", () => {
     assert.doesNotMatch(lines.join("\n"), /volume_zero|lean_mismatch/);
     const under = scanLines({ ...row, take: false, spot: 67262, reason: "not clearing the line", missing: "not clearing the line" });
     assert.match(under[3], /SIT: delta_under_noise \(\$12\.00 < \$21\.25\)/);
-    const against = scanLines({ ...row, take: false, reason: "SIT: no structure", missing: "SIT: no structure" });
-    assert.match(against[3], /SIT: no_structure/);
+    const against = scanLines({ ...row, take: false, reason: "SIT: counter_trend_ema", missing: "SIT: counter_trend_ema" });
+    assert.match(against[3], /SIT: counter_trend_ema/);
     assert.doesNotMatch(scanLines(row).join("\n"), /spread_wide/);
     const edge = scanLines({ ...row, take: false, leftSec: 20, reason: "outside entry window", missing: "outside entry window" });
     assert.match(edge[3], /SIT: window_boundary/);
@@ -299,7 +361,7 @@ describe("pilot acceptance", () => {
     assert.equal(a.why, b.why);
     assert.ok(a.fee != null && a.fee > 0);
     assert.doesNotMatch(a.why, /net /);
-    assert.match(a.why, /20-EMA/);
+    assert.match(a.why, /trend_breakout_rsi/);
     assert.match(a.why, /fee /);
   });
 

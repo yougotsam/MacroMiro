@@ -10,11 +10,10 @@ import type { PaperPos } from "./paper";
 import { loadHeart, saveHeart, type HeartState, type RestingBid } from "./store.server";
 import { BOOK_LABEL, type BookScan } from "./board";
 import type { BookId } from "@/lib/live/types";
-import { DAILY_LOSS_CAP, killBlocksTrade, liveExecutionAllowed, liveFlagOn, markStale, readKill, recordPnl, setArmedKill } from "./kill.server";
+import { DAILY_LOSS_CAP, MAX_EXPOSURE_USD, MAX_PER_TICKER_USD, killBlocksTrade, liveExecutionAllowed, liveFlagOn, markStale, readKill, recordPnl, setArmedKill } from "./kill.server";
 import { appendLedger } from "./ledger.server";
 import { volAlert } from "@/lib/scan/blackout";
 import { logShadow } from "@/lib/scan/kalshi-shadow";
-import { runPerpScan } from "@/lib/scan/perp-run.server";
 import { ensurePerpSocket } from "@/lib/skill/perp-socket.server";
 
 function etNow() {
@@ -149,7 +148,7 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
   const opened: string[] = [];
   const canExecute = execute && liveExecutionAllowed();
   const blocked = killBlocksTrade(state.positions.filter((p) => p.venue === "kalshi15m").reduce((a, p) => a + p.sizeUsd, 0));
-  const tradable = rounds.filter((r) => r.book === "btc" || r.book === "gold" || r.book === "eth" || r.book === "sol");
+  const tradable = rounds.filter((r) => r.book === "btc" || r.book === "gold" || r.book === "eth" || r.book === "sol" || r.book === "xrp");
   if (tradable.some((r) => r.take) && !canExecute) logDesk("[STATUS] -> QUALIFIED -> HOLD (scan only)");
   if (canExecute && !blocked.ok) logDesk(`[STATUS] -> SIT: ${blocked.why}`);
   const newsDown = tradable.some((r) => r.reason.includes("news feed down") || r.reason.includes("news unknown"));
@@ -192,7 +191,8 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
     }
     state.resting = kept;
 
-    const LIVE_BOOKS = new Set<BookId>(["btc", "gold", "eth", "sol"]);
+    const LIVE_BOOKS = new Set<BookId>(["btc", "gold", "eth", "sol", "xrp"]);
+    let openUsd = state.positions.filter((p) => p.venue === "kalshi15m").reduce((a, p) => a + p.sizeUsd, 0);
     for (const round of rounds) {
       if (!round.book || !LIVE_BOOKS.has(round.book)) continue;
       if (!round.take || !round.leg || !round.chip) continue;
@@ -202,39 +202,32 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
         logDesk(`[STATUS] ${label} -> SIT: price_band`);
         continue;
       }
-      const clipScale = round.clipScale === 0.5 ? 0.5 : 1;
-      const clip = (liveGate.ok ? sniperClip(state.cash, yes, true) : Math.min(clipWanted, 5)) * (round.catalyst ? 4 : 1) * clipScale;
-      if (state.cash < clip) {
+      const matched = round.clipScale !== 0.5;
+      const clip = Math.min(5, liveGate.ok ? sniperClip(state.cash, yes, matched) : Math.min(clipWanted, 5));
+      if (clip < 1 || state.cash < clip) {
         logDesk(`[STATUS] ${label} -> SIT: cash`);
         break;
       }
+      if (openUsd + clip > MAX_EXPOSURE_USD) {
+        logDesk(`[STATUS] ${label} -> SIT: exposure`);
+        continue;
+      }
       const ticker = round.ticker ?? "";
-      if (!/^KX(?:BTC|ETH|SOL|GOLD)15M-.+/.test(ticker)) {
+      if (!/^KX(?:BTC|ETH|SOL|XRP|GOLD)15M-.+/.test(ticker)) {
         logDesk(`[STATUS] ${label} -> SIT: no_ticker`);
         continue;
       }
       const onTicker = state.positions.filter((p) => p.ticker === ticker && p.venue === "kalshi15m");
-      if (onTicker.length >= 2) {
-        logDesk(`[STATUS] ${label} -> SIT: max_clips`);
-        continue;
-      }
-      if (onTicker.length === 1 && onTicker[0].leg !== round.leg) {
-        logDesk(`[STATUS] ${label} -> SIT: opposite_leg`);
-        continue;
-      }
-      if (onTicker.length === 1 && Date.now() - state.lastOpenAt < 60_000) {
-        logDesk(`[STATUS] ${label} -> SIT: add_wait`);
-        continue;
-      }
-      if (onTicker.length === 1 && yes >= (onTicker[0].yes || onTicker[0].entry)) {
-        logDesk(`[STATUS] ${label} -> SIT: not_cheaper`);
+      const spent = onTicker.reduce((a, p) => a + p.sizeUsd, 0);
+      if (onTicker.length >= 1 || spent + clip > MAX_PER_TICKER_USD) {
+        logDesk(`[STATUS] ${label} -> SIT: one_ticket`);
         continue;
       }
       if ((state.resting ?? []).some((b) => b.ticker === ticker)) {
         logDesk(`[STATUS] ${label} -> SIT: already_resting`);
         continue;
       }
-      const misses = state.ledger.filter((r) => r.note.includes("MISS") && r.note.includes(ticker)).length;
+      const misses = state.ledger.filter((r) => r.note.includes("MISS") && r.note.includes(ticker) && !r.note.includes("shard 2 has")).length;
       if (misses >= 2) {
         logDesk(`[STATUS] ${label} -> SIT: two_misses`);
         continue;
@@ -253,6 +246,7 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
           slotEnd: round.end,
           chip: round.chip,
           cross: true,
+          exchangeIndex: round.exchangeIndex,
         });
       } catch (e) {
         const why = e instanceof Error ? e.message.slice(0, 160) : "err";
@@ -265,6 +259,7 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
       }
       if (fill.mode === "live" && !(fill.count && fill.count > 0)) continue;
       state.cash = Number((state.cash - clip).toFixed(2));
+      openUsd += clip;
       state.lastOpenAt = Date.now();
       state.positions.push({
         book: round.book,
@@ -306,12 +301,6 @@ async function tickHeartInner(execute: boolean): Promise<HeartState> {
   if (ping) state.lastNote = `${state.lastNote} · vol ${ping}`.slice(0, 280);
   saveHeart(state, true);
   void logShadow(rounds).catch(() => null);
-  void runPerpScan()
-    .then((note) => {
-      if (note) state.lastNote = `${state.lastNote} · ${note}`.slice(0, 280);
-      saveHeart(state, true);
-    })
-    .catch(() => null);
   return state;
 }
 

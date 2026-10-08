@@ -22,10 +22,10 @@ Settled. Do not reopen these.
 - Fib: last close within 8% of the 0.618 retracement of the recent range, plus a candle or the 20 EMA in the same direction.
 - If RSI and the 20 EMA are both missing, sit `indicators unread`. Do not fall back to the 30-second test.
 - The 30-minute lean only sizes the clip. Match is full. Flat, missing, or opposite is half. It does not pick the side.
-- Cash under $50 uses $5 at or under 35¢ and $3 above that, then the half or the 4× shock. Cash at $50 or more uses 15% of cash, clamped $5–$15. Shard-2 cash was about $62, so a full clip is about $9 until the balance moves.
-- Day stop on the 15-minute book is $15 in `kill.server.ts`. The $24 figure is only inside the unused-for-now perp function. Open 15-minute clips stop at $20. Cash at or under $8 stops the live book. Three losses pause 60 minutes. Two `MISS` notes bench that ticker. A 404 is a `SKIP` and does not bench it.
+- A live clip is $1, $2, or $5. $1 when the 30-minute lean does not agree. $2 when it does. $5 when it agrees and the ticket is 35¢ or cheaper. One open ticket per contract. No percent of cash.
+- Day stop on the 15-minute book is $15 in `kill.server.ts`. A count of losing trades does not pause the desk. The $24 figure is only inside the unused-for-now perp function. Open 15-minute clips stop at $20. Cash at or under $8 stops the live book. Two `MISS` notes bench that ticker. A 404 is a `SKIP` and does not bench it.
 - News, Tauric, and Alexandria do not sit a 15-minute ticket. The experimental skill pipeline can still veto itself. It does not send the order.
-- Orders omit `exchange_index` first, then retry `-1`, then `2`. The ticker is `live.ticker` from the open market. Never build the ticker from the clock.
+- The order sends the `exchange_index` from the open market first, then retries `-1` if that post is not found. The ticker is `live.ticker`. Never build the ticker from the clock.
 - A fill is held to the window. There is no mid-window sell.
 - RSI, EMA, and Fib are computed on the settlement index minutes (`indexStructure` in `src/lib/skill/ta.ts`), not on the Kalshi ticket candles.
 
@@ -76,11 +76,11 @@ Paste the block in `HANDOFF-PROMPT.md` if you want the short version. The long v
 
 - Two 15-second loops. The server interval scans and logs `HOLD (scan only)`. Only the worker with `tick: true` may send.
 - `clip.ts` still has a $300 paper start and a $150 paper stop. Those apply only when the live flag is off. `sniperClip` in that same file is the live sizer.
-- `MAX_PER_TICKER_USD` is $10 and nothing reads it. The live exposure stop is $20.
+- `MAX_PER_TICKER_USD` is $5 and the heart checks it. One position per ticker. The open-book stop is $20.
 - A 404 is logged as `SKIP`. It does not count toward the two-miss bench.
 - Gold's decision price is the last finished Pyth minute, not the live tick. The log can show a newer tick than the price the decision used.
 - Ticket candles are not the structure. Volume from the ticket is a note. The candle that gates the trade is the index candle.
 - `evaluatePerpEdge` still has a $24 day shield and a Tauric score gate. That function is not the 15-minute brain.
-- The chart EMA settings in `src/lib/live/indicators.ts` are still 7 and 14. The order uses 20 and 50. Do not "fix" one to match the other without meaning to change the trade.
+- The chart draws EMA 20 and 50, the same periods the order uses. The order still computes those averages itself from the settlement index. The chart does not send the order.
 - Tests are `npm test`. Do not add Vitest to satisfy an old instruction.
 - Do not print Kalshi auth headers. The order log says `auth=signed-not-printed`.

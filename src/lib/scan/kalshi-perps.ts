@@ -19,8 +19,12 @@ function num(v: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
-export async function loadPerps(force = false): Promise<PerpQuote[]> {
-  if (!force && cache && Date.now() - cache.at < 8_000) return cache.data;
+export function perpCacheAge(now = Date.now()): number | null {
+  return cache ? now - cache.at : null;
+}
+
+export async function loadPerps(force = false, maxAgeMs = 8_000): Promise<PerpQuote[]> {
+  if (!force && cache && Date.now() - cache.at < maxAgeMs) return cache.data;
   try {
     const res = await fetch(URL, {
       headers: { Accept: "application/json", "User-Agent": UA },

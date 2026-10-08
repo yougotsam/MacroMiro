@@ -6,11 +6,9 @@ const BEGIN_FILE = "/workspace/.grok/secrets/kalshi_begin";
 
 export const DAILY_LOSS_CAP = 15;
 export const MAX_EXPOSURE_USD = 20;
-export const MAX_PER_TICKER_USD = 10;
+export const MAX_PER_TICKER_USD = 5;
 export const LIVE_CLIP_USD = 1;
 export const SCALE_AFTER_RESOLVED = 100;
-export const CONSECUTIVE_LOSS_CAP = 3;
-export const LOSS_PAUSE_MS = 60 * 60 * 1000;
 
 export type KillState = {
   armed: boolean;
@@ -95,12 +93,9 @@ export function recordPnl(delta: number) {
   }
   if (delta < 0) {
     k.dailyLossUsd = Number((k.dailyLossUsd + Math.abs(delta)).toFixed(2));
-    k.consecutiveLosses += 1;
-    if (k.consecutiveLosses >= CONSECUTIVE_LOSS_CAP) k.pauseUntil = Date.now() + LOSS_PAUSE_MS;
-  } else if (delta > 0) {
-    k.consecutiveLosses = 0;
-    k.pauseUntil = 0;
   }
+  k.consecutiveLosses = 0;
+  k.pauseUntil = 0;
   return saveKill(k);
 }
 
@@ -143,23 +138,9 @@ export function killBlocksTrade(exposureUsd: number): { ok: boolean; why: string
   if (!liveFlagOn()) return { ok: false, why: "live path off" };
   if (!beginFlagOn()) return { ok: false, why: "not begun" };
   const k = readKill();
-  if (k.pauseUntil > Date.now()) {
-    const left = Math.ceil((k.pauseUntil - Date.now()) / 60_000);
-    return { ok: false, why: `3 losers · paused ${left}m` };
-  }
-  if (k.pauseUntil && k.pauseUntil <= Date.now()) {
-    k.pauseUntil = 0;
-    k.consecutiveLosses = 0;
-    saveKill(k);
-  }
-  if (k.dailyLossUsd <= 0 && k.consecutiveLosses > 0 && !k.pauseUntil) {
-    k.consecutiveLosses = 0;
-    saveKill(k);
-  }
   if (!k.armed) return { ok: false, why: "ARM off" };
   if (k.stale) return { ok: false, why: `stale · ${k.reason}` };
   if (k.dailyLossUsd >= DAILY_LOSS_CAP) return { ok: false, why: `daily loss ${k.dailyLossUsd}` };
-  if (k.consecutiveLosses >= CONSECUTIVE_LOSS_CAP) return { ok: false, why: `${k.consecutiveLosses} losers · sit` };
   if (exposureUsd >= MAX_EXPOSURE_USD) return { ok: false, why: `exposure ${exposureUsd}` };
   return { ok: true, why: "scan ok" };
 }

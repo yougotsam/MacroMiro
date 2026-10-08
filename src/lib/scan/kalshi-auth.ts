@@ -124,7 +124,7 @@ export async function kalshiPost<T>(path: string, body: unknown): Promise<{ host
       }
       if (!res.ok) {
         last = `${host} ${res.status} ${text.slice(0, 240)}`;
-        if (res.status === 401 || res.status === 404) continue;
+        if (res.status === 401) continue;
         return { host, status: res.status, data, text };
       }
       return { host, status: res.status, data, text };

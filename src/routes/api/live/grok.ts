@@ -11,7 +11,7 @@ export const Route = createFileRoute("/api/live/grok")({
         return Response.json({
           role: "risk",
           instruction:
-            "Read-only. Scan KXBTC15M, KXETH15M, KXSOL15M, KXGOLD15M. Bitcoin, ether, and solana settle on their CF Benchmarks 60-second index. Gold settles on the Pyth 1-minute close. Rule is docs/STRATEGY.md. Do not invent orders.",
+            "Read-only. Scan KXBTC15M, KXETH15M, KXSOL15M, KXXRP15M, KXGOLD15M. Bitcoin, ether, solana, and XRP settle on their CF Benchmarks 60-second index. Gold settles on the Pyth 1-minute close. Rule is docs/STRATEGY.md. Do not invent orders.",
           armed: h.armed,
           cash: h.cash,
           clipUsd: h.clipUsd ?? CLIP_USD,
