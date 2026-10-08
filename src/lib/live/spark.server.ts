@@ -2,9 +2,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { firecrawlKey, firecrawlReady } from "@/lib/live/firecrawl.server";
 import { sparkBody, sparkDate, sparkRead } from "@/lib/live/spark";
 import { armClerks } from "@/lib/intel/run.server";
+import { DATA_ROOT } from "@/lib/data-root";
 
 const API = "https://api.firecrawl.dev/v2";
-const FILE = "/workspace/data/spark-latest.json";
+const FILE = `${DATA_ROOT}/spark-latest.json`;
 
 type SparkRun = { status: string; id: string | null; creditsUsed: number | null; card: ReturnType<typeof sparkRead>; error: string };
 const flight = globalThis as typeof globalThis & { __sparkInflight?: Promise<SparkRun> };
@@ -73,7 +74,7 @@ async function finishSpark(id: string, forDate: string) {
 
 /** A failed or timed-out run never wipes a fresh (< 6 h) completed card off the screen or out of the Knock seed. */
 function saveSpark(row: SparkRun, forDate: string) {
-  mkdirSync("/workspace/data", { recursive: true });
+  mkdirSync(DATA_ROOT, { recursive: true });
   const prev = readSpark();
   const at = new Date().toISOString();
   if (row.status === "completed" && row.card) {

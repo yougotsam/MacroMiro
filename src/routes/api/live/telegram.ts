@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { mutationGuard } from "@/lib/desk/http-guard";
 import { loadScan } from "@/lib/scan/server";
 import { pingScan, telegramReady } from "@/lib/scan/telegram";
 
@@ -6,7 +7,9 @@ export const Route = createFileRoute("/api/live/telegram")({
   server: {
     handlers: {
       GET: async () => Response.json({ ready: telegramReady(), auto: "off" }),
-      POST: async () => {
+      POST: async ({ request }) => {
+        const denied = mutationGuard(request);
+        if (denied) return denied;
         if (!telegramReady()) return Response.json({ ok: false, error: "no telegram secret" }, { status: 400 });
         const data = await loadScan(true);
         const ping = await pingScan(data, true);

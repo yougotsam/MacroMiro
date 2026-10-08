@@ -16,7 +16,7 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/envelope/p0-safety.test.ts src/lib/envelope/heart-get.test.ts src/lib/scan/shadow.test.ts src/lib/scan/skill.test.ts src/lib/skill/pipeline.test.ts src/lib/skill/final.test.ts src/lib/scan/pilot-accept.test.ts src/lib/skill/brti-session.test.ts src/lib/skill/pyth-session.test.ts src/lib/intel/intel.test.ts src/lib/intel/reaction.test.ts src/lib/intel/mirofish.test.ts src/lib/live/spark.test.ts src/lib/brain/brain.test.ts src/lib/scan/kalshi-auth.test.ts",
+    "test": "bun test",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

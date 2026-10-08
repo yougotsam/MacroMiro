@@ -1,12 +1,9 @@
 import { type UpDownRound } from "./updown";
 import type { BookId } from "@/lib/live/types";
 import { loadPerps, perpCacheAge } from "./kalshi-perps";
-import { evaluateEdge, type TechnicalFrame } from "./edge";
-import { inEventBlackout } from "./blackout";
-import { loadMicro } from "./kalshi-shadow";
 import { brtiStatus, ensureBrti, ethRtiStatus, solRtiStatus, xrpRtiStatus } from "@/lib/skill/brti-socket.server";
 import { ensurePyth, pythStatus } from "@/lib/skill/pyth-socket.server";
-import { indexStructure } from "@/lib/skill/ta";
+import { readDeskStatus } from "@/lib/desk/view";
 
 const BASE = "https://api.elections.kalshi.com/trade-api/v2";
 const UA = "Mozilla/5.0 (compatible; EnvelopeScan/1.0)";
@@ -34,54 +31,6 @@ export function index30sAgo(book: string, now = Date.now()): number | null {
   }
   if (!best || target - best.t > 20_000) return null;
   return best.px;
-}
-
-function toTechnicalFrame(
-  spot: number,
-  strike: number,
-  volBps: number | null,
-  minutes: { o: number; h: number; l: number; c: number }[],
-  structure: ReturnType<typeof indexStructure>,
-  spot30: number | null,
-): TechnicalFrame {
-  const bar = minutes.at(-1);
-  const prev = minutes.at(-2);
-  const range = bar ? bar.h - bar.l : 0;
-  let bull = false;
-  let bear = false;
-  if (bar && prev) {
-    const body = Math.abs(bar.c - bar.o);
-    const prevBody = Math.abs(prev.c - prev.o);
-    bull = bar.c > bar.o && prev.c < prev.o && body > prevBody && bar.c >= prev.o && bar.o <= prev.c;
-    bear = bar.c < bar.o && prev.c > prev.o && body > prevBody && bar.o >= prev.c && bar.c <= prev.o;
-  }
-  const closes = minutes.map((m) => m.c).filter((c) => c > 0);
-  let fib618: number | undefined;
-  if (closes.length >= 8) {
-    const hi = Math.max(...closes);
-    const lo = Math.min(...closes);
-    if (hi > lo) fib618 = hi - (hi - lo) * 0.618;
-  }
-  return {
-    spot,
-    strike,
-    noise1m: volBps != null && volBps > 0 && spot > 0 ? (volBps / 10_000) * spot : 0,
-    rsi14: structure.rsi ?? undefined,
-    ema20: structure.ema20 ?? undefined,
-    ema50: structure.ema50 ?? undefined,
-    fib618,
-    candle: {
-      open: bar?.o ?? spot,
-      high: bar?.h ?? spot,
-      low: bar?.l ?? spot,
-      close: bar?.c ?? spot,
-      isEngulfingBull: bull || undefined,
-      isEngulfingBear: bear || undefined,
-      lowerWickRatio: bar && range > 0 ? (Math.min(bar.o, bar.c) - bar.l) / range : undefined,
-      upperWickRatio: bar && range > 0 ? (bar.h - Math.max(bar.o, bar.c)) / range : undefined,
-    },
-    spot30sAgo: spot30 ?? undefined,
-  };
 }
 
 export const KALSHI_BOOKS: { series: string; book: BookId }[] = [
@@ -276,9 +225,10 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
   const end = Math.floor(Date.parse(live.close_time || "") / 1000) || start + WINDOW;
   const leftSec = Math.max(0, end - Math.floor(now / 1000));
   const beat = num(live.floor_strike);
-  const up = num(live.yes_ask_dollars || live.last_price_dollars) || 0.5;
+  // No quote means no price: never substitute last trade or 0.5.
+  const up = num(live.yes_ask_dollars);
   const yesBid = num(live.yes_bid_dollars);
-  const down = num(live.no_ask_dollars) || Number((1 - num(live.yes_bid_dollars || up)).toFixed(4));
+  const down = num(live.no_ask_dollars);
   const moveBps = beat && last ? ((last - beat) / beat) * 10_000 : 0;
   const winner: UpDownRound["winner"] = Math.abs(moveBps) < 1 ? "tie" : last >= beat ? "up" : "down";
   const base: Omit<UpDownRound, "take" | "leg" | "chip" | "reason"> = {
@@ -311,67 +261,21 @@ async function loadFifteen(series: string, book: BookId, force: boolean): Promis
     missing: "no market",
     reason: "sit",
   };
-  if ((book === "btc" || book === "gold" || book === "eth" || book === "sol" || book === "xrp") && live.ticker) {
-    let rules = live.rules_primary || "";
-    if (!rules) {
-      const one = await grab<{ market?: KalshiMarket }>(`/markets/${encodeURIComponent(live.ticker)}`);
-      rules = one?.market?.rules_primary || "";
-    }
-    let volume: number | null = null;
-    try {
-      const micro = await loadMicro(series, live.ticker);
-      volume = micro.bars.reduce((sum, bar) => sum + bar.v, 0);
-    } catch {
-      volume = null;
-    }
-    const structure = indexStructure(minutes);
-    const spot30 = modelSpot != null && modelSpot > 0 ? (noteIndex(book, modelSpot, now), index30sAgo(book, now)) : null;
-    const frame = toTechnicalFrame(modelSpot ?? 0, beat, volBps1m, minutes, structure, spot30);
-    const edge = evaluateEdge({
-      book,
-      status: live.status || "active",
-      leftSec,
-      openTs: start,
-      closeTs: end,
-      now: Math.floor(now / 1000),
-      beat,
-      spot: modelSpot,
-      spotSource,
-      rules,
-      yesAsk: up,
-      yesBid,
-      noAsk: down,
-      volBps1m,
-      tapeOk: spotSource !== "none" && (spotSource !== "kalshi-perp" || perpFresh),
-      newsOk: true,
-      bookImb: null,
-      rsi: structure.rsi,
-      bbWidth: null,
-      fibZone: structure.fibZone,
-      volume,
-      engulf: structure.engulf,
-      rejection: structure.rejection,
-      fresh: spotSource !== "none" && (spotSource !== "kalshi-perp" || perpFresh),
-      ema7: structure.ema20,
-      ema14: structure.ema50,
-      ema20: structure.ema20,
-      ema50: structure.ema50,
-      bias30,
-      push,
-      blackout: inEventBlackout(now),
-      fallback: spotFallback,
-      spot30,
-    }, frame);
+  if (!(up > 0 && yesBid > 0)) {
+    picked = { ...picked, missing: "no quote", reason: "no quote · sit" };
+  } else {
+    // Display only. Orders come from the desk engine process (scripts/desk-engine.ts); this scan never takes.
+    const desk = readDeskStatus()?.series.find((r) => r.ticker === live.ticker);
+    const why = desk
+      ? `desk ${desk.gate}${desk.p != null ? ` · P ${(desk.p * 100).toFixed(1)}%` : ""}${desk.best ? ` · ${desk.best.side} ${desk.best.mode} ${Math.round(desk.best.price * 100)}¢ edge ${(desk.best.edge * 100).toFixed(1)}¢` : ""}`
+      : "desk engine offline";
     picked = {
-      take: edge.take,
-      leg: edge.leg,
-      chip: edge.take ? "settle-ta" : null,
-      confirms: picked.confirms,
-      missing: edge.why,
-      reason: `${edge.strategy} · ${edge.settlement} · ${edge.why}`,
-      cross: edge.cross,
-      catalyst: edge.catalyst,
-      clipScale: edge.clipScale,
+      take: false,
+      leg: desk?.best ? (desk.best.side === "yes" ? "up" : "down") : null,
+      chip: null,
+      confirms: 0,
+      missing: why,
+      reason: why,
     };
   }
   const data: UpDownRound = { ...base, ...picked, volBps1m, bias30 };

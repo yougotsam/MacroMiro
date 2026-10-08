@@ -2,8 +2,9 @@ import WebSocket from "ws";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { kalshiWsHeaders } from "@/lib/scan/kalshi-auth";
 import { applyXau, controlPyth, emptyXau, parsePyth, seedXau, xauStatus, XAU_TICKER, type XauMinute, type XauSession } from "@/lib/skill/pyth-session";
+import { DATA_ROOT } from "@/lib/data-root";
 
-const URL = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";
+const URL = "wss://api.elections.kalshi.com/trade-api/ws/v2";
 
 type Socket = {
   send: (data: string) => void;
@@ -22,7 +23,7 @@ const g = globalThis as typeof globalThis & {
   };
 };
 
-const GOLD_FILE = "/workspace/data/xau-bars.json";
+const GOLD_FILE = `${DATA_ROOT}/xau-bars.json`;
 
 function savedGold(): XauMinute[] {
   try {
@@ -39,7 +40,7 @@ function saveGold(box: NonNullable<(typeof g)["__xau"]>) {
   if (now - lastGoldSave < 15_000) return;
   lastGoldSave = now;
   try {
-    mkdirSync("/workspace/data", { recursive: true });
+    mkdirSync(DATA_ROOT, { recursive: true });
     writeFileSync(GOLD_FILE, JSON.stringify({ bars: box.session.bars }));
   } catch {
     /* next tick */

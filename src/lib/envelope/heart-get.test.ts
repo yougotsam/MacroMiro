@@ -15,11 +15,9 @@ describe("GET /api/live/heart is read-only", () => {
     assert.doesNotMatch(getBlock, /kalshiPost/);
   });
 
-  it("tickHeartInner only submits inside canExecute", () => {
+  it("heart tick is scan-only: no order, cancel, or execute path left in the heart", () => {
     const src = readFileSync(new URL("./heart.server.ts", import.meta.url), "utf8");
-    assert.match(src, /const canExecute = execute && liveExecutionAllowed\(\)/);
-    const submitAt = src.indexOf("submitBinary(");
-    const guardAt = src.lastIndexOf("if (canExecute && blocked.ok)", submitAt);
-    assert.ok(guardAt >= 0 && guardAt < submitAt);
+    assert.doesNotMatch(src, /submitBinary|placeEventOrder|kalshiPost|kalshiDelete|kalshi-order"|executeHeart|watchRest/);
+    assert.doesNotMatch(src, /setArmedKill\(true, "begin file on"\)/);
   });
 });

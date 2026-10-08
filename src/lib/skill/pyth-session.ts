@@ -1,6 +1,7 @@
 import { halfHourTape } from "./ta.ts";
 
-export const XAU_TICKER = "Metal.XAU/USD";
+/** KXGOLD15M settles on Pyth Metal.Index.1OZGOLD/USD (series settlement source). */
+export const XAU_TICKER = "Metal.Index.1OZGOLD/USD";
 export const FRESH_MS = 15_000;
 export const VOL_MIN_CLOSES = 5;
 

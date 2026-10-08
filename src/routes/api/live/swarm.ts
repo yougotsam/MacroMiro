@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { mutationGuard } from "@/lib/desk/http-guard";
 import { knockMirofish, miroSnapshot, probeMirofish, resumeMirofish } from "@/lib/intel/mirofish";
 import { buildKnockSeed } from "@/lib/intel/seed.server";
 
@@ -18,6 +19,8 @@ export const Route = createFileRoute("/api/live/swarm")({
       },
       /** Knock once. Returns at once; the walk (seed -> ... -> report) runs in the background. Body {force:true} reruns a finished headline (spends money). */
       POST: async ({ request }) => {
+        const denied = mutationGuard(request);
+        if (denied) return denied;
         const body = (await request.json().catch(() => ({}))) as { force?: boolean };
         const town = await probeMirofish();
         if (!town.up) {

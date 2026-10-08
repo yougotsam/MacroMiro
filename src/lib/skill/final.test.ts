@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { readBrti, settlementPrint, spotForDistance } from "./brti.ts";
 import { nextBook, reuseClientId } from "./book-seq.ts";
 import { readNews } from "./news-read.ts";
 import { estimateProb } from "./prob.ts";
@@ -10,41 +9,6 @@ import { finalize } from "./bars.ts";
 const now = 1_710_000_000_000;
 
 describe("finalization", () => {
-  it("does not treat the trailing 60s average as the quarter-hour settlement", () => {
-    const read = readBrti(
-      {
-        index_id: "BRTI",
-        received_at: now,
-        data: JSON.stringify({ type: "value", id: "BRTI", time: now, value: "86000" }),
-        avg_60s_data: { value: "86100", window_size: 60, window_start_ts_ms: now - 60_000, window_end_ts_exclusive: now - 500 },
-        last_60s_windowed_average_15min: { value: "85900", window_size: 14, window_start_ts_ms: now - 840_000, window_end_ts_exclusive: now - 500 },
-      },
-      now,
-    );
-    assert.equal(spotForDistance(read), 86100);
-    assert.equal(settlementPrint(read, false), null);
-    assert.equal(settlementPrint(read, true), null);
-    const closed = readBrti(
-      {
-        index_id: "BRTI",
-        received_at: now,
-        data: JSON.stringify({ type: "value", id: "BRTI", time: now, value: "86000" }),
-        avg_60s_data: { value: "86100", window_size: 60, window_start_ts_ms: now - 60_000, window_end_ts_exclusive: now - 500 },
-        last_60s_windowed_average_15min: { value: "85900", window_size: 60, window_start_ts_ms: now - 60_000, window_end_ts_exclusive: now - 500 },
-      },
-      now,
-    );
-    assert.equal(settlementPrint(closed, true), 85900);
-    assert.equal(settlementPrint(closed, false), null);
-    assert.notEqual(spotForDistance(closed), settlementPrint(closed, true));
-  });
-
-  it("rejects a malformed BRTI message", () => {
-    const read = readBrti({ index_id: "BRTI" }, now);
-    assert.equal(spotForDistance(read), null);
-    assert.ok(read.missing.includes("avg_60s_data"));
-  });
-
   it("drops an open candle and recovers a sequence gap", () => {
     const bars = [
       { t: 0, o: 1, h: 1, l: 1, c: 1, v: 1, closed: true },

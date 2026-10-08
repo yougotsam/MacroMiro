@@ -2,8 +2,9 @@ import WebSocket from "ws";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { kalshiWsHeaders } from "@/lib/scan/kalshi-auth";
 import { apply, backoffMs, controlFrame, emptySession, frameIndex, publicStatus, seedBars, type MinuteBar, type RtiSymbol, type Session } from "@/lib/skill/brti-session";
+import { DATA_ROOT } from "@/lib/data-root";
 
-const URL = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";
+const URL = "wss://api.elections.kalshi.com/trade-api/ws/v2";
 
 type Socket = {
   send: (data: string) => void;
@@ -25,7 +26,7 @@ const g = globalThis as typeof globalThis & {
   };
 };
 
-const BAR_FILE = "/workspace/data/rti-bars.json";
+const BAR_FILE = `${DATA_ROOT}/rti-bars.json`;
 
 function savedBars(): { btc: MinuteBar[]; eth: MinuteBar[]; sol: MinuteBar[]; xrp: MinuteBar[] } {
   try {
@@ -42,7 +43,7 @@ function saveBars(box: NonNullable<(typeof g)["__brti"]>) {
   if (now - lastBarSave < 15_000) return;
   lastBarSave = now;
   try {
-    mkdirSync("/workspace/data", { recursive: true });
+    mkdirSync(DATA_ROOT, { recursive: true });
     writeFileSync(BAR_FILE, JSON.stringify({ btc: box.session.bars, eth: box.eth.bars, sol: box.sol.bars, xrp: box.xrp.bars }));
   } catch {
     /* the next print tries again */

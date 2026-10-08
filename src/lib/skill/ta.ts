@@ -101,10 +101,11 @@ export function halfHourTape(bars: { c: number; h: number; l: number; closed: bo
 export type IndexBar = { o: number; h: number; l: number; c: number };
 export type StructureFib = "none" | "236" | "382" | "500" | "618";
 
-/** RSI, 20/50 EMA, the 0.618 zone, and the last finished candle. Built from the settlement index, not the ticket. */
+/** RSI, 7/14/50 EMA, the 0.618 zone, and the last finished candle. Built from the settlement index, not the ticket. */
 export function indexStructure(bars: IndexBar[]): {
   rsi: number | null;
-  ema20: number | null;
+  ema7: number | null;
+  ema14: number | null;
   ema50: number | null;
   fibZone: StructureFib;
   engulf: "up" | "down" | null;
@@ -131,5 +132,5 @@ export function indexStructure(bars: IndexBar[]): {
     if (bar.c > bar.o && prev.c < prev.o && body > prevBody && bar.c >= prev.o && bar.o <= prev.c) engulf = "up";
     if (bar.c < bar.o && prev.c > prev.o && body > prevBody && bar.o >= prev.c && bar.c <= prev.o) engulf = "down";
   }
-  return { rsi: rsi(closes, 14), ema20: ema(closes, 20), ema50: ema(closes, 50), fibZone, engulf, rejection };
+  return { rsi: rsi(closes, 14), ema7: ema(closes, 7), ema14: ema(closes, 14), ema50: ema(closes, 50), fibZone, engulf, rejection };
 }

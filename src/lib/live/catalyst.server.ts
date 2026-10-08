@@ -3,9 +3,10 @@ import { buildCatalysts, type Catalyst, type RawHit } from "@/lib/live/catalyst"
 import { firecrawlReady, pullOfficial } from "@/lib/live/firecrawl.server";
 import { readSpark } from "@/lib/live/spark.server";
 import { listInbox } from "@/lib/printgate/inbox.server";
+import { DATA_ROOT } from "@/lib/data-root";
 
-const LATEST = "/workspace/data/catalyst-latest.json";
-const LOG = "/workspace/data/catalyst.jsonl";
+const LATEST = `${DATA_ROOT}/catalyst-latest.json`;
+const LOG = `${DATA_ROOT}/catalyst.jsonl`;
 
 export type RadarFile = {
   live: boolean;
@@ -59,7 +60,7 @@ export async function refreshRadar(): Promise<RadarFile> {
   };
   const spark = readSpark();
   file.spark = spark?.status ? `spark ${spark.status}` : "not run";
-  mkdirSync("/workspace/data", { recursive: true });
+  mkdirSync(DATA_ROOT, { recursive: true });
   writeFileSync(LATEST, JSON.stringify(file));
   appendFileSync(LOG, `${JSON.stringify({ at: crawledAt, n: items.length, ms: file.crawlMs, errors: pull.errors.length })}\n`);
   return file;

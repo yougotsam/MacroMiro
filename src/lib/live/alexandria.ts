@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
+import { DATA_ROOT } from "@/lib/data-root";
 
-const FILE = "/workspace/data/alexandria-latest.json";
+const FILE = `${DATA_ROOT}/alexandria-latest.json`;
 
 export type AlexTool = { provider: string; capability: string; description: string };
 
-const NEWS = "/workspace/data/desk-news.json";
+const NEWS = `${DATA_ROOT}/desk-news.json`;
 
 export function readDeskNews() {
   try {

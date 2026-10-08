@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { mutationGuard } from "@/lib/desk/http-guard";
 import { PERP_LEV_CAP, PERP_LEV_DEFAULT, readSlider, writeSlider } from "@/lib/scan/perp-slider";
 
 export const Route = createFileRoute("/api/live/leverage")({
@@ -6,6 +7,8 @@ export const Route = createFileRoute("/api/live/leverage")({
     handlers: {
       GET: async () => Response.json({ slider: readSlider(), caps: PERP_LEV_CAP, defaults: PERP_LEV_DEFAULT }),
       POST: async ({ request }) => {
+        const denied = mutationGuard(request);
+        if (denied) return denied;
         const body = (await request.json().catch(() => null)) as { ticker?: string; leverage?: number } | null;
         const ticker = String(body?.ticker ?? "");
         const leverage = Number(body?.leverage);

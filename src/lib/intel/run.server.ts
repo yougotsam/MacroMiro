@@ -3,10 +3,11 @@ import { agentStatus, agentTrace, cancelAgent, ensureMonitor, startAgent } from 
 import { hostile, orderTrace, shadowUse } from "@/lib/intel/guard";
 import { applyFinding, emptyRecord, type CatalystRecord } from "@/lib/intel/record";
 import { workflowBody, type WorkflowName } from "@/lib/intel/workflows";
+import { DATA_ROOT } from "@/lib/data-root";
 
 const NAMES: WorkflowName[] = ["verify", "hunter", "contradict", "analogue", "contract"];
-const DIR = "/workspace/data/intel";
-const SHADOW = "/workspace/data/shadow-intel.jsonl";
+const DIR = `${DATA_ROOT}/intel`;
+const SHADOW = `${DATA_ROOT}/shadow-intel.jsonl`;
 const STALE_MS = 8 * 60_000;
 
 type TraceEvent = {
@@ -71,7 +72,7 @@ export function readIntel(): IntelBoard {
   }
   let monitor = { id: null as string | null, status: "not created", checks: 0, error: "" };
   try {
-    monitor = JSON.parse(readFileSync("/workspace/data/monitor.json", "utf8"));
+    monitor = JSON.parse(readFileSync(`${DATA_ROOT}/monitor.json`, "utf8"));
   } catch {
     /* none yet */
   }
@@ -283,7 +284,7 @@ export async function cancelInvestigation(name?: WorkflowName) {
 
 export async function pollMonitor() {
   const row = await ensureMonitor();
-  mkdirSync("/workspace/data", { recursive: true });
-  writeFileSync("/workspace/data/monitor.json", JSON.stringify(row));
+  mkdirSync(DATA_ROOT, { recursive: true });
+  writeFileSync(`${DATA_ROOT}/monitor.json`, JSON.stringify(row));
   return row;
 }

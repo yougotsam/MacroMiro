@@ -35,7 +35,7 @@ describe("XAU session", () => {
     assert.doesNotMatch(route, /tickHeart|submitBinary|placeEventOrder|kalshiPost|kalshiDelete/);
     const socket = readFileSync(new URL("./pyth-socket.server.ts", import.meta.url), "utf8");
     assert.match(socket, /XAU_TICKER/);
-    assert.match(readFileSync(new URL("./pyth-session.ts", import.meta.url), "utf8"), /Metal\.XAU\/USD/);
+    assert.match(readFileSync(new URL("./pyth-session.ts", import.meta.url), "utf8"), /Metal\.Index\.1OZGOLD\/USD/);
     assert.doesNotMatch(socket, /submitBinary|tickHeart|placeEventOrder/);
   });
 });

@@ -61,7 +61,8 @@ function closure(file: string): Set<string> {
   return seen;
 }
 
-const SINK = /\b(placeEventOrder|placePerpOrder|evaluateEdge|evaluatePerpEdge|executeHeart|kalshiPost)\s*\(/;
+const SINK = /\b(kalshiOrderPost|placeEventOrder|placePerpOrder|evaluateEdge|evaluatePerpEdge|executeHeart|kalshiPost)\s*\(|kalshiSignedHeaders\("POST"|oms\.submit\(/;
+const ORDER_FILES = ["lib/desk/oms.ts", "lib/desk/engine.ts", "lib/desk/gate.ts", "lib/desk/risk.ts", "lib/desk/settlement.ts", "lib/desk/features.ts", "lib/envelope/heart.server.ts", "lib/scan/kalshi.ts"];
 const rel = (f: string) => relative(SRC, f);
 
 describe("brains are words, not orders", () => {
@@ -102,8 +103,8 @@ describe("brains are words, not orders", () => {
 
   it("no file that calls an order or edge function can import the brain caller (grok or gemini)", () => {
     const sinks = FILES.filter((f) => SINK.test(TEXT.get(f) ?? ""));
-    assert.ok(sinks.some((f) => f.endsWith("lib/scan/kalshi.ts")), "kalshi.ts calls evaluateEdge");
-    assert.ok(sinks.some((f) => f.endsWith("lib/envelope/exec.ts")), "exec.ts calls placeEventOrder");
+    assert.ok(sinks.some((f) => f.endsWith("lib/desk/oms.ts")), "oms.ts posts orders");
+    assert.ok(sinks.some((f) => f.endsWith("lib/desk/engine.ts")), "engine.ts submits through the OMS");
     for (const f of sinks) {
       assert.ok(!closure(f).has(BRAIN_SERVER), `${rel(f)} can reach brain.server.ts`);
     }
@@ -122,19 +123,18 @@ describe("brains are words, not orders", () => {
   it("Gemini is called from exactly one file and the order rule never names a model", () => {
     const gem = FILES.filter((f) => /generativelanguage\.googleapis\.com|GEMINI_API_KEY/.test(TEXT.get(f) ?? ""));
     assert.deepEqual(gem.map(rel).sort(), ["lib/brain/brain.server.ts", "lib/brain/model.ts"]);
-    for (const f of ["lib/scan/edge.ts", "lib/scan/kalshi-order.ts", "lib/scan/kalshi-perp-order.ts", "lib/envelope/exec.ts", "lib/envelope/heart.server.ts"]) {
+    for (const f of ORDER_FILES) {
       const t = readFileSync(join(SRC, f), "utf8");
       assert.doesNotMatch(t, /gemini|grok-|api\.x\.ai|chat\/completions|brain\//i, `${f} names a model`);
     }
   });
 
-  it("xAI chat is only called by the brain caller and the documented perp debate, which no live route runs", () => {
+  it("xAI chat is only called by the brain caller (the perp debate files were removed)", () => {
     const xai = FILES.filter((f) => /api\.x\.ai\/v1\/chat\/completions/.test(TEXT.get(f) ?? ""));
-    assert.deepEqual(xai.map(rel).sort(), ["lib/brain/brain.server.ts", "lib/intelligence/tauric-debate.ts"]);
-    const debateUsers = FILES.filter((f) => importsOf(f).includes(join(SRC, "lib/intelligence/tauric-debate.ts")));
-    assert.deepEqual(debateUsers.map(rel), ["lib/scan/perp-run.server.ts"]);
-    const runners = FILES.filter((f) => importsOf(f).includes(join(SRC, "lib/scan/perp-run.server.ts")));
-    assert.deepEqual(runners.map(rel), [], "perp-run.server.ts (model debate before placePerpOrder) must stay unwired");
+    assert.deepEqual(xai.map(rel).sort(), ["lib/brain/brain.server.ts"]);
+    for (const gone of ["lib/scan/perp-run.server.ts", "lib/intelligence/tauric-debate.ts", "lib/agent/tauric-debate.ts", "lib/scan/kalshi-perp-order.ts"]) {
+      assert.equal(existsSync(join(SRC, gone)), false, `${gone} must stay deleted`);
+    }
   });
 
   it("news (Firecrawl, Spark, intel clerks, Knock seed) and the swarm are context, never orders", () => {
@@ -153,16 +153,12 @@ describe("brains are words, not orders", () => {
       assert.ok(existsSync(f), `${rel(f)} exists`);
       assert.doesNotMatch(TEXT.get(f) ?? "", SINK, `${rel(f)} calls an order/edge function`);
     }
-    const PERP_RUN = join(SRC, "lib/scan/perp-run.server.ts");
     const sinks = FILES.filter((f) => SINK.test(TEXT.get(f) ?? ""));
     for (const f of sinks) {
       const reach = closure(f);
-      // perp-run.server.ts is DEAD (no importer, asserted above) and documented to read the MiroFish file.
-      // It still may not reach Firecrawl, Spark, the clerks, or the seed builder.
-      const banned = f === PERP_RUN ? NEWS.filter((n) => !n.endsWith("lib/intel/mirofish.ts")) : NEWS;
-      for (const n of banned) assert.ok(!reach.has(n), `${rel(f)} can reach ${rel(n)}`);
+      for (const n of NEWS) assert.ok(!reach.has(n), `${rel(f)} can reach ${rel(n)}`);
     }
-    for (const f of ["lib/scan/edge.ts", "lib/scan/kalshi.ts", "lib/scan/kalshi-order.ts", "lib/envelope/exec.ts", "lib/envelope/heart.server.ts"]) {
+    for (const f of ORDER_FILES) {
       const t = readFileSync(join(SRC, f), "utf8");
       assert.doesNotMatch(t, /firecrawl|spark\.server|runSparkBrief|mirofish|seed\.server|api\.firecrawl\.dev/i, `${f} names a news or swarm source`);
     }

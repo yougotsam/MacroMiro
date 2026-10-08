@@ -1,5 +1,6 @@
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { pushInbox, type InboxEvent } from "@/lib/printgate/inbox.server";
+import { DATA_ROOT } from "@/lib/data-root";
 
 const API = "https://api.firecrawl.dev/v2";
 const KEY_FILES = ["/workspace/.grok/secrets/fc"];
@@ -107,7 +108,7 @@ export async function agentTrace(id: string) {
 }
 
 export async function ensureMonitor() {
-  const file = "/workspace/data/monitor.json";
+  const file = `${DATA_ROOT}/monitor.json`;
   let saved: { id?: string | null } = {};
   try {
     saved = JSON.parse(readFileSync(file, "utf8")) as { id?: string | null };
@@ -136,7 +137,7 @@ export async function ensureMonitor() {
   const json = (await res.json().catch(() => ({}))) as { id?: string; data?: { id?: string }; monitor?: { id?: string }; error?: string; message?: string };
   const id = json.id || json.data?.id || json.monitor?.id || null;
   if (id) {
-    mkdirSync("/workspace/data", { recursive: true });
+    mkdirSync(DATA_ROOT, { recursive: true });
     writeFileSync(file, JSON.stringify({ id }));
   }
   return { id, status: res.ok && id ? "created" : "error", checks: 0, error: res.ok ? "" : json.error || json.message || `http ${res.status}` };

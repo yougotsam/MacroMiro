@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { DATA_ROOT } from "@/lib/data-root";
 
-const FILE = "/workspace/data/kill.json";
+const FILE = `${DATA_ROOT}/kill.json`;
 const LIVE_FILE = "/workspace/.grok/secrets/kalshi_live";
 const BEGIN_FILE = "/workspace/.grok/secrets/kalshi_begin";
 
@@ -9,6 +10,8 @@ export const MAX_EXPOSURE_USD = 20;
 export const MAX_PER_TICKER_USD = 5;
 export const LIVE_CLIP_USD = 1;
 export const SCALE_AFTER_RESOLVED = 100;
+export const LOSS_STREAK = 3;
+export const LOSS_PAUSE_MS = 60 * 60_000;
 
 export type KillState = {
   armed: boolean;
@@ -39,7 +42,7 @@ function todayEt() {
 }
 
 function ensureDir() {
-  mkdirSync("/workspace/data", { recursive: true });
+  mkdirSync(DATA_ROOT, { recursive: true });
 }
 
 export function readKill(): KillState {
@@ -93,9 +96,15 @@ export function recordPnl(delta: number) {
   }
   if (delta < 0) {
     k.dailyLossUsd = Number((k.dailyLossUsd + Math.abs(delta)).toFixed(2));
+    k.consecutiveLosses += 1;
+    if (k.consecutiveLosses >= LOSS_STREAK) {
+      k.pauseUntil = Date.now() + LOSS_PAUSE_MS;
+      k.consecutiveLosses = 0;
+      k.reason = `${LOSS_STREAK} losses in a row · pause 60 min`;
+    }
+  } else if (delta > 0) {
+    k.consecutiveLosses = 0;
   }
-  k.consecutiveLosses = 0;
-  k.pauseUntil = 0;
   return saveKill(k);
 }
 

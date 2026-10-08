@@ -157,7 +157,7 @@ describe("callTool", () => {
         },
       );
       assert.equal(result.ok, false);
-      assert.match(result.errorMessage ?? "", /circular/i);
+      assert.match(result.errorMessage ?? "", /circular|cyclic/i);
     } finally {
       delete process.env.GROK_CONNECTORS_URL;
     }

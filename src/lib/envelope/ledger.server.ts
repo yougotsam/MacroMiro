@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { DATA_ROOT } from "@/lib/data-root";
 
-const DIR = "/workspace/data";
+const DIR = DATA_ROOT;
 const FILE = `${DIR}/ledger.jsonl`;
 
 export const STRATEGY_VERSION = "p0-safety-2026-09-22";

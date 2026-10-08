@@ -4,10 +4,9 @@ import { createPrivateKey, sign, constants } from "node:crypto";
 const KEY_ID_FILE = "/workspace/.grok/secrets/kalshi_key_id";
 const PEM_FILE = "/workspace/.grok/secrets/kalshi_private.pem";
 const LIVE_FILE = "/workspace/.grok/secrets/kalshi_live";
-const HOSTS = [
-  "https://api.elections.kalshi.com",
-  "https://external-api.kalshi.com",
-];
+/** external-api.kalshi.com answers 403 from this box; api.elections.kalshi.com serves the same Trade API. */
+export const KALSHI_HOST = "https://api.elections.kalshi.com";
+const HOSTS = [KALSHI_HOST];
 
 export type KalshiAuthStatus = {
   auth: boolean;
@@ -75,6 +74,14 @@ export function signKalshi(rawPem: string, msg: string) {
   }).toString("base64");
 }
 
+/**
+ * Signed headers. There is deliberately NO generic POST/PUT helper in this file: the only code that may
+ * send a write to Kalshi is src/lib/desk/oms.ts (orders, behind the risk engine). See desk/static-order-path.test.ts.
+ */
+export function kalshiSignedHeaders(method: "GET" | "DELETE" | "POST", path: string) {
+  return headers(method, path);
+}
+
 function headers(method: string, path: string) {
   const id = keyId();
   const raw = pem();
@@ -113,36 +120,6 @@ export async function kalshiGet<T>(path: string): Promise<{ host: string; data: 
   throw new Error(last);
 }
 
-export async function kalshiPost<T>(path: string, body: unknown): Promise<{ host: string; status: number; data: T; text: string }> {
-  let last = "no host";
-  for (const host of HOSTS) {
-    try {
-      const res = await fetch(`${host}${path}`, {
-        method: "POST",
-        headers: headers("POST", path),
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(12_000),
-      });
-      const text = await res.text();
-      let data = {} as T;
-      try {
-        data = JSON.parse(text) as T;
-      } catch {
-        /* raw */
-      }
-      if (!res.ok) {
-        last = `${host} ${res.status} ${text.slice(0, 240)}`;
-        if (res.status === 401) continue;
-        return { host, status: res.status, data, text };
-      }
-      return { host, status: res.status, data, text };
-    } catch (e) {
-      last = e instanceof Error ? e.message : String(e);
-    }
-  }
-  throw new Error(last);
-}
-
 export async function kalshiDelete<T>(path: string): Promise<{ status: number; text: string }> {
   let last = "no host";
   for (const host of HOSTS) {
@@ -158,36 +135,6 @@ export async function kalshiDelete<T>(path: string): Promise<{ status: number; t
         continue;
       }
       return { status: res.status, text };
-    } catch (e) {
-      last = e instanceof Error ? e.message : String(e);
-    }
-  }
-  throw new Error(last);
-}
-
-export async function kalshiPut<T>(path: string, body: unknown): Promise<{ host: string; status: number; data: T; text: string }> {
-  let last = "no host";
-  for (const host of HOSTS) {
-    try {
-      const res = await fetch(`${host}${path}`, {
-        method: "PUT",
-        headers: headers("PUT", path),
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(12_000),
-      });
-      const text = await res.text();
-      let data = {} as T;
-      try {
-        data = JSON.parse(text) as T;
-      } catch {
-        /* raw */
-      }
-      if (!res.ok) {
-        last = `${host} ${res.status} ${text.slice(0, 240)}`;
-        if (res.status === 401 || res.status === 404) continue;
-        return { host, status: res.status, data, text };
-      }
-      return { host, status: res.status, data, text };
     } catch (e) {
       last = e instanceof Error ? e.message : String(e);
     }

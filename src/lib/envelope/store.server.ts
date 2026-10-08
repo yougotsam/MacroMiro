@@ -4,8 +4,9 @@ import type { BookScan } from "./board";
 import type { PaperPos, PaperRow } from "./paper";
 import type { BookId } from "@/lib/live/types";
 import type { UpDownLeg, UpDownRound } from "@/lib/scan/updown";
+import { DATA_ROOT } from "@/lib/data-root";
 
-const FILE = "/workspace/data/heart.json";
+const FILE = `${DATA_ROOT}/heart.json`;
 const LEGACY = "/workspace/.grok/paper.json";
 const TMP_LEGACY = "/tmp/envelope-paper.json";
 
@@ -110,7 +111,7 @@ export function saveHeart(state: HeartState, persist = true) {
   (globalThis as G).__envelopeHeartMem = state;
   if (!persist) return;
   try {
-    mkdirSync("/workspace/data", { recursive: true });
+    mkdirSync(DATA_ROOT, { recursive: true });
     const tmp = `${FILE}.tmp`;
     writeFileSync(tmp, JSON.stringify(state));
     renameSync(tmp, FILE);

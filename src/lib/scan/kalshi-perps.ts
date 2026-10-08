@@ -1,5 +1,5 @@
 const UA = "Mozilla/5.0 (compatible; EnvelopeScan/1.0)";
-const URL = "https://external-api.kalshi.com/trade-api/v2/margin/markets";
+const URL = "https://api.elections.kalshi.com/trade-api/v2/margin/markets";
 const WANT = new Set(["KXBTCPERP", "KXETHPERP", "KXSOLPERP", "KXXRPPERP", "KXBNBPERP", "KXGOLDPERP", "KXSILVERPERP", "KXUS500PERP"]);
 
 export type PerpQuote = {

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { writeFileSync } from "node:fs";
 import { clampClip } from "@/lib/envelope/clip";
-import { executeHeart, flattenBook, readHeart, setArmed, tickHeart, ensureHeart } from "@/lib/envelope/heart.server";
+import { flattenBook, readHeart, setArmed, tickHeart, ensureHeart } from "@/lib/envelope/heart.server";
+import { mutationGuard } from "@/lib/desk/http-guard";
 import { beginFlagOn, liveExecutionAllowed, liveFlagOn, readKill } from "@/lib/envelope/kill.server";
 import { loadHeart } from "@/lib/envelope/store.server";
 import type { BookId } from "@/lib/live/types";
@@ -25,26 +25,23 @@ export const Route = createFileRoute("/api/live/heart")({
         });
       },
       POST: async ({ request }) => {
+        // Display state only: the desk engine (scripts/desk-engine.ts) is the only order process,
+        // and kalshi_begin / desk_arm are never written from HTTP.
+        const denied = mutationGuard(request);
+        if (denied) return denied;
         const body = (await request.json().catch(() => ({}))) as {
           armed?: boolean;
           clipUsd?: number;
           tick?: boolean;
           flatten?: BookId;
-          execute?: boolean;
-          begin?: boolean;
         };
-        if (typeof body.begin === "boolean") {
-          writeFileSync("/workspace/.grok/secrets/kalshi_begin", body.begin ? "1\n" : "0\n");
-          setArmed(body.begin, 1);
-        }
         if (body.flatten) return Response.json(await flattenBook(body.flatten));
         if (typeof body.armed === "boolean" && body.tick !== true) {
           setArmed(body.armed, body.clipUsd != null ? clampClip(body.clipUsd) : undefined);
         } else if (body.clipUsd != null && body.tick !== true) {
           setArmed(loadHeart().armed, clampClip(body.clipUsd));
         }
-        if (body.execute) return Response.json(await executeHeart());
-        const state = body.tick ? await tickHeart(true) : await readHeart();
+        const state = body.tick ? await tickHeart() : await readHeart();
         const kill = readKill();
         return Response.json({
           ...state,

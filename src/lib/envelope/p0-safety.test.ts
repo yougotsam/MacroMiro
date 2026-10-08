@@ -28,11 +28,10 @@ describe("event cancel path", () => {
     assert.match(path, /exchange_index=2/);
     assert.match(path, /market_ticker=KXBTC15M-TEST/);
     assert.equal(signedPath(path), "/trade-api/v2/portfolio/events/orders/abc-1");
-    const src = readFileSync(new URL("../scan/kalshi-order.ts", import.meta.url), "utf8");
-    assert.match(src, /eventCancelPath/);
+    const src = readFileSync(new URL("../desk/oms.ts", import.meta.url), "utf8");
+    assert.match(src, /kalshiDelete\(eventCancelPath\(/);
     assert.match(src, /immediate_or_cancel/);
-    assert.match(src, /post_only: false/);
-    assert.doesNotMatch(src, /post_only: true/);
+    assert.match(src, /post_only: intent\.mode === "maker"/);
     assert.doesNotMatch(src, /kalshiDelete\(`\/trade-api\/v2\/portfolio\/orders\//);
   });
 });
