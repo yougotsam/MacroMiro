@@ -13,7 +13,11 @@ export type Opinion = {
   pick: Play;
   plays: Play[];
   sizeUsd: number;
-  clerk: "local" | "grok-4.5";
+  /** "local" or the model id that wrote it (grok-4.7, gemini-3.8-flash, ...). Words only. */
+  clerk: string;
+  brain?: "grok" | "gemini";
+  ms?: number;
+  note?: string;
 };
 
 function catalystWindow(desk: DeskPayload) {

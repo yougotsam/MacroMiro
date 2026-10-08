@@ -2,8 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 
 type SwarmBody = {
   town?: { up?: boolean; url?: string; detail?: string };
-  snap?: { headline?: string; stage?: string; error?: string; probability?: number | null };
+  snap?: {
+    headline?: string;
+    stage?: string;
+    error?: string;
+    probability?: number | null;
+    running?: boolean;
+    progress?: number;
+    message?: string;
+    rounds?: { current?: number; total?: number; cap?: number };
+    actions?: number;
+  };
   note?: string;
+  reason?: string;
 };
 
 export function SwarmPanel() {
@@ -25,12 +36,12 @@ export function SwarmPanel() {
       });
     };
     run();
-    const id = setInterval(run, 20000);
+    const id = setInterval(run, body?.snap?.running ? 5000 : 20000);
     return () => {
       stop = true;
       clearInterval(id);
     };
-  }, [load]);
+  }, [load, body?.snap?.running]);
 
   const knock = async () => {
     setBusy(true);
@@ -72,7 +83,12 @@ export function SwarmPanel() {
         <p className="mt-2 font-mono text-xs text-subtle">
           stage {snap?.stage || "idle"}
           {snap?.probability == null ? " · no probability" : ` · ${(snap.probability * 100).toFixed(1)}%`}
+          {snap?.running ? ` · ${snap.progress ?? 0}%` : ""}
+          {snap?.rounds?.current ? ` · round ${snap.rounds.current}/${snap.rounds.total || snap.rounds.cap}` : ""}
+          {snap?.actions ? ` · ${snap.actions} agent actions` : ""}
         </p>
+        {snap?.message ? <p className="mt-1 font-mono text-xs text-subtle">{snap.message}</p> : null}
+        {body?.reason ? <p className="mt-1 font-mono text-xs text-subtle">{body.reason}</p> : null}
         {snap?.error ? <p className="mt-2 text-sm text-down">{snap.error}</p> : null}
         {err ? <p className="mt-2 text-sm text-down">{err}</p> : null}
       </section>

@@ -25,7 +25,7 @@ Zep's MCP does not replace that app. The docs door (https://docs-mcp.getzep.com/
 
 Firecrawl and Alexandria already pull headlines. A headline is not a vote.
 
-The Ask button calls xAI model `grok-4.5` only when `XAI_API_KEY` is present. Otherwise it uses the written rules. Gemini is not installed. There is no OpenAI package and no `server/lib` folder.
+The Ask button has two brains: `grok-4.7` (default, `DESK_MODEL`, needs `XAI_API_KEY`) and `gemini-3.8-flash` (`GEMINI_MODEL`, needs `GEMINI_API_KEY`). Pick one with `brain: grok|gemini|both`. A brain without its key falls back to the written rules. Brains write opinions only; `src/lib/brain/brain.test.ts` proves no brain reaches an order or `edge.ts`. There is no OpenAI package and no `server/lib` folder.
 
 ## Do not do these
 
@@ -42,7 +42,8 @@ These stay out of git and out of chat logs.
 | Key | Where it goes | Used for |
 | --- | --- | --- |
 | Kalshi key id and private key | `.grok/secrets` on the Bot computer, same layout as this repo | Live orders. Already used by this desk. The owner copies them. |
-| `XAI_API_KEY` | env on the Bot computer | Ask button. Coding model in the xAI docs is `grok-4.7`. The desk Ask line is still `grok-4.5` until someone changes that one line on purpose. |
+| `XAI_API_KEY` | env on the Bot computer | Ask button, grok brain. Model is `DESK_MODEL` (default `grok-4.7`) in `src/lib/brain/model.ts`. |
+| `GEMINI_API_KEY` | env on the Bot computer | Ask button, second brain `gemini-3.8-flash`. Opinions only. Never sends an order. |
 | Groq or other model key, `LLM_BASE_URL`, `LLM_MODEL_NAME` | MiroFish `.env` only | The swarm's mouth. For Groq the base is `https://api.groq.com/openai/v1`. |
 | `ZEP_API_KEY` | MiroFish `.env` only | The swarm's memory. Sign up at https://app.getzep.com/. There is no second database. |
 | `GEMINI_API_KEY` | not wired | Optional later, screen-only second opinion. Model id is `gemini-3.8-flash`. Not "Perseus". |

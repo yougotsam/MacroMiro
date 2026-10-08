@@ -1,3 +1,4 @@
+import { deskModel } from "../brain/model.ts";
 import type { MiroFishSimulationResult } from "./mirofish-client";
 
 export interface MarketContext {
@@ -62,7 +63,7 @@ export async function callXai(systemPrompt: string, userPrompt: string): Promise
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(4000),
     body: JSON.stringify({
-      model: "grok-4.5",
+      model: deskModel(),
       temperature: 0,
       messages: [
         { role: "system", content: systemPrompt },

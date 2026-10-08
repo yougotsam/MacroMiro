@@ -35,6 +35,8 @@ import { Route as ApiLiveSkillRouteImport } from './routes/api/live/skill'
 import { Route as ApiLiveSwarmRouteImport } from './routes/api/live/swarm'
 import { Route as ApiLiveTapeRouteImport } from './routes/api/live/tape'
 import { Route as ApiLiveTelegramRouteImport } from './routes/api/live/telegram'
+import { Route as ApiLiveSwarmFeedRouteImport } from './routes/api/live/swarm/feed'
+import { Route as ApiLiveSwarmStreamRouteImport } from './routes/api/live/swarm/stream'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -166,6 +168,16 @@ const ApiLiveTelegramRoute = ApiLiveTelegramRouteImport.update({
   path: '/api/live/telegram',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLiveSwarmFeedRoute = ApiLiveSwarmFeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
+  getParentRoute: () => ApiLiveSwarmRoute,
+} as any)
+const ApiLiveSwarmStreamRoute = ApiLiveSwarmStreamRouteImport.update({
+  id: '/stream',
+  path: '/stream',
+  getParentRoute: () => ApiLiveSwarmRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -191,9 +203,11 @@ export interface FileRoutesByFullPath {
   '/api/live/pyth': typeof ApiLivePythRoute
   '/api/live/scan': typeof ApiLiveScanRoute
   '/api/live/skill': typeof ApiLiveSkillRoute
-  '/api/live/swarm': typeof ApiLiveSwarmRoute
+  '/api/live/swarm': typeof ApiLiveSwarmRouteWithChildren
   '/api/live/tape': typeof ApiLiveTapeRoute
   '/api/live/telegram': typeof ApiLiveTelegramRoute
+  '/api/live/swarm/feed': typeof ApiLiveSwarmFeedRoute
+  '/api/live/swarm/stream': typeof ApiLiveSwarmStreamRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -219,9 +233,11 @@ export interface FileRoutesByTo {
   '/api/live/pyth': typeof ApiLivePythRoute
   '/api/live/scan': typeof ApiLiveScanRoute
   '/api/live/skill': typeof ApiLiveSkillRoute
-  '/api/live/swarm': typeof ApiLiveSwarmRoute
+  '/api/live/swarm': typeof ApiLiveSwarmRouteWithChildren
   '/api/live/tape': typeof ApiLiveTapeRoute
   '/api/live/telegram': typeof ApiLiveTelegramRoute
+  '/api/live/swarm/feed': typeof ApiLiveSwarmFeedRoute
+  '/api/live/swarm/stream': typeof ApiLiveSwarmStreamRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -248,9 +264,11 @@ export interface FileRoutesById {
   '/api/live/pyth': typeof ApiLivePythRoute
   '/api/live/scan': typeof ApiLiveScanRoute
   '/api/live/skill': typeof ApiLiveSkillRoute
-  '/api/live/swarm': typeof ApiLiveSwarmRoute
+  '/api/live/swarm': typeof ApiLiveSwarmRouteWithChildren
   '/api/live/tape': typeof ApiLiveTapeRoute
   '/api/live/telegram': typeof ApiLiveTelegramRoute
+  '/api/live/swarm/feed': typeof ApiLiveSwarmFeedRoute
+  '/api/live/swarm/stream': typeof ApiLiveSwarmStreamRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -281,6 +299,8 @@ export interface FileRouteTypes {
     | '/api/live/swarm'
     | '/api/live/tape'
     | '/api/live/telegram'
+    | '/api/live/swarm/feed'
+    | '/api/live/swarm/stream'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -309,6 +329,8 @@ export interface FileRouteTypes {
     | '/api/live/swarm'
     | '/api/live/tape'
     | '/api/live/telegram'
+    | '/api/live/swarm/feed'
+    | '/api/live/swarm/stream'
   id:
     | '__root__'
     | '/'
@@ -337,6 +359,8 @@ export interface FileRouteTypes {
     | '/api/live/swarm'
     | '/api/live/tape'
     | '/api/live/telegram'
+    | '/api/live/swarm/feed'
+    | '/api/live/swarm/stream'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -363,7 +387,7 @@ export interface RootRouteChildren {
   ApiLivePythRoute: typeof ApiLivePythRoute
   ApiLiveScanRoute: typeof ApiLiveScanRoute
   ApiLiveSkillRoute: typeof ApiLiveSkillRoute
-  ApiLiveSwarmRoute: typeof ApiLiveSwarmRoute
+  ApiLiveSwarmRoute: typeof ApiLiveSwarmRouteWithChildren
   ApiLiveTapeRoute: typeof ApiLiveTapeRoute
   ApiLiveTelegramRoute: typeof ApiLiveTelegramRoute
 }
@@ -552,8 +576,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLiveTelegramRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/live/swarm/feed': {
+      id: '/api/live/swarm/feed'
+      path: '/feed'
+      fullPath: '/api/live/swarm/feed'
+      preLoaderRoute: typeof ApiLiveSwarmFeedRouteImport
+      parentRoute: typeof ApiLiveSwarmRoute
+    }
+    '/api/live/swarm/stream': {
+      id: '/api/live/swarm/stream'
+      path: '/stream'
+      fullPath: '/api/live/swarm/stream'
+      preLoaderRoute: typeof ApiLiveSwarmStreamRouteImport
+      parentRoute: typeof ApiLiveSwarmRoute
+    }
   }
 }
+
+interface ApiLiveSwarmRouteChildren {
+  ApiLiveSwarmFeedRoute: typeof ApiLiveSwarmFeedRoute
+  ApiLiveSwarmStreamRoute: typeof ApiLiveSwarmStreamRoute
+}
+
+const ApiLiveSwarmRouteChildren: ApiLiveSwarmRouteChildren = {
+  ApiLiveSwarmFeedRoute: ApiLiveSwarmFeedRoute,
+  ApiLiveSwarmStreamRoute: ApiLiveSwarmStreamRoute,
+}
+
+const ApiLiveSwarmRouteWithChildren = ApiLiveSwarmRoute._addFileChildren(
+  ApiLiveSwarmRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -579,7 +631,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiLivePythRoute: ApiLivePythRoute,
   ApiLiveScanRoute: ApiLiveScanRoute,
   ApiLiveSkillRoute: ApiLiveSkillRoute,
-  ApiLiveSwarmRoute: ApiLiveSwarmRoute,
+  ApiLiveSwarmRoute: ApiLiveSwarmRouteWithChildren,
   ApiLiveTapeRoute: ApiLiveTapeRoute,
   ApiLiveTelegramRoute: ApiLiveTelegramRoute,
 }
