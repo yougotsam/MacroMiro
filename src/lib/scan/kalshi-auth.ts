@@ -62,18 +62,26 @@ export function signedPath(path: string) {
   return q === -1 ? path : path.slice(0, q);
 }
 
-function headers(method: string, path: string) {
-  const id = keyId();
-  const raw = pem();
-  if (!id || !raw.includes("PRIVATE KEY")) throw new Error("no Kalshi RSA key on disk");
-  const ts = String(Date.now());
-  const msg = `${ts}${method.toUpperCase()}${signedPath(path)}`;
-  const key = createPrivateKey(raw);
-  const sig = sign("sha256", Buffer.from(msg), {
+/** Kalshi keys are RSA (RSA-PSS SHA-256) or Ed25519 (Kalshi's default). Sign with whichever type the key is. */
+export function signKalshi(rawPem: string, msg: string) {
+  const key = createPrivateKey(rawPem);
+  if (key.asymmetricKeyType === "ed25519") {
+    return sign(null, Buffer.from(msg), key).toString("base64");
+  }
+  return sign("sha256", Buffer.from(msg), {
     key,
     padding: constants.RSA_PKCS1_PSS_PADDING,
     saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
   }).toString("base64");
+}
+
+function headers(method: string, path: string) {
+  const id = keyId();
+  const raw = pem();
+  if (!id || !raw.includes("PRIVATE KEY")) throw new Error("no Kalshi private key on disk");
+  const ts = String(Date.now());
+  const msg = `${ts}${method.toUpperCase()}${signedPath(path)}`;
+  const sig = signKalshi(raw, msg);
   return {
     Accept: "application/json",
     "Content-Type": "application/json",
