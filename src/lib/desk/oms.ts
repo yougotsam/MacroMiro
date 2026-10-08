@@ -117,22 +117,29 @@ export class Oms {
   }
 
   /**
-   * Worst case of sends whose outcome is still unknown (timed out / not yet found), plus every send from the
-   * last 20 s (Kalshi's portfolio endpoints lag a few seconds; double counting is the safe direction).
+   * Every send from the last 30 min that might be live (not rejected / not_found). The snapshot counts its worst
+   * case only while Kalshi does not list the client_order_id yet; once listed, Kalshi's own resting/fill numbers count.
    */
-  pendingWorst(now = Date.now()): number {
+  pendingIntents(now = Date.now()): Array<{ cid: string; ticker: string; worst: number }> {
     const last = new Map<string, JournalRow>();
     const intent = new Map<string, JournalRow>();
     for (const r of this.journal()) {
       last.set(r.cid, r);
       if (r.stage === "intent") intent.set(r.cid, r);
     }
-    let w = 0;
-    for (const [cid, r] of last) {
-      const recent = (r.stage === "sent" || r.stage === "found") && now - Date.parse(r.ts) < 20_000;
-      if (r.stage === "unknown" || r.stage === "intent" || recent) w += intent.get(cid)?.worst ?? 0;
+    const out: Array<{ cid: string; ticker: string; worst: number }> = [];
+    for (const [cid, i] of intent) {
+      const st = last.get(cid)?.stage;
+      if (st === "rejected" || st === "not_found") continue;
+      if (now - Date.parse(i.ts) > 30 * 60_000) continue;
+      out.push({ cid, ticker: i.ticker, worst: i.worst ?? 0 });
     }
-    return w;
+    return out;
+  }
+
+  /** Worst case of every send that might be live, ignoring what Kalshi already shows (upper bound, used in tests/status). */
+  pendingWorst(now = Date.now()): number {
+    return this.pendingIntents(now).reduce((a, x) => a + x.worst, 0);
   }
 
   /** Tickers with an order sent in the last `ms` (Kalshi's resting list can lag a fresh post). */

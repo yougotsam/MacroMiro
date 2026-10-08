@@ -104,6 +104,8 @@ export type KOrder = {
   remaining_count_fp?: string;
   fill_count_fp?: string;
   created_time?: string;
+  taker_fees_dollars?: string;
+  maker_fees_dollars?: string;
 };
 
 /** Ticker inside a desk client_order_id "mm1-<ticker>-<y|n>-<seq>". */
@@ -154,7 +156,8 @@ export function buildSnapshot(input: {
   shard2Cash: number;
   exchangeTradingActive: boolean;
   exchangeCheckedAt: number;
-  pendingWorst?: number;
+  /** OMS sends (persisted intents). Counted only while Kalshi doesn't list the client_order_id yet. */
+  pendingIntents?: Array<{ cid: string; worst: number }>;
   localOrdersPerTicker?: Record<string, number>;
 }): AccountSnapshot {
   const start = etDayStart(input.now);
@@ -168,12 +171,28 @@ export function buildSnapshot(input: {
     realized += pnl;
     settledToday.push({ ticker: s.ticker, pnl, settledMs: ms });
   }
-  let openWorst = 0;
+  // Open worst case per ticker = max(Kalshi position exposure + fees, filled cost + fees of desk orders on it).
+  // The order record shows a fill before /positions does, so the max covers the lag without double counting.
+  const settledTickers = new Set(input.settlements.map((x) => x.ticker));
+  const openBy = new Map<string, number>();
   for (const p of input.positions) {
     if (!desk(p.ticker)) continue;
     if (Math.abs(Number(p.position_fp ?? 0)) < 1e-9) continue;
-    openWorst += Math.abs(Number(p.market_exposure_dollars ?? 0)) + Number(p.fees_paid_dollars ?? 0);
+    openBy.set(p.ticker, Math.abs(Number(p.market_exposure_dollars ?? 0)) + Number(p.fees_paid_dollars ?? 0));
   }
+  const fillBy = new Map<string, number>();
+  for (const o of input.ordersToday) {
+    if (!desk(o.ticker) || settledTickers.has(o.ticker) || !(o.client_order_id ?? "").startsWith("mm1-")) continue;
+    const filled = Number(o.fill_count_fp ?? 0);
+    if (!(filled > 0)) continue;
+    const cost = filled * sidePrice(o) + Number(o.taker_fees_dollars ?? 0) + Number(o.maker_fees_dollars ?? 0);
+    fillBy.set(o.ticker, (fillBy.get(o.ticker) ?? 0) + cost);
+  }
+  let openWorst = 0;
+  for (const t of new Set([...openBy.keys(), ...fillBy.keys()])) openWorst += Math.max(openBy.get(t) ?? 0, fillBy.get(t) ?? 0);
+  const known = new Set(input.ordersToday.map((o) => o.client_order_id).filter(Boolean));
+  let pendingWorst = 0;
+  for (const i of input.pendingIntents ?? []) if (!known.has(i.cid)) pendingWorst += i.worst;
   let restWorst = 0;
   for (const o of input.resting) {
     if (!desk(o.ticker)) continue;
@@ -193,7 +212,7 @@ export function buildSnapshot(input: {
     realizedToday: Number(realized.toFixed(4)),
     openWorst: Number(openWorst.toFixed(4)),
     restWorst: Number(restWorst.toFixed(4)),
-    pendingWorst: Number((input.pendingWorst ?? 0).toFixed(4)),
+    pendingWorst: Number(pendingWorst.toFixed(4)),
     shard2Cash: input.shard2Cash,
     settledToday,
     ordersPerTicker,
@@ -205,7 +224,7 @@ export function buildSnapshot(input: {
 /** Live: the account's truth from Kalshi (settlements, positions, resting orders, today's orders, shard-2 cash). */
 export type Position = { ticker: string; position_fp?: string; market_exposure_dollars?: string; fees_paid_dollars?: string };
 
-export async function fetchSnapshot(ex: { tradingActive: boolean; at: number }, local: { pendingWorst: number; perTicker: Record<string, number> }): Promise<{ snap: AccountSnapshot; resting: KOrder[]; positions: Position[] }> {
+export async function fetchSnapshot(ex: { tradingActive: boolean; at: number }, local: { pendingIntents: Array<{ cid: string; worst: number }>; perTicker: Record<string, number> }): Promise<{ snap: AccountSnapshot; resting: KOrder[]; positions: Position[] }> {
   const now = Date.now();
   const start = etDayStart(now);
   const minTs = Math.floor(start / 1000) - 3600;
@@ -228,7 +247,7 @@ export async function fetchSnapshot(ex: { tradingActive: boolean; at: number }, 
     shard2Cash,
     exchangeTradingActive: ex.tradingActive,
     exchangeCheckedAt: ex.at,
-    pendingWorst: local.pendingWorst,
+    pendingIntents: local.pendingIntents,
     localOrdersPerTicker: local.perTicker,
   });
   return { snap, resting: resting.filter((o) => desk(o.ticker)), positions: positions.filter((p) => desk(p.ticker) && Math.abs(Number(p.position_fp ?? 0)) > 1e-9) };

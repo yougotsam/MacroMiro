@@ -237,6 +237,7 @@ describe("OMS idempotency", () => {
     expect(r.why).toContain("not re-sent");
     expect(posts).toBe(1);
     expect(oms.pendingWorst()).toBeCloseTo(1, 6);
+    expect(oms.pendingIntents().map((x) => x.worst)).toEqual([1]);
     visible = true;
     await oms.reconcilePending();
     expect(posts).toBe(1);
@@ -432,7 +433,10 @@ describe("account snapshot (Kalshi records → day P/L)", () => {
       shard2Cash: 30,
       exchangeTradingActive: true,
       exchangeCheckedAt: now,
-      pendingWorst: 0.5,
+      pendingIntents: [
+        { cid: "mm1-KXSOL15M-26OCT081100-00-y-1", worst: 2 }, // Kalshi lists it → its own numbers count, not this
+        { cid: "mm1-KXBTC15M-26OCT081100-00-n-1", worst: 0.5 }, // not listed yet → counts
+      ],
       localOrdersPerTicker: { "KXSOL15M-26OCT081100-00": 2 },
     });
     expect(s.realizedToday).toBeCloseTo(3 - 2.1 - 0.05 - 1.5 - 0.03, 6);
@@ -458,6 +462,23 @@ describe("OMS bookkeeping", () => {
     await oms.submit(intent(), snap());
     expect(oms.recentTickers(Date.now()).has(T)).toBe(true);
     expect(oms.recentTickers(Date.now() + 25_000).has(T)).toBe(false);
+  });
+});
+
+describe("snapshot does not double count a fresh fill", () => {
+  it("fill on the order record before /positions shows it counts once; listed sends are not pending", () => {
+    const now = Date.parse("2026-10-08T15:00:00Z");
+    const T2 = "KXETH15M-26OCT081115-15";
+    const order = { order_id: "o", client_order_id: `mm1-${T2}-y-1`, ticker: T2, status: "executed", outcome_side: "yes", yes_price_dollars: "0.7100", fill_count_fp: "4.00", remaining_count_fp: "0.00" };
+    const base = { now, settlements: [], resting: [], shard2Cash: 30, exchangeTradingActive: true, exchangeCheckedAt: now, pendingIntents: [{ cid: `mm1-${T2}-y-1`, worst: 2.84 }] };
+    const lag = buildSnapshot({ ...base, positions: [], ordersToday: [order] });
+    expect(lag.openWorst).toBeCloseTo(2.84, 6);
+    expect(lag.pendingWorst).toBe(0);
+    const both = buildSnapshot({ ...base, positions: [{ ticker: T2, position_fp: "4.00", market_exposure_dollars: "2.84", fees_paid_dollars: "0" }], ordersToday: [order] });
+    expect(both.openWorst).toBeCloseTo(2.84, 6);
+    const unseen = buildSnapshot({ ...base, positions: [], ordersToday: [] });
+    expect(unseen.pendingWorst).toBeCloseTo(2.84, 6);
+    expect(dayWorstOf(unseen)).toBeCloseTo(-2.84, 6);
   });
 });
 

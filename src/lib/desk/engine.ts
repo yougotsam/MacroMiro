@@ -212,7 +212,7 @@ export class Engine {
       let resting: KOrder[] = [];
       let positions: Position[] = [];
       try {
-        const r = await fetchSnapshot(this.ex, { pendingWorst: this.oms.pendingWorst(now), perTicker: this.oms.perTicker() });
+        const r = await fetchSnapshot(this.ex, { pendingIntents: this.oms.pendingIntents(now), perTicker: this.oms.perTicker() });
         this.snapshot = r.snap;
         resting = r.resting;
         positions = r.positions;
