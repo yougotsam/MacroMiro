@@ -7,9 +7,9 @@
 export type BrainId = "grok" | "gemini";
 export const BRAINS: readonly BrainId[] = ["grok", "gemini"] as const;
 
-/** Default desk brain. Change with DESK_MODEL, not by editing call sites. */
+/** xAI brain (second / fallback). Change with DESK_MODEL, not by editing call sites. */
 export const DESK_MODEL_DEFAULT = "grok-4.7";
-/** Second brain. Change with GEMINI_MODEL. */
+/** Primary brain (default for Ask). Change with GEMINI_MODEL. */
 export const GEMINI_MODEL_DEFAULT = "gemini-3.8-flash";
 
 const MODEL_ID = /^[a-z0-9][a-z0-9._-]{1,63}$/i;
@@ -38,10 +38,17 @@ export function brainReady(brain: BrainId): boolean {
   return typeof key === "string" && key.trim().length >= 12;
 }
 
-/** DESK_BRAIN picks the default for Ask (grok unless set to gemini and the Gemini key is present). */
+/**
+ * Default brain for Ask. Gemini is primary (DESK_BRAIN unset or "gemini"); grok is second.
+ * DESK_BRAIN=grok makes grok the default. If the wanted brain's key is missing, fall back to the other one
+ * when its key is present; with no keys at all, answer "grok" (the caller then shows local rules).
+ */
 export function defaultBrain(): BrainId {
-  const want = (process.env.DESK_BRAIN ?? "").trim().toLowerCase();
-  if (want === "gemini" && brainReady("gemini")) return "gemini";
+  const raw = (process.env.DESK_BRAIN ?? "").trim().toLowerCase();
+  const want: BrainId = raw === "grok" || raw === "xai" ? "grok" : "gemini";
+  const other: BrainId = want === "gemini" ? "grok" : "gemini";
+  if (brainReady(want)) return want;
+  if (brainReady(other)) return other;
   return "grok";
 }
 

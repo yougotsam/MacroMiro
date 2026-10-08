@@ -78,11 +78,20 @@ describe("brains are words, not orders", () => {
       process.env.DESK_MODEL = "bad model; rm -rf";
       assert.equal(brainModel("grok"), "grok-4.7");
       delete process.env.GEMINI_API_KEY;
+      process.env.XAI_API_KEY = "test-xai-not-real-000";
       process.env.DESK_BRAIN = "gemini";
       assert.equal(brainReady("gemini"), false);
-      assert.equal(defaultBrain(), "grok");
+      assert.equal(defaultBrain(), "grok", "gemini key missing -> fall back to grok");
       process.env.GEMINI_API_KEY = "test-key-not-real-000";
-      assert.equal(defaultBrain(), "gemini");
+      assert.equal(defaultBrain(), "gemini", "gemini is primary when its key is present");
+      delete process.env.DESK_BRAIN;
+      assert.equal(defaultBrain(), "gemini", "unset DESK_BRAIN -> gemini primary");
+      process.env.DESK_BRAIN = "grok";
+      assert.equal(defaultBrain(), "grok", "DESK_BRAIN=grok makes grok the default");
+      delete process.env.XAI_API_KEY;
+      assert.equal(defaultBrain(), "gemini", "grok key missing -> fall back to gemini");
+      delete process.env.GEMINI_API_KEY;
+      assert.equal(defaultBrain(), "grok", "no keys -> grok name, caller shows local rules");
     } finally {
       for (const [k, v] of [["XAI_API_KEY", save.x], ["GEMINI_API_KEY", save.g], ["DESK_BRAIN", save.d], ["DESK_MODEL", save.m]] as const) {
         if (v == null) delete process.env[k];
