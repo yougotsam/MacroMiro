@@ -2,7 +2,7 @@ import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { pushInbox, type InboxEvent } from "@/lib/printgate/inbox.server";
 
 const API = "https://api.firecrawl.dev/v2";
-const KEY_FILES = ["/workspace/.grok/secrets/fc", "/tmp/fc.key"];
+const KEY_FILES = ["/workspace/.grok/secrets/fc"];
 
 function key() {
   const env = (process.env.FIRECRAWL_API_KEY ?? "").trim();
@@ -157,4 +157,44 @@ export async function searchWeb(query: string) {
   });
   const json = (await res.json().catch(() => ({}))) as { data?: unknown[]; error?: string };
   return { ok: res.ok, error: json.error || "", data: json.data ?? [] };
+}
+
+/** Firecrawl news search (last day by default). Titles and links only; nothing here can trade. */
+export async function searchNews(query: string, limit = 5, tbs = "qdr:d") {
+  if (!firecrawlReady()) return { ok: false as const, error: "no key", items: [] as { title: string; url: string; date: string }[] };
+  const res = await fetch(`${API}/search`, {
+    method: "POST",
+    signal: AbortSignal.timeout(20000),
+    headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, limit, sources: ["news"], tbs }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { data?: { news?: { title?: string; url?: string; date?: string }[]; web?: { title?: string; url?: string }[] }; error?: string };
+  const rows = [...(json.data?.news ?? []), ...(json.data?.web ?? [])];
+  const items = rows
+    .filter((r) => typeof r.url === "string" && /^https?:\/\//.test(r.url))
+    .map((r) => ({ title: String(r.title ?? "").slice(0, 180), url: String(r.url), date: String((r as { date?: string }).date ?? "") }));
+  return { ok: res.ok, error: res.ok ? "" : json.error || `search http ${res.status}`, items };
+}
+
+/** One article as main-content markdown (cached 10 minutes). */
+export async function scrapeArticle(url: string): Promise<{ ok: true; markdown: string; title: string } | { ok: false; error: string }> {
+  const hit = pageCache.get(`article:${url}`);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return { ok: true, markdown: hit.markdown, title: "" };
+  if (!firecrawlReady()) return { ok: false, error: "no key" };
+  let res: Response;
+  try {
+    res = await fetch(`${API}/scrape`, {
+      method: "POST",
+      signal: AbortSignal.timeout(45000),
+      headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  const json = (await res.json().catch(() => ({}))) as { data?: { markdown?: string; metadata?: { title?: string } }; error?: string };
+  const markdown = json.data?.markdown ?? "";
+  if (!res.ok || !markdown) return { ok: false, error: json.error || `scrape http ${res.status}` };
+  pageCache.set(`article:${url}`, { at: Date.now(), markdown });
+  return { ok: true, markdown, title: String(json.data?.metadata?.title ?? "") };
 }

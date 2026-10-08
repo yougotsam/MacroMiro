@@ -34,7 +34,7 @@ Every new order pays the ask and cancels if it does not fill. A pass on one cont
 
 ## Spark
 
-Spark does not send the order. The model is `spark-2`. It reads the Fed, jobs, and inflation calendars. Those dates open the catalyst shot in rule 5. They do not pick up or down.
+Spark does not send the order. The model is `spark-2`. It reads the Fed, jobs, and inflation calendars for today's date and cites up to three headlines. Its card is shown on screen and seeds the MiroFish Knock. It does not open the catalyst shot: that window comes from the fixed release list in `src/lib/scan/blackout.ts`, and today it only labels the ticket. It does not pick up or down.
 
 ## Perps
 

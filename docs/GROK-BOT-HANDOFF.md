@@ -19,11 +19,11 @@ Perpetuals are Kalshi margin only. They are not Hyperliquid. Kelly sizing is not
 
 ## What is not running
 
-MiroFish is a phone, not the town. The phone is `src/lib/intel/mirofish.ts`. It calls port 5001. The town is a separate app: https://github.com/666ghj/MiroFish. Its folders were never copied into this repo. The Swarm tab only shows status. It does not send an order.
+MiroFish is a phone, not the town. The phone is `src/lib/intel/mirofish.ts`. It calls port 5001. The town is a separate app: https://github.com/666ghj/MiroFish, cloned beside this repo at `/workspace/desk/MiroFish`, not inside it. The Swarm tab shows status and the live agent feed. It does not send an order.
 
 Zep's MCP does not replace that app. The docs door (https://docs-mcp.getzep.com/mcp) only reads Zep's manual. The context door (https://api.getzep.com/mcp) only opens a notebook that already has notes. Neither one runs a simulation.
 
-Firecrawl and Alexandria already pull headlines. A headline is not a vote.
+Firecrawl pulls headlines (Spark card every 90 minutes at most, dated with the real day) and the Knock's seed articles. Alexandria is a saved file nothing refreshes. A headline is not a vote.
 
 The Ask button has two brains: `gemini-3.8-flash` (primary/default, `GEMINI_MODEL`, needs `GEMINI_API_KEY`, `DESK_BRAIN=gemini`) and `grok-4.7` (second, `DESK_MODEL`, needs `XAI_API_KEY`). Pick one with `brain: grok|gemini|both`. If the default brain's key is missing, Ask falls back to the other brain; with no keys it shows the written rules. Brains write opinions only; `src/lib/brain/brain.test.ts` proves no brain reaches an order or `edge.ts`. There is no OpenAI package and no `server/lib` folder.
 
@@ -44,9 +44,9 @@ These stay out of git and out of chat logs.
 | Kalshi key id and private key | `.grok/secrets` on the Bot computer, same layout as this repo | Live orders. Already used by this desk. The owner copies them. |
 | `XAI_API_KEY` | env on the Bot computer | Ask button, second brain (grok). Model is `DESK_MODEL` (default `grok-4.7`) in `src/lib/brain/model.ts`. |
 | `GEMINI_API_KEY` | env on the Bot computer | Ask button, primary brain `gemini-3.8-flash` (`DESK_BRAIN=gemini`). Opinions only. Never sends an order. |
-| Groq or other model key, `LLM_BASE_URL`, `LLM_MODEL_NAME` | MiroFish `.env` only | The swarm's mouth. For Groq the base is `https://api.groq.com/openai/v1`. |
+| `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL_NAME` | MiroFish `.env` only | The swarm's brain. Now Gemini `gemini-3.8-flash` via `https://generativelanguage.googleapis.com/v1beta/openai/` (fallback `grok-4.7` via `https://api.x.ai/v1`). See `docs/MIROFISH.md`. |
 | `ZEP_API_KEY` | MiroFish `.env` only | The swarm's memory. Sign up at https://app.getzep.com/. There is no second database. |
-| Firecrawl key | already expected as `.grok/secrets/fc` | Headlines only. |
+| Firecrawl key | `/workspace/.grok/secrets/fc` (600), loaded by `/workspace/desk/run-desk.sh` | Spark card, intel clerks, and the Knock seed articles. Display and swarm context only; never an order. |
 
 ## MiroFish, when the owner wants it
 

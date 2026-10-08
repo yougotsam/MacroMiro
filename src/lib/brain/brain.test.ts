@@ -137,6 +137,40 @@ describe("brains are words, not orders", () => {
     assert.deepEqual(runners.map(rel), [], "perp-run.server.ts (model debate before placePerpOrder) must stay unwired");
   });
 
+  it("news (Firecrawl, Spark, intel clerks, Knock seed) and the swarm are context, never orders", () => {
+    const NEWS = [
+      "lib/live/firecrawl.server.ts",
+      "lib/live/spark.ts",
+      "lib/live/spark.server.ts",
+      "lib/live/catalyst.server.ts",
+      "lib/live/alexandria.ts",
+      "lib/intel/run.server.ts",
+      "lib/intel/workflows.ts",
+      "lib/intel/seed.server.ts",
+      "lib/intel/mirofish.ts",
+    ].map((f) => join(SRC, f));
+    for (const f of NEWS) {
+      assert.ok(existsSync(f), `${rel(f)} exists`);
+      assert.doesNotMatch(TEXT.get(f) ?? "", SINK, `${rel(f)} calls an order/edge function`);
+    }
+    const PERP_RUN = join(SRC, "lib/scan/perp-run.server.ts");
+    const sinks = FILES.filter((f) => SINK.test(TEXT.get(f) ?? ""));
+    for (const f of sinks) {
+      const reach = closure(f);
+      // perp-run.server.ts is DEAD (no importer, asserted above) and documented to read the MiroFish file.
+      // It still may not reach Firecrawl, Spark, the clerks, or the seed builder.
+      const banned = f === PERP_RUN ? NEWS.filter((n) => !n.endsWith("lib/intel/mirofish.ts")) : NEWS;
+      for (const n of banned) assert.ok(!reach.has(n), `${rel(f)} can reach ${rel(n)}`);
+    }
+    for (const f of ["lib/scan/edge.ts", "lib/scan/kalshi.ts", "lib/scan/kalshi-order.ts", "lib/envelope/exec.ts", "lib/envelope/heart.server.ts"]) {
+      const t = readFileSync(join(SRC, f), "utf8");
+      assert.doesNotMatch(t, /firecrawl|spark\.server|runSparkBrief|mirofish|seed\.server|api\.firecrawl\.dev/i, `${f} names a news or swarm source`);
+    }
+    // Only the swarm route runs the seed builder (Firecrawl article fetch for the Knock).
+    const seedUsers = FILES.filter((f) => importsOf(f).includes(join(SRC, "lib/intel/seed.server.ts")));
+    assert.deepEqual(seedUsers.map(rel), ["routes/api/live/swarm.ts"]);
+  });
+
   it("Ask caps the screen size at $5 and says it sends no orders", () => {
     const ask = readFileSync(join(SRC, "routes/api/live/ask.ts"), "utf8");
     assert.match(ask, /MAX_TICKET_USD = 5/);

@@ -9,7 +9,11 @@ const DIR = mkdtempSync(join(tmpdir(), "miro-test-"));
 process.env.MIROFISH_DATA_DIR = DIR;
 process.env.MIROFISH_POLL_MS = "100";
 
-const { probabilityFromReport, maxRounds, knockMirofish, miroSnapshot, swarmFeed, readMirofish } = await import("./mirofish.ts");
+const { probabilityFromReport, maxRounds, knockMirofish, miroSnapshot, swarmFeed, readMirofish, freshSparkCard } = await import("./mirofish.ts");
+
+/** A Spark card as spark.server.ts writes it. hoursOld > 6 is expired. */
+const sparkFile = (event: string, hoursOld = 0, status = "completed") =>
+  JSON.stringify({ status, at: new Date(Date.now() - hoursOld * 3_600_000).toISOString(), card: { event, why: `${event} why`, quote: "", bias: "unclear", asset: "both" } });
 
 describe("mirofish report", () => {
   it("reads only an explicitly labeled probability", () => {
@@ -39,14 +43,29 @@ describe("mirofish report", () => {
   });
 });
 
+describe("the knock seed honors the 6 h Spark expiry", () => {
+  it("an expired or unfinished card is no seed, and the knock refuses to start", () => {
+    writeFileSync(join(DIR, "spark-latest.json"), sparkFile("Old print", 7));
+    assert.equal(freshSparkCard(), null);
+    const out = knockMirofish();
+    assert.equal(out.started, false);
+    assert.match(out.reason, /no fresh Spark card/);
+    writeFileSync(join(DIR, "spark-latest.json"), sparkFile("Half print", 0, "processing"));
+    assert.equal(freshSparkCard(), null);
+    writeFileSync(join(DIR, "spark-latest.json"), sparkFile("Fresh print", 1));
+    assert.equal(freshSparkCard()?.card?.event, "Fresh print");
+  });
+});
+
 describe("one knock walks every stage on its own", () => {
   let server: Server;
   const seen: string[] = [];
+  let ontologyBody = "";
   let startBody: Record<string, unknown> = {};
   let runPolls = 0;
 
   before(async () => {
-    writeFileSync(join(DIR, "spark-latest.json"), JSON.stringify({ card: { event: "Test print" } }));
+    writeFileSync(join(DIR, "spark-latest.json"), sparkFile("Test print"));
     server = createServer((req, res) => {
       let raw = "";
       req.on("data", (c) => (raw += c));
@@ -57,7 +76,10 @@ describe("one knock walks every stage on its own", () => {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({ success: true, data }));
         };
-        if (url === "/api/graph/ontology/generate") return ok({ project_id: "proj_1" });
+        if (url === "/api/graph/ontology/generate") {
+          ontologyBody = raw;
+          return ok({ project_id: "proj_1" });
+        }
         if (url === "/api/graph/build") return ok({ project_id: "proj_1", task_id: "task_g" });
         if (url === "/api/graph/task/task_g") return ok({ status: "completed", progress: 100, result: { graph_id: "g1" } });
         if (url === "/api/simulation/create") return ok({ simulation_id: "sim_1" });
@@ -92,7 +114,12 @@ describe("one knock walks every stage on its own", () => {
 
   it("returns at once, then reaches done with the labeled probability and max_rounds <= 40", async () => {
     const t0 = Date.now();
-    const out = knockMirofish();
+    const seeder = async (headline: string) => ({
+      text: `# seed\nEvent: ${headline}\n## Article 1: Fed minutes\nSource: https://example.com/a\nARTICLE-BODY-MARKER`,
+      sources: [{ title: "Fed minutes", url: "https://example.com/a" }],
+      from: "firecrawl" as const,
+    });
+    const out = knockMirofish({ seeder });
     assert.equal(out.started, true);
     assert.ok(Date.now() - t0 < 200, "knock must not wait on the town");
     const second = knockMirofish();
@@ -108,6 +135,10 @@ describe("one knock walks every stage on its own", () => {
     assert.ok(seen.includes("POST /api/simulation/prepare/status"));
     assert.ok(seen.includes("POST /api/report/generate/status"));
     assert.equal(readMirofish()?.probability, 0.64);
+    assert.match(ontologyBody, /ARTICLE-BODY-MARKER/, "the article text, not just the headline, is uploaded");
+    assert.match(ontologyBody, /filename="seed\.md"/);
+    assert.equal(snap.seed.from, "firecrawl");
+    assert.deepEqual(snap.seed.sources, ["https://example.com/a"]);
     const state = JSON.parse(readFileSync(join(DIR, "mirofish-state.json"), "utf8"));
     assert.equal(state.simulationId, "sim_1");
     const again = knockMirofish();
@@ -125,7 +156,7 @@ describe("one knock walks every stage on its own", () => {
   it("a down town is an error with a null probability, not a guess", async () => {
     server.close();
     process.env.MIROFISH_URL = "http://127.0.0.1:9";
-    writeFileSync(join(DIR, "spark-latest.json"), JSON.stringify({ card: { event: "Another print" } }));
+    writeFileSync(join(DIR, "spark-latest.json"), sparkFile("Another print"));
     process.env.MIROFISH_MAX_MINUTES = "5";
     const out = knockMirofish();
     assert.equal(out.started, true);
@@ -142,7 +173,7 @@ describe("a finished round loop that never logs simulation_end is closed, then r
   before(async () => {
     const dir = mkdtempSync(join(tmpdir(), "miro-test2-"));
     process.env.MIROFISH_DATA_DIR = dir;
-    writeFileSync(join(dir, "spark-latest.json"), JSON.stringify({ card: { event: "Idle env print" } }));
+    writeFileSync(join(dir, "spark-latest.json"), sparkFile("Idle env print"));
     writeFileSync(
       join(dir, "mirofish-state.json"),
       JSON.stringify({ knockId: "kx", headline: "Idle env print", stage: "run", projectId: "p", graphId: "g", simulationId: "sim_2", runStarted: true, maxRounds: 15, startedAt: Date.now() }),

@@ -27,8 +27,8 @@ visitors.
 
 The key unlocks the **full API surface**, not just chat:
 
-- **Chat / LLM** — **latest model: `grok-4.5`**; default to it unless the
-  user asks otherwise.
+- **Chat / LLM** — this desk uses **`grok-4.7`** (`DESK_MODEL`, `src/lib/brain/model.ts`);
+  default to it unless the user asks otherwise.
 - **Imagine (images & video)** — generate and edit images, generate video,
   at runtime inside the app.
 - **Voice** — text-to-speech with expressive voices (and transcription).
@@ -75,7 +75,7 @@ export const askGrok = createServerFn({ method: "POST" })
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "grok-4.5",
+        model: "grok-4.7",
         messages: [{ role: "user", content: data.prompt }],
       }),
     });

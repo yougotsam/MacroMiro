@@ -1,13 +1,7 @@
 #!/bin/sh
 set -eu
 cd /workspace
-if [ -r /tmp/fc.key ]; then
-  mkdir -p .grok/secrets
-  cp /tmp/fc.key .grok/secrets/fc
-  chmod 600 .grok/secrets/fc 2>/dev/null || true
-  FIRECRAWL_API_KEY="$(cat /tmp/fc.key)"
-  export FIRECRAWL_API_KEY
-elif [ -r .grok/secrets/fc ]; then
+if [ -r .grok/secrets/fc ]; then
   FIRECRAWL_API_KEY="$(cat .grok/secrets/fc)"
   export FIRECRAWL_API_KEY
 fi

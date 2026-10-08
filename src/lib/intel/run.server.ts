@@ -221,7 +221,12 @@ function fold(name: WorkflowName, file: IntelFile, job: { status: string; data: 
 export async function armClerks() {
   const names = ["hunter", "verify", "contradict", "analogue"] as const;
   for (const name of names) {
-    const run = readRun(name);
+    let run = readRun(name);
+    // Collect a finished job before judging it. Without this, a job that completed between
+    // 30-minute ticks was cancelled as "timed out" and restarted, spending credits twice.
+    if (run.record.phase === "working" && run.record.sparkJobIds[0]) {
+      run = await refreshInvestigation(name).catch(() => run);
+    }
     const age = Date.now() - Date.parse(run.record.discoveredAt);
     if (run.record.sparkJobIds.length > 0 && Number.isFinite(age) && age < 6 * 60 * 60 * 1000 && run.record.phase !== "failed") continue;
     await beginInvestigation(name);

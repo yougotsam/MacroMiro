@@ -8,7 +8,9 @@ import { join } from "node:path";
  * This desk does not substitute DuckDB, Supabase, or Notion.
  *
  * One Knock walks every step on its own in the background:
- *   ontology -> graph -> create -> prepare -> run (<= 40 rounds) -> report -> done
+ *   seed -> ontology -> graph -> create -> prepare -> run (<= 40 rounds) -> report -> done
+ * The seed is the fresh (< 6 h) Spark card plus the article text Firecrawl fetched for it
+ * (src/lib/intel/seed.server.ts, passed in by the swarm route). With no seeder it falls back to the card text.
  * State is saved after every step, so a desk restart resumes the same run.
  * Nothing here is awaited by the heart, the scan, or any order path. The desk never waits on the swarm.
  * Every endpoint below was checked against MiroFish/backend/app/api/{graph,simulation,report}.py.
@@ -21,6 +23,9 @@ const file = (name: string) => join(dataDir(), name);
 const FILE = () => file("mirofish-latest.json");
 const STATE = () => file("mirofish-state.json");
 const SPARK = () => file("spark-latest.json");
+const SEED = () => file("mirofish-seed.md");
+/** A Spark card older than this is expired (same rule as readSpark in spark.server.ts). */
+export const SPARK_FRESH_MS = 6 * 60 * 60 * 1000;
 
 /** README: keep runs under 40 rounds. They spend money. */
 export const MAX_ROUNDS_CAP = 40;
@@ -32,13 +37,14 @@ export function maxRounds(raw: string | undefined = process.env.MIROFISH_MAX_ROU
   return Math.min(MAX_ROUNDS_CAP, n);
 }
 
-export type MiroStage = "idle" | "ontology" | "graph" | "create" | "prepare" | "run" | "report" | "done" | "error";
-const ACTIVE: MiroStage[] = ["ontology", "graph", "create", "prepare", "run", "report"];
+export type MiroStage = "idle" | "seed" | "ontology" | "graph" | "create" | "prepare" | "run" | "report" | "done" | "error";
+const ACTIVE: MiroStage[] = ["seed", "ontology", "graph", "create", "prepare", "run", "report"];
 /** Rough share of the whole knock each stage covers, for the progress bar. */
 const BAND: Record<MiroStage, [number, number]> = {
   idle: [0, 0],
-  ontology: [0, 10],
-  graph: [10, 30],
+  seed: [0, 4],
+  ontology: [4, 12],
+  graph: [12, 30],
   create: [30, 32],
   prepare: [32, 50],
   run: [50, 85],
@@ -55,9 +61,16 @@ export type MiroRead = {
   stage: string;
 };
 
+/** What the swarm reads. text goes to MiroFish as seed.md. */
+export type KnockSeed = { text: string; sources: { title: string; url: string }[]; from: "firecrawl" | "spark-card" };
+export type Seeder = (headline: string) => Promise<KnockSeed>;
+
 export type MiroState = {
   knockId: string;
   headline: string;
+  seedFrom: string;
+  seedChars: number;
+  seedSources: string[];
   stage: MiroStage;
   failedAt: string;
   projectId: string;
@@ -88,6 +101,9 @@ export type MiroState = {
 const EMPTY: MiroState = {
   knockId: "",
   headline: "",
+  seedFrom: "",
+  seedChars: 0,
+  seedSources: [],
   stage: "idle",
   failedAt: "",
   projectId: "",
@@ -205,6 +221,7 @@ export function miroSnapshot() {
     url: base(),
     knockId: s.knockId,
     headline: s.headline,
+    seed: { from: s.seedFrom, chars: s.seedChars, sources: s.seedSources },
     stage: s.stage,
     running: ACTIVE.includes(s.stage),
     failedAt: s.failedAt,
@@ -238,14 +255,45 @@ export async function probeMirofish(): Promise<{ up: boolean; url: string; detai
   }
 }
 
-function sparkHeadline() {
+type SparkFile = {
+  status?: string;
+  at?: string;
+  card?: { event?: string; why?: string; quote?: string; bias?: string; asset?: string; probability?: number | null } | null;
+};
+
+/** The Spark card only while it is fresh: completed and under 6 h old. An expired card is no seed. */
+export function freshSparkCard(now = Date.now()): (SparkFile & { at: string }) | null {
   try {
-    if (!existsSync(SPARK())) return "";
-    const raw = JSON.parse(readFileSync(SPARK(), "utf8")) as { card?: { event?: string; why?: string } };
-    return (raw.card?.event || raw.card?.why || "").trim();
+    if (!existsSync(SPARK())) return null;
+    const raw = JSON.parse(readFileSync(SPARK(), "utf8")) as SparkFile;
+    const at = Date.parse(raw.at ?? "");
+    if (!Number.isFinite(at) || now - at > SPARK_FRESH_MS) return null;
+    if (raw.status && raw.status !== "completed") return null;
+    if (!raw.card || !(raw.card.event || raw.card.why)) return null;
+    return raw as SparkFile & { at: string };
   } catch {
-    return "";
+    return null;
   }
+}
+
+function sparkHeadline() {
+  const raw = freshSparkCard();
+  return (raw?.card?.event || raw?.card?.why || "").trim();
+}
+
+/** Fallback seed: the card's own words (event, why, quote). Used only when no seeder ran. */
+export function cardSeed(headline: string): KnockSeed {
+  const raw = freshSparkCard();
+  const c = raw?.card ?? {};
+  const lines = [
+    `# Seed for this simulation`,
+    `Spark card (Firecrawl, ${raw?.at ?? "time unknown"})`,
+    `Event: ${c.event || headline}`,
+    c.why ? `Why: ${c.why}` : "",
+    c.quote ? `Quote: ${c.quote}` : "",
+    c.bias ? `Bias on the page: ${c.bias}` : "",
+  ].filter(Boolean);
+  return { text: lines.join("\n"), sources: [], from: "spark-card" };
 }
 
 class TownError extends Error {
@@ -285,9 +333,10 @@ async function call(path: string, init: RequestInit & { timeoutMs: number }): Pr
 const json = (body: unknown) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
-function requirement(headline: string) {
+function requirement(headline: string, articles = 0) {
   return (
     `Seed headline: ${headline}\n` +
+    (articles > 0 ? `The attached seed document holds the Spark card and ${articles} news articles fetched today. Build the world from those articles.\n` : "") +
     "Question: after this headline, does the next move in gold and bitcoin continue in the same direction over the next few hours? " +
     "Simulate how traders and observers react. " +
     "The report MUST end with one line in exactly this form: `Probability: NN%` where NN is the share (0-100) of the simulated crowd " +
@@ -300,13 +349,37 @@ const POLL_MS = () => Math.max(100, Number(process.env.MIROFISH_POLL_MS) || 5000
 /** One step of the state machine. Returns how long to wait before the next step. */
 export async function stepMirofish(s: MiroState): Promise<number> {
   switch (s.stage) {
+    case "seed": {
+      const seeder = g.__miroSeeder;
+      let seed: KnockSeed;
+      if (seeder) {
+        try {
+          seed = await seeder(s.headline);
+        } catch (e) {
+          seed = cardSeed(s.headline);
+          s.message = `article fetch failed, seeding from the card only (${e instanceof Error ? e.message : String(e)})`.slice(0, 300);
+        }
+      } else {
+        seed = cardSeed(s.headline);
+      }
+      if (!seed.text.trim()) seed = cardSeed(s.headline);
+      mkdirSync(dataDir(), { recursive: true });
+      writeAtomic(SEED(), seed.text);
+      s.seedFrom = seed.from;
+      s.seedChars = seed.text.length;
+      s.seedSources = seed.sources.map((x) => x.url);
+      s.stage = "ontology";
+      s.stageProgress = 0;
+      return 0;
+    }
     case "ontology": {
       // graph.py generate_ontology: multipart, LLM call, ~40s+. Returns data.project_id.
-      s.message = "reading the headline into an ontology (one LLM call)";
+      s.message = `reading the seed (${s.seedChars || s.headline.length} chars) into an ontology (one LLM call)`;
+      const seedText = s.seedChars > 0 && existsSync(SEED()) ? readFileSync(SEED(), "utf8") : s.headline;
       const form = new FormData();
-      form.append("simulation_requirement", requirement(s.headline));
+      form.append("simulation_requirement", requirement(s.headline, s.seedSources.length));
       form.append("project_name", `macromiro-${s.knockId}`);
-      form.append("files", new Blob([s.headline], { type: "text/plain" }), "seed.txt");
+      form.append("files", new Blob([seedText], { type: "text/markdown" }), "seed.md");
       const r = await call("/api/graph/ontology/generate", { method: "POST", body: form, timeoutMs: 300_000 });
       s.projectId = str(r.data.project_id);
       if (!s.projectId) throw new TownError("ontology answered without data.project_id", r.status, false);
@@ -479,11 +552,11 @@ export async function stepMirofish(s: MiroState): Promise<number> {
   }
 }
 
-type G = typeof globalThis & { __miroRunner?: { knockId: string; promise: Promise<void> } };
+type G = typeof globalThis & { __miroRunner?: { knockId: string; promise: Promise<void> }; __miroSeeder?: Seeder };
 const g = globalThis as G;
 
 const MAX_RETRIES = 8;
-const maxRunMs = () => Math.max(5, Number(process.env.MIROFISH_MAX_MINUTES) || 45) * 60_000;
+const maxRunMs = () => Math.max(5, Number(process.env.MIROFISH_MAX_MINUTES) || 75) * 60_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function downNote(msg: string) {
@@ -540,7 +613,8 @@ function ensureRunner(knockId: string) {
 }
 
 /** Pick a run that was in flight before a restart back up. Never starts a new one. Never awaited. */
-export function resumeMirofish() {
+export function resumeMirofish(seeder?: Seeder) {
+  if (seeder) g.__miroSeeder = seeder;
   const s = readState();
   if (s.knockId && ACTIVE.includes(s.stage)) ensureRunner(s.knockId);
   return miroSnapshot();
@@ -550,7 +624,8 @@ export function resumeMirofish() {
  * Knock once. Starts the background walk and returns at once.
  * A knock already in flight is not doubled. A finished read for the same headline (under 6h) is reused unless force.
  */
-export function knockMirofish(opts: { force?: boolean } = {}) {
+export function knockMirofish(opts: { force?: boolean; seeder?: Seeder } = {}) {
+  if (opts.seeder) g.__miroSeeder = opts.seeder;
   const cur = readState();
   if (cur.knockId && ACTIVE.includes(cur.stage)) {
     ensureRunner(cur.knockId);
@@ -558,15 +633,16 @@ export function knockMirofish(opts: { force?: boolean } = {}) {
   }
   const headline = sparkHeadline();
   if (!headline) {
-    Object.assign(cur, { stage: "error", failedAt: "idle", error: "no spark headline yet", probability: null });
+    const why = "no fresh Spark card (needs a completed card under 6 h old; refresh Spark first)";
+    Object.assign(cur, { stage: "error", failedAt: "idle", error: why, probability: null });
     writeBoth(cur);
-    return { started: false, reason: "no spark headline yet", snap: miroSnapshot() };
+    return { started: false, reason: why, snap: miroSnapshot() };
   }
   if (!opts.force && cur.stage === "done" && cur.headline === headline && Date.now() - cur.finishedAt < 6 * 60 * 60 * 1000) {
     return { started: false, reason: "this headline already has a finished read (send force to rerun; it spends money)", snap: miroSnapshot() };
   }
   const now = Date.now();
-  const s: MiroState = { ...EMPTY, knockId: `k${now.toString(36)}`, headline, stage: "ontology", maxRounds: maxRounds(), startedAt: now, heartbeatAt: now };
+  const s: MiroState = { ...EMPTY, knockId: `k${now.toString(36)}`, headline, stage: "seed", maxRounds: maxRounds(), startedAt: now, heartbeatAt: now };
   writeBoth(s);
   ensureRunner(s.knockId);
   return { started: true, reason: "knock started", snap: miroSnapshot() };
