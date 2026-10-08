@@ -168,7 +168,7 @@ export class Engine {
       let why: string | null = null;
       if (!e || !e.market) why = "market gone";
       else if (e.p == null) why = `data gate ${e.failed}`;
-      else if (restingEdge(e.p, side, px) < 0.005) why = `edge gone ${restingEdge(e.p, side, px).toFixed(3)}`;
+      else if (restingEdge(e.p, side, px) < 0) why = `edge gone ${restingEdge(e.p, side, px).toFixed(3)}`; // post needs ≥1¢, keep while ≥0 (hysteresis)
       else if (e.book) {
         const myBid = side === "yes" ? e.book.yesBid : e.book.noBid;
         const age = now - Date.parse(o.created_time ?? new Date(now).toISOString());

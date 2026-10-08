@@ -106,10 +106,26 @@ export type KOrder = {
   created_time?: string;
 };
 
+/** Ticker inside a desk client_order_id "mm1-<ticker>-<y|n>-<seq>". */
+export function tickerOfCid(cid: string) {
+  const m = /^mm1-(.+)-[yn]-\d+$/.exec(cid);
+  return m ? m[1] : null;
+}
+
+/**
+ * Orders by client_order_id. Kalshi ignores a client_order_ids filter on GET /portfolio/orders (verified live
+ * 2026-10-08: it returns every order), so query per ticker and match the id exactly here.
+ */
 export async function ordersByClientIds(ids: string[]): Promise<KOrder[]> {
   if (!ids.length) return [];
-  const { data } = await kalshiGet<{ orders?: KOrder[] }>(`/trade-api/v2/portfolio/orders?client_order_ids=${encodeURIComponent(ids.join(","))}`);
-  return data.orders ?? [];
+  const want = new Set(ids);
+  const tickers = [...new Set(ids.map(tickerOfCid).filter((t): t is string => Boolean(t)))];
+  const out: KOrder[] = [];
+  for (const t of tickers) {
+    const rows = await pages<KOrder>(`/trade-api/v2/portfolio/orders?ticker=${encodeURIComponent(t)}`, "orders", 3);
+    for (const o of rows) if (o.client_order_id && want.has(o.client_order_id)) out.push(o);
+  }
+  return out;
 }
 
 export async function restingOrders(): Promise<KOrder[]> {

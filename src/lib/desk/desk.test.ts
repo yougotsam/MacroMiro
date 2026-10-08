@@ -6,7 +6,7 @@ import { DAILY_STOP_USD, MAX_ORDER_COST_USD, PRICE_MAX, TICKER_RE } from "./conf
 import { orderFee, quadraticFee, quadraticFeeFills } from "./fees";
 import { featureShift } from "./features";
 import { scoreSides, sizeFor, type Book } from "./gate";
-import { buildSnapshot, type KOrder } from "./kalshi-read";
+import { buildSnapshot, tickerOfCid, type KOrder } from "./kalshi-read";
 import { cidFor, Oms, ORDER_PATH, orderBody, type PostResult } from "./oms";
 import { RiskEngine, dayWorstOf, streakPauseUntil, type AccountSnapshot, type OrderIntent } from "./risk";
 import { cryptoProb, goldProb, normCdf, sigmaFromPrints } from "./settlement";
@@ -458,5 +458,12 @@ describe("OMS bookkeeping", () => {
     await oms.submit(intent(), snap());
     expect(oms.recentTickers(Date.now()).has(T)).toBe(true);
     expect(oms.recentTickers(Date.now() + 25_000).has(T)).toBe(false);
+  });
+});
+
+describe("client order ids", () => {
+  it("the ticker is recoverable from a desk client_order_id (lookup queries by ticker, matches the id exactly)", () => {
+    expect(tickerOfCid(cidFor("KXGOLD15M-26OCT080615-15", "no", 12))).toBe("KXGOLD15M-26OCT080615-15");
+    expect(tickerOfCid("9a301543-8c72-4495-bcc8-8a53866d3032")).toBeNull();
   });
 });
