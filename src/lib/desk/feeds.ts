@@ -6,7 +6,7 @@
  * Bootstrap: last hour of 1-second RTI values from the CF Benchmarks REST passthrough.
  * Recorder: every print is appended to <data>/prints/<day>.jsonl for replay/calibration.
  */
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { kalshiGet, kalshiWsHeaders } from "@/lib/scan/kalshi-auth";
 import { dataDir } from "./config";
 import type { Print } from "./settlement";
@@ -89,7 +89,31 @@ export class Feeds {
     this.pending = [];
   }
 
+  /** Reload the recorder's own prints (last 2 h) so a restart keeps σ/bars warm — gold has no REST history. */
+  reloadRecorded(now = Date.now()) {
+    const was = this.record;
+    this.record = false;
+    try {
+      for (const day of new Set([etDay(now - KEEP_MS), etDay(now)])) {
+        const f = `${dataDir()}/prints/${day}.jsonl`;
+        if (!existsSync(f)) continue;
+        for (const line of readFileSync(f, "utf8").split("\n")) {
+          if (!line) continue;
+          try {
+            const r = JSON.parse(line) as { i: string; t: number; v: number; r?: number };
+            if (r.t >= now - KEEP_MS && r.t <= now) this.push(r.i, r.t, r.v, r.r ?? r.t);
+          } catch {
+            /* partial line */
+          }
+        }
+      }
+    } finally {
+      this.record = was;
+    }
+  }
+
   async bootstrap() {
+    this.reloadRecorded();
     for (const id of RTI) {
       try {
         const { data } = await kalshiGet<{ data?: { payload?: Array<{ value: string; time: number }> } }>(`/trade-api/v2/cfbenchmarks/values?id=${id}`);

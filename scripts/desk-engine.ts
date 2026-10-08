@@ -34,9 +34,12 @@ const release = () => {
   }
 };
 process.on("exit", release);
-for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(0));
-
 const engine = new Engine();
+for (const sig of ["SIGINT", "SIGTERM"] as const)
+  process.on(sig, () => {
+    engine.feeds.flush();
+    process.exit(0);
+  });
 await engine.start();
 const TICK_MS = Number(process.env.DESK_TICK_MS ?? 2000);
 setInterval(() => void engine.tick(), TICK_MS);

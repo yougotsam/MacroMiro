@@ -488,3 +488,21 @@ describe("client order ids", () => {
     expect(tickerOfCid("9a301543-8c72-4495-bcc8-8a53866d3032")).toBeNull();
   });
 });
+
+describe("feeds recorder", () => {
+  it("a restart reloads recorded prints (gold has no REST history) without re-recording them", async () => {
+    const { Feeds, GOLD } = await import("./feeds");
+    const { mkdirSync, writeFileSync, readFileSync: rf } = await import("node:fs");
+    const dir = process.env.DESK_DATA_DIR!;
+    mkdirSync(`${dir}/prints`, { recursive: true });
+    const now = Date.now();
+    const f = `${dir}/prints/${etDay(now)}.jsonl`;
+    const rows = Array.from({ length: 30 }, (_, k) => JSON.stringify({ i: GOLD, t: Math.floor(now / 1000) * 1000 - (30 - k) * 1000, v: 4000 + k }));
+    writeFileSync(f, `${rows.join("\n")}\n`);
+    const feeds = new Feeds(true);
+    feeds.reloadRecorded(now);
+    expect(feeds.prints(GOLD).length).toBe(30);
+    feeds.flush();
+    expect(rf(f, "utf8").trim().split("\n").length).toBe(30);
+  });
+});
