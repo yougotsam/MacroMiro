@@ -10,7 +10,7 @@
  * Refuse any order whose worst case would take dayWorst below DAILY_STOP_USD. Once dayWorst ≤ stop,
  * latch OFF for the rest of the ET day (persisted to disk, survives restarts).
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   DAILY_STOP_USD,
   LOSS_STREAK_PAUSE,
@@ -26,6 +26,7 @@ import {
   dataDir,
 } from "./config";
 import { etDay } from "./time";
+import { activeOverride, applyOverride, loadOverrides } from "./override";
 
 export type Settled = { ticker: string; pnl: number; settledMs: number };
 
@@ -43,6 +44,8 @@ export type AccountSnapshot = {
   ordersPerTicker: Record<string, number>;
   exchangeTradingActive: boolean;
   exchangeCheckedAt: number;
+  /** set when a dated risk override (override.ts) re-based the day: baseline = realized before its start */
+  override?: { id: string; baseline: number; start: string; expires: string };
 };
 
 export type OrderIntent = {
@@ -104,10 +107,27 @@ export function switchState(): { live: boolean; begin: boolean; arm: boolean } {
 
 export class RiskEngine {
   private file: string;
+  private dir: string;
   private tickCount = new Map<number, number>();
+  private announced = new Set<string>();
   constructor(dir = dataDir(), private sw = switches) {
     mkdirSync(dir, { recursive: true });
+    this.dir = dir;
     this.file = `${dir}/risk-state.json`;
+  }
+
+  /** The day P/L view the stop is enforced on: Kalshi's snapshot, re-based by an active dated override (if any). */
+  effective(s: AccountSnapshot, now = Date.now()): AccountSnapshot {
+    const o = activeOverride(loadOverrides(this.dir), now);
+    if (o && !this.announced.has(o.id)) {
+      this.announced.add(o.id);
+      try {
+        appendFileSync(`${this.dir}/risk-events.log`, `${new Date(now).toISOString()} override ${o.id} active (${o.reason}) start ${o.start} expires ${o.expires}\n`);
+      } catch {
+        /* audit line best effort */
+      }
+    }
+    return applyOverride(s, o);
   }
 
   read(): RiskFile {
@@ -120,7 +140,11 @@ export class RiskEngine {
 
   latched(now = Date.now()) {
     const f = this.read();
-    return f.latchedDay === etDay(now) ? f : null;
+    if (f.latchedDay !== etDay(now)) return null;
+    // a latch set before an active fresh-start override belongs to the re-based part of the day
+    const o = activeOverride(loadOverrides(this.dir), now);
+    if (o && f.latchedAt && Date.parse(f.latchedAt) < Date.parse(o.start)) return null;
+    return f;
   }
 
   latch(reason: string, now = Date.now()) {
@@ -130,7 +154,8 @@ export class RiskEngine {
   }
 
   /** Called on every fresh snapshot, even with no order: latches the day once the stop is reached. */
-  observe(s: AccountSnapshot, now = Date.now()) {
+  observe(snap: AccountSnapshot, now = Date.now()) {
+    const s = this.effective(snap, now);
     const worst = dayWorstOf(s);
     if (s.etDay === etDay(now) && worst <= DAILY_STOP_USD && !this.latched(now)) {
       this.latch(`day worst ${worst.toFixed(2)} ≤ ${DAILY_STOP_USD}`, now);
@@ -138,7 +163,8 @@ export class RiskEngine {
     return worst;
   }
 
-  check(o: OrderIntent, s: AccountSnapshot | null, now = Date.now()): RiskDecision {
+  check(o: OrderIntent, snap: AccountSnapshot | null, now = Date.now()): RiskDecision {
+    const s = snap ? this.effective(snap, now) : null;
     const orderWorst = Number((o.count * o.price + Math.max(0, o.fee)).toFixed(4));
     const no = (why: string, dayWorst = NaN, projected = NaN): RiskDecision => ({ ok: false, why, dayWorst, projected, orderWorst });
     if (o.product !== "event") return no("perps disabled");

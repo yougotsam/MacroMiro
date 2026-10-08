@@ -270,7 +270,7 @@ export class Engine {
     if (!this.dirty && this.snapshot && now - this.snapAt < SNAPSHOT_EVERY_MS) return;
     try {
       const r = await fetchSnapshot(this.ex, { pendingIntents: this.oms.pendingIntents(now), perTicker: this.oms.perTicker() });
-      this.snapshot = r.snap;
+      this.snapshot = this.risk.effective(r.snap, now);
       this.snapAt = now;
       this.dirty = false;
       this.resting = r.resting;
@@ -374,7 +374,7 @@ export class Engine {
         switches: { live: switches.live(), begin: switches.begin(), arm: switches.arm() },
         latched: latched?.latchReason ?? null,
         budget,
-        snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt } : null,
+        snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt, override: this.snapshot.override ?? null, roomToStop: Number((dayWorstOf(this.snapshot) + 15).toFixed(4)) } : null,
         resting: [...this.known.values()],
         sentThisTick: sent,
         series: evals.map(({ e }) => ({

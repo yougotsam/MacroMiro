@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { DAILY_STOP_USD, MAX_ORDER_COST_USD, PRICE_MAX, TICKER_RE } from "./config";
@@ -10,6 +10,7 @@ import { buildSnapshot, tickerOfCid, type KOrder } from "./kalshi-read";
 import { cidFor, Oms, ORDER_PATH, orderBody, type PostResult } from "./oms";
 import { RiskEngine, dayWorstOf, streakPauseUntil, type AccountSnapshot, type OrderIntent } from "./risk";
 import { cryptoProb, goldProb, normCdf, sigmaFromPrints } from "./settlement";
+import { roomBudget as roomBudgetTop } from "./sizing";
 import { etDay, etDayStart } from "./time";
 
 const ON = { live: () => true, begin: () => true, arm: () => true };
@@ -660,5 +661,107 @@ describe("limit orders only", () => {
       expect(r.ok).toBe(false);
     }
     expect(calls.length).toBe(0);
+  });
+});
+
+describe("dated risk override (Sameer t107u: fresh −$15 from 04:15 PT 2026-10-08)", () => {
+  const START = Date.parse("2026-10-08T11:15:00Z"); // 04:15 PT
+  const EXPIRES = Date.parse("2026-10-09T04:00:00Z"); // 00:00 ET Oct 9 = 21:00 PT Oct 8
+  const OV = {
+    id: "20261008-t107u",
+    kind: "fresh_from_start",
+    reason: "Sameer t107u",
+    created_at: "2026-10-08T10:30:00Z",
+    et_day: "2026-10-08",
+    start: new Date(START).toISOString(),
+    expires: new Date(EXPIRES).toISOString(),
+  };
+  const setup = () => {
+    const dir = tmp("override");
+    writeFileSync(join(dir, "risk-override-20261008.json"), JSON.stringify(OV));
+    return { dir, r: new RiskEngine(dir, ON) };
+  };
+  // three losing settlements before 04:15 (−12.16 total, 3-loss streak) as on 2026-10-08
+  const early = [
+    { ticker: "KXSOL15M-26OCT080545-45", pnl: -4.1, settledMs: Date.parse("2026-10-08T10:00:03Z") },
+    { ticker: "KXXRP15M-26OCT080600-00", pnl: -4.0, settledMs: Date.parse("2026-10-08T10:15:03Z") },
+    { ticker: "KXETH15M-26OCT080615-15", pnl: -4.06, settledMs: Date.parse("2026-10-08T10:15:03.668Z") },
+  ];
+  const at = (now: number, over: Partial<AccountSnapshot> = {}): AccountSnapshot =>
+    snap({ fetchedAt: now, exchangeCheckedAt: now, etDay: etDay(now), realizedToday: -12.16, settledToday: early, ...over });
+  const T2 = "KXBTC15M-26OCT081230-30";
+
+  it("before 04:15 the old P/L counts (and the loss-streak pause holds)", () => {
+    const { r } = setup();
+    const now = START - 60_000;
+    const s = r.effective(at(now), now);
+    expect(s.override).toBeUndefined();
+    expect(dayWorstOf(s)).toBeCloseTo(-12.16, 6);
+    expect(r.check(intent({ ticker: T2, price: 0.5, count: 2 }), at(now), now).why).toContain("loss streak pause");
+    // with the pause over, the old room is $2.84: $3 would breach
+    const late = START - 1;
+    const s2 = at(late, { settledToday: early.map((x) => ({ ...x, settledMs: x.settledMs - 3 * 3600_000 })) });
+    expect(r.check(intent({ ticker: T2, price: 0.5, count: 6 }), s2, late).why).toContain("would breach daily stop");
+  });
+
+  it("from 04:15 the day is re-based to $0 with the full $15 of room; the loss-streak pause is cleared", () => {
+    const { r } = setup();
+    const now = START + 1_000;
+    const s = r.effective(at(now), now);
+    expect(s.override?.id).toBe(OV.id);
+    expect(s.override?.baseline).toBeCloseTo(-12.16, 6);
+    expect(dayWorstOf(s)).toBe(0);
+    expect(roomBudgetTop(s)).toBe(3);
+    const d = r.check(intent({ ticker: T2, price: 0.5, count: 2 }), at(now), now);
+    expect(d.ok).toBe(true);
+    expect(d.dayWorst).toBe(0);
+    // effective() is idempotent
+    expect(dayWorstOf(r.effective(s, now))).toBe(0);
+  });
+
+  it("after 04:15 a −$14.50 delta refuses a $1 order (−$15 enforced fresh), and a $0.50 one passes", () => {
+    const { r } = setup();
+    const now = START + 3 * 3600_000;
+    const later = [
+      { ticker: "KXBTC15M-26OCT080730-30", pnl: 1.0, settledMs: START + 3600_000 },
+      { ticker: "KXBTC15M-26OCT080745-45", pnl: -15.5, settledMs: START + 2 * 3600_000 },
+    ];
+    const s = at(now, { realizedToday: -12.16 - 14.5, settledToday: [...early, ...later] });
+    expect(dayWorstOf(r.effective(s, now))).toBeCloseTo(-14.5, 6);
+    const d = r.check(intent({ ticker: T2, price: 0.5, count: 2 }), s, now);
+    expect(d.ok).toBe(false);
+    expect(d.why).toContain("would breach daily stop");
+    expect(r.check(intent({ ticker: T2, price: 0.25, count: 2 }), s, now).ok).toBe(true);
+    // reaching the stop after 04:15 latches for the rest of the ET day
+    const dead = at(now, { realizedToday: -12.16 - 15, settledToday: [...early, { ticker: T2, pnl: -15, settledMs: START + 60_000 }] });
+    r.observe(dead, now);
+    expect(r.check(intent({ ticker: T2, price: 0.1, count: 1 }), at(now), now).why).toContain("latched");
+  });
+
+  it("expires at the ET reset (21:00 PT) and never re-applies", async () => {
+    const { activeOverride, loadOverrides } = await import("./override");
+    const { dir, r } = setup();
+    const list = loadOverrides(dir);
+    expect(activeOverride(list, START - 1)).toBeNull();
+    expect(activeOverride(list, START)?.id).toBe(OV.id);
+    expect(activeOverride(list, EXPIRES - 1)?.id).toBe(OV.id);
+    expect(activeOverride(list, EXPIRES)).toBeNull();
+    expect(activeOverride(list, EXPIRES + 24 * 3600_000)).toBeNull();
+    expect(activeOverride(list, START + 365 * 24 * 3600_000)).toBeNull();
+    // the next ET day's snapshot is untouched (normal reset: Kalshi day P/L starts at 0 on its own)
+    const next = EXPIRES + 3600_000;
+    const s = snap({ fetchedAt: next, exchangeCheckedAt: next, etDay: etDay(next), realizedToday: -3, settledToday: [{ ticker: T2, pnl: -3, settledMs: next - 1000 }] });
+    expect(r.effective(s, next)).toBe(s);
+    expect(dayWorstOf(r.effective(s, next))).toBe(-3);
+  });
+
+  it("a latch set before 04:15 is not carried past the re-base; a malformed override file is ignored", async () => {
+    const { dir, r } = setup();
+    r.latch("old part of the day", START - 600_000);
+    expect(r.latched(START - 1)).not.toBeNull();
+    expect(r.latched(START + 1)).toBeNull();
+    const { loadOverrides } = await import("./override");
+    writeFileSync(join(dir, "risk-override-20261009.json"), "{not json");
+    expect(loadOverrides(dir).length).toBe(1);
   });
 });
