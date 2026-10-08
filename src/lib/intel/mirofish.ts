@@ -426,6 +426,17 @@ export async function stepMirofish(s: MiroState): Promise<number> {
         s.stageProgress = 0;
         return 0;
       }
+      // The OASIS scripts flip env_status to "alive" only after the round loop ends (then they idle for
+      // interview commands). Some script paths never log simulation_end, so run-status would say
+      // "running" forever. simulation.py get_env_status + stop_simulation close that gap.
+      if (status === "running") {
+        const env = await call("/api/simulation/env-status", { ...json({ simulation_id: s.simulationId }), timeoutMs: 15_000 }).catch(() => null);
+        if (env?.data.env_alive === true) {
+          s.message = `round loop finished (${s.round}/${s.totalRounds || s.maxRounds}) · closing the town's idle env`;
+          await call("/api/simulation/stop", { ...json({ simulation_id: s.simulationId }), timeoutMs: 120_000 });
+          return 1000;
+        }
+      }
       return POLL_MS();
     }
     case "report": {

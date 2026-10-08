@@ -72,6 +72,7 @@ describe("one knock walks every stage on its own", () => {
           runPolls += 1;
           return ok({ runner_status: runPolls >= 2 ? "completed" : "running", current_round: runPolls * 5, total_rounds: 10, total_actions_count: 7 });
         }
+        if (url === "/api/simulation/env-status") return ok({ env_alive: false });
         if (url.startsWith("/api/simulation/sim_1/actions")) return ok({ count: 1, actions: [{ round_num: 1, platform: "twitter", agent_id: 3, agent_name: "Ann", action_type: "CREATE_POST", action_args: { content: "gold up" }, success: true }] });
         if (url === "/api/simulation/sim_1/timeline") return ok({ timeline: [{ round_num: 1, twitter_actions: 1, reddit_actions: 0, active_agents_count: 1, action_types: { CREATE_POST: 1 } }] });
         if (url === "/api/report/generate") return ok({ report_id: "rep_1", task_id: "task_r" });
@@ -132,5 +133,54 @@ describe("one knock walks every stage on its own", () => {
     const snap = miroSnapshot();
     assert.equal(snap.probability, null);
     assert.match(snap.error, /not answering|retry/);
+  });
+});
+
+describe("a finished round loop that never logs simulation_end is closed, then reported", () => {
+  let server: Server;
+  let stopped = false;
+  before(async () => {
+    const dir = mkdtempSync(join(tmpdir(), "miro-test2-"));
+    process.env.MIROFISH_DATA_DIR = dir;
+    writeFileSync(join(dir, "spark-latest.json"), JSON.stringify({ card: { event: "Idle env print" } }));
+    writeFileSync(
+      join(dir, "mirofish-state.json"),
+      JSON.stringify({ knockId: "kx", headline: "Idle env print", stage: "run", projectId: "p", graphId: "g", simulationId: "sim_2", runStarted: true, maxRounds: 15, startedAt: Date.now() }),
+    );
+    server = createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        const url = req.url ?? "";
+        const ok = (data: unknown) => {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ success: true, data }));
+        };
+        if (url === "/api/simulation/sim_2/run-status") return ok({ runner_status: stopped ? "stopped" : "running", current_round: 0, total_rounds: 15 });
+        if (url === "/api/simulation/env-status") return ok({ env_alive: true });
+        if (url === "/api/simulation/stop") {
+          stopped = true;
+          return ok({ runner_status: "stopped" });
+        }
+        if (url === "/api/report/generate") return ok({ report_id: "rep_2", already_generated: true });
+        if (url === "/api/report/rep_2") return ok({ markdown_content: "Probability: unknown" });
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: "not found" }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const addr = server.address();
+    process.env.MIROFISH_URL = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
+  });
+  after(() => server.close());
+
+  it("resumes a persisted run, stops the idle env, and keeps probability null when the report has none", async () => {
+    const { resumeMirofish } = await import("./mirofish.ts");
+    resumeMirofish();
+    const deadline = Date.now() + 10_000;
+    while (miroSnapshot().running && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    const snap = miroSnapshot();
+    assert.equal(stopped, true);
+    assert.equal(snap.stage, "done", snap.error);
+    assert.equal(snap.probability, null);
   });
 });
