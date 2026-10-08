@@ -51,3 +51,19 @@ export function dataDir() {
   return process.env.DESK_DATA_DIR || "/workspace/data/desk";
 }
 export const SECRETS_DIR = process.env.DESK_SECRETS_DIR || "/workspace/.grok/secrets";
+
+// ── Adverse selection / execution protection ─────────────────────────────────
+export const MODEL_REV = "guard-1"; // execution-guard revision (logged with decisions)
+export const FAST_K = 3; // a move > K·σ·√L over L s (σ = the probability model's per-second σ) is "fast"
+export const FAST_LOOKBACKS_SEC = [2, 3, 4, 5];
+export const FAST_COOLDOWN_MS = 10_000; // no new orders on the series for ≥ this long after a fast move…
+export const FAST_SETTLE_Z = 1.5; // …and until the 5 s move is back under this many σ
+export const SHOCK_LATENCY_SEC = 3; // a resting bid is exposed for ~one 1 s tick + cancel round trip
+export const HOLD_SHOCK_FRAC = 0.5; // keep a resting bid while edge ≥ this × shock (post needs 1¢ + shock)
+export const FINAL_PULL_SEC = 45; // in the last N s resting bids are pulled…
+export const LOCK_MIN_FRAC = 0.6; // …unless ≥ 60 % of the 60 s average is already printed (crypto only)
+export const LAST_MINUTE_SEC = 60;
+export const LAST_MINUTE_MIN_PRICE = 0.05; // never buy under 5¢ in the last minute
+export const TICK_MS = 1_000;
+export const SNAPSHOT_EVERY_MS = 2_000; // account snapshot cadence (refreshed immediately after any send)
+export const GUARD_EVERY_MS = 250; // fast-move guard reads the websocket prints, no REST

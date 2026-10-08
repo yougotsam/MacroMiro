@@ -159,6 +159,8 @@ export class Oms {
   /** The single choke point. */
   async submit(intent: OrderIntent, snapshot: AccountSnapshot | null): Promise<{ ok: boolean; why: string; cid?: string; orderId?: string; status?: string; fill?: number }> {
     if (!TICKER_RE.test(intent.ticker)) return { ok: false, why: "ticker" };
+    // limit orders only: an explicit price strictly inside (0,1) and a whole contract count, every time
+    if (!(intent.price > 0 && intent.price < 1) || !Number.isInteger(intent.count) || intent.count < 1) return { ok: false, why: "limit price / whole count required" };
     const verdict = this.risk.check(intent, snapshot);
     if (!verdict.ok) return { ok: false, why: `risk: ${verdict.why}` };
     const cid = cidFor(intent.ticker, intent.side, this.nextSeq(intent.ticker, intent.side));

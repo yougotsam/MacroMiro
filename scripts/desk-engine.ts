@@ -3,7 +3,7 @@
  *   bun scripts/desk-engine.ts            → trade loop (orders only if kalshi_live=1, kalshi_begin=1, desk_arm=1 and risk passes)
  */
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dataDir } from "../src/lib/desk/config";
+import { GUARD_EVERY_MS, TICK_MS as DEFAULT_TICK_MS, dataDir } from "../src/lib/desk/config";
 import { Engine } from "../src/lib/desk/engine";
 
 const dir = dataDir();
@@ -41,6 +41,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const)
     process.exit(0);
   });
 await engine.start();
-const TICK_MS = Number(process.env.DESK_TICK_MS ?? 2000);
+const TICK_MS = Number(process.env.DESK_TICK_MS ?? DEFAULT_TICK_MS);
 setInterval(() => void engine.tick(), TICK_MS);
+setInterval(() => void engine.guardTick(), GUARD_EVERY_MS);
 await engine.tick();

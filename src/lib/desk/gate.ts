@@ -49,7 +49,22 @@ export function sizeFor(price: number, maker: boolean, fee: FeeInfo, budget = MA
   return count;
 }
 
-export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeInfo, opts: { allowMaker: boolean; allowTaker: boolean } = { allowMaker: true, allowTaker: true }): GateResult {
+export type GateOpts = {
+  allowMaker: boolean;
+  allowTaker: boolean;
+  /** $ budget for this order (min of $3, daily-stop room, exposure room); default $3 */
+  budget?: number;
+  /** maker edge floor (1¢ + vol shock); default MAKER_MIN_EDGE */
+  makerMinEdge?: number;
+  /** lowest price allowed (5¢ in the last minute) */
+  minPrice?: number;
+};
+
+export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeInfo, opts: GateOpts = { allowMaker: true, allowTaker: true }): GateResult {
+  const budget = opts.budget ?? MAX_ORDER_COST_USD;
+  const makerMin = Math.max(MAKER_MIN_EDGE, opts.makerMinEdge ?? MAKER_MIN_EDGE);
+  const lo = Math.max(PRICE_MIN, opts.minPrice ?? 0);
+  let roomHit = false;
   const all: Candidate[] = [];
   const quotes: Record<string, number | null> = {
     yes_bid: book.yesBid?.price ?? null,
@@ -68,9 +83,11 @@ export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeI
     const ask = opp ? r4(1 - opp.price) : null;
     // taker
     if (opts.allowTaker && ask != null && opp) {
-      if (ask < PRICE_MIN || ask > PRICE_MAX) bandHit = true;
+      if (ask < lo || ask > PRICE_MAX) bandHit = true;
       else {
-        const count = Math.min(sizeFor(ask, false, fee), Math.floor(opp.size));
+        const byBudget = sizeFor(ask, false, fee, budget);
+        if (byBudget < 1) roomHit = true;
+        const count = Math.min(byBudget, Math.floor(opp.size));
         if (count >= 1) {
           const f = orderFee(count, ask, false, fee);
           const feePer = f / count;
@@ -86,20 +103,23 @@ export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeI
       let price = r4(base + tickAt(base || 0.01));
       if (ask != null && price >= ask) price = r4(bid?.price ?? 0); // join the bid if improving would cross
       if (price <= 0 || (ask != null && price >= ask)) continue;
-      if (price < PRICE_MIN || price > PRICE_MAX) {
+      if (price < lo || price > PRICE_MAX) {
         bandHit = true;
         continue;
       }
-      const count = sizeFor(price, true, fee);
-      if (count < 1) continue;
+      const count = sizeFor(price, true, fee, budget);
+      if (count < 1) {
+        roomHit = true;
+        continue;
+      }
       const f = orderFee(count, price, true, fee);
       const feePer = f / count;
       const edge = p - UNCERTAINTY - price - feePer;
       const edgeBase = pBase - UNCERTAINTY - price - feePer;
-      if (edge >= MAKER_MIN_EDGE && edgeBase >= BASE_MIN_EDGE) all.push({ side, mode: "maker", price, count, fee: f, feePer, edge, edgeBase, pSide: p });
+      if (edge >= makerMin && edgeBase >= BASE_MIN_EDGE) all.push({ side, mode: "maker", price, count, fee: f, feePer, edge, edgeBase, pSide: p });
     }
   }
-  if (!all.length) return { best: null, all, failed: bandHit ? "no_edge_or_band" : failed, quotes };
+  if (!all.length) return { best: null, all, failed: roomHit ? "no_room_or_edge" : bandHit ? "no_edge_or_band" : failed, quotes };
   // rank by expected dollars (edge × count), taker first on ties because it fills
   all.sort((a, b) => b.edge * b.count - a.edge * a.count || (a.mode === "taker" ? -1 : 1));
   return { best: all[0], all, failed: null, quotes };

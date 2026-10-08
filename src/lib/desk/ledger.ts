@@ -24,6 +24,8 @@ export type Decision = {
   features: unknown;
   model: string;
   order?: { cid?: string; orderId?: string; status?: string; fill?: number; why?: string };
+  /** execution guard context: vol shock, required maker edge, 60 s lock, fast-move state, $ budget */
+  guard?: { shock: number; maker_min_edge: number; lock_frac: number; move_z: number; cooling: boolean; maker_ok: boolean; budget: number; min_price: number };
 };
 
 export class DecisionLedger {

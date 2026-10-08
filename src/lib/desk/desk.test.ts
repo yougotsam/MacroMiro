@@ -506,3 +506,159 @@ describe("feeds recorder", () => {
     expect(rf(f, "utf8").trim().split("\n").length).toBe(30);
   });
 });
+
+describe("adverse-selection guard", () => {
+  const G = async () => await import("./guard");
+  const series = (vals: number[], t0 = 1_800_000_000_000) => vals.map((v, i) => ({ t: t0 + i * 1000, v }));
+  const sigma = 4e-5; // per second, same σ the probability model uses
+
+  it("a move > 3σ√L over 2–5 s against the bid side is fast; ordinary noise is not", async () => {
+    const { fastMove, moveZ, against } = await G();
+    const calm = series([100, 100.001, 99.999, 100.002, 100.0, 100.001, 99.999]);
+    expect(fastMove(calm, sigma).dir).toBeNull();
+    // 3 s drop of 0.03% = 0.0003 / (4e-5·√3) ≈ 4.3σ
+    const drop = series([100, 100, 100, 100, 99.99, 99.98, 99.97]);
+    const f = fastMove(drop, sigma);
+    expect(f.dir).toBe("down");
+    expect(f.z).toBeLessThan(-3);
+    expect(Math.abs(moveZ(drop, sigma, 3)!)).toBeGreaterThan(3);
+    expect(against("down", "yes")).toBe(true);
+    expect(against("down", "no")).toBe(false);
+    expect(against("up", "no")).toBe(true);
+    // the threshold scales with σ: the same drop is not fast when the model's σ is 3× higher
+    expect(fastMove(drop, 3 * sigma).dir).toBeNull();
+  });
+
+  it("after a fast move the series cools ≥10 s and stays blocked until the 5 s move settles", async () => {
+    const { MoveGuard } = await G();
+    const g = new MoveGuard();
+    const t0 = 1_800_000_000_000;
+    const drop = series([100, 100, 100, 100, 99.99, 99.98, 99.97], t0);
+    const hit = g.observe("KXBTC15M", drop, sigma, t0 + 6000);
+    expect(hit.cooling && hit.triggered && hit.dir === "down").toBe(true);
+    expect(g.state("KXBTC15M", t0 + 15_000).cooling).toBe(true);
+    // 11 s later the price keeps sliding (5 s z still large) → still cooling
+    const sliding = series([100, 100, 100, 100, 99.99, 99.98, 99.97, 99.965, 99.96, 99.955, 99.95, 99.945, 99.94, 99.935, 99.93, 99.925, 99.92], t0);
+    expect(g.observe("KXBTC15M", sliding, sigma, t0 + 17_000).cooling).toBe(true);
+    // then flat for 6 s → settles
+    const flat = [...sliding, ...series([99.92, 99.92, 99.921, 99.92, 99.92, 99.92], t0 + 17_000)];
+    expect(g.observe("KXBTC15M", flat, sigma, t0 + 23_000).cooling).toBe(false);
+    expect(g.state("KXETH15M", t0 + 6000).cooling).toBe(false); // other series unaffected
+  });
+
+  it("resting bids against a fast move are pulled; same-side bids are not", async () => {
+    const { pullReason } = await G();
+    const guard = { cooling: true, dir: "down" as const, z: -4.2, triggered: true, until: 0 };
+    const base = { price: 0.6, p: 0.75, failed: null, shock: 0.01, tte: 400, lockFrac: 0, kind: "rti60" as const };
+    expect(pullReason({ ...base, side: "yes", guard })).toContain("fast move down");
+    expect(pullReason({ ...base, side: "no", price: 0.2, p: 0.75, guard })).toBeNull();
+  });
+
+  it("the maker edge floor rises with volatility (shock from the same σ)", async () => {
+    const { shockOf } = await G();
+    const p = (sig: number) => (v: number) => cryptoProb({ closeMs: 1_800_000_300_000, strike: 100, dp: 2, last: { t: 1_800_000_000_000, v }, windowPrints: new Map(), sigma: sig }).p;
+    const lo = shockOf(p(2e-5), 100.02, 2e-5);
+    const hi = shockOf(p(8e-5), 100.02, 8e-5);
+    expect(lo).toBeGreaterThan(0);
+    expect(hi).toBeGreaterThan(lo);
+    const fee = { feeType: "quadratic", multiplier: 1 };
+    const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
+    // P 0.64 → maker at 61¢ has edge 1¢: passes the plain floor, fails once the floor includes a 2¢ shock
+    expect(scoreSides(0.64, 0.64, book, fee).best?.mode).toBe("maker");
+    expect(scoreSides(0.64, 0.64, book, fee, { allowMaker: true, allowTaker: true, makerMinEdge: 0.01 + 0.02 }).best).toBeNull();
+  });
+
+  it("hold threshold scales with shock (keep while edge ≥ ½ shock, post needs 1¢ + shock)", async () => {
+    const { pullReason } = await G();
+    const calm = { cooling: false, dir: null, z: 0.3, triggered: false, until: 0 };
+    const base = { side: "yes" as const, price: 0.6, failed: null, tte: 400, lockFrac: 0, kind: "rti60" as const, guard: calm };
+    expect(pullReason({ ...base, p: 0.625, shock: 0.004 })).toBeNull(); // edge 0.005 ≥ 0.002
+    expect(pullReason({ ...base, p: 0.625, shock: 0.03 })).toContain("< hold"); // edge 0.005 < 0.015
+  });
+
+  it("final seconds: resting bids pulled unless ≥60% of the 60 s average is printed; gold always pulled", async () => {
+    const { makerWindowOk, pullReason } = await G();
+    expect(makerWindowOk(120, 0, "rti60")).toBe(true);
+    expect(makerWindowOk(40, 0.33, "rti60")).toBe(false);
+    expect(makerWindowOk(20, 0.67, "rti60")).toBe(true);
+    expect(makerWindowOk(20, 0.67, "pyth1m")).toBe(false);
+    const calm = { cooling: false, dir: null, z: 0, triggered: false, until: 0 };
+    expect(pullReason({ side: "yes", price: 0.8, p: 0.95, failed: null, shock: 0, tte: 40, lockFrac: 0.33, kind: "rti60", guard: calm })).toContain("final 40s");
+    // the gate stops posting makers when the window is closed
+    const fee = { feeType: "quadratic", multiplier: 1 };
+    const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
+    expect(scoreSides(0.7, 0.7, book, fee, { allowMaker: false, allowTaker: true }).best).toBeNull();
+  });
+
+  it("never buys under 5¢ in the last minute (maker or taker)", async () => {
+    const { minPriceFor, pullReason } = await G();
+    expect(minPriceFor(59)).toBe(0.05);
+    expect(minPriceFor(61)).toBe(0);
+    const fee = { feeType: "quadratic", multiplier: 1 };
+    // YES ask 4.5¢ (NO bid 95.5¢), P 0.30 → a huge taker edge, still refused in the last minute
+    const cheap: Book = { yesBid: { price: 0.04, size: 100 }, noBid: { price: 0.955, size: 100 }, ts: NOW };
+    expect(scoreSides(0.3, 0.3, cheap, fee).best?.price).toBeLessThan(0.05);
+    const lm = scoreSides(0.3, 0.3, cheap, fee, { allowMaker: true, allowTaker: true, minPrice: minPriceFor(30) });
+    expect(lm.all.every((c) => c.price >= 0.05)).toBe(true);
+    const calm = { cooling: false, dir: null, z: 0, triggered: false, until: 0 };
+    expect(pullReason({ side: "yes", price: 0.045, p: 0.3, failed: null, shock: 0, tte: 30, lockFrac: 0.7, kind: "rti60", guard: calm })).toContain("under 5¢");
+  });
+});
+
+describe("size to room", () => {
+  it("budget = min($3, room to −$15, room under $12 exposure); under one contract → skip", async () => {
+    const { roomBudget } = await import("./sizing");
+    expect(roomBudget(snap())).toBe(3);
+    expect(roomBudget(snap({ realizedToday: -12.16 }))).toBeCloseTo(2.84, 6);
+    expect(roomBudget(snap({ realizedToday: -1, openWorst: 6, restWorst: 4.5 }))).toBeCloseTo(1.5, 6); // exposure room 1.5 < daily room 3.5
+    expect(roomBudget(snap({ realizedToday: -15 }))).toBe(0);
+    expect(roomBudget(null)).toBe(0);
+    const fee = { feeType: "quadratic", multiplier: 1 };
+    const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
+    const g = scoreSides(0.7, 0.7, book, fee, { allowMaker: true, allowTaker: true, budget: 1.3 });
+    expect(g.best?.count).toBe(2); // 2 × 61¢ = $1.22 ≤ $1.30
+    const none = scoreSides(0.7, 0.7, book, fee, { allowMaker: true, allowTaker: true, budget: 0.5 });
+    expect(none.best).toBeNull();
+    expect(none.failed).toBe("no_room_or_edge");
+  });
+
+  it("an order sized to the room passes the unchanged risk check exactly at the edge", async () => {
+    const { roomBudget } = await import("./sizing");
+    const s = snap({ realizedToday: -12.16 });
+    const budget = roomBudget(s);
+    const r = new RiskEngine(tmp("room"), ON);
+    const count = sizeFor(0.5, true, { feeType: "quadratic", multiplier: 1 }, budget);
+    expect(count).toBe(5);
+    expect(r.check(intent({ price: 0.5, count }), s, NOW).ok).toBe(true);
+    expect(r.check(intent({ price: 0.5, count: count + 1 }), s, NOW).ok).toBe(false);
+  });
+});
+
+describe("limit orders only", () => {
+  it("every order body carries an explicit limit price and a limit time-in-force; no market type exists", () => {
+    for (const mode of ["maker", "taker"] as const) {
+      for (const side of ["yes", "no"] as const) {
+        const b = orderBody(intent({ mode, side, price: 0.37 }), "c");
+        expect(typeof b.price).toBe("string");
+        expect(Number(b.price)).toBeGreaterThan(0);
+        expect(["good_till_canceled", "immediate_or_cancel"]).toContain(b.time_in_force as string);
+        expect(b.type).toBeUndefined();
+      }
+    }
+    const SRC = new URL("..", import.meta.url).pathname;
+    for (const f of ["desk/oms.ts", "desk/engine.ts", "desk/gate.ts", "scan/kalshi-auth.ts"]) {
+      expect(readFileSync(join(SRC, f), "utf8")).not.toMatch(/type:\s*["']market["']|buy_max_cost/);
+    }
+  });
+
+  it("the OMS refuses a missing/invalid limit price or a fractional count before risk or POST", async () => {
+    const dir = tmp("limit");
+    const { t, calls } = spyTransport();
+    const oms = new Oms(new RiskEngine(dir, ON), t, async () => [], dir);
+    for (const bad of [intent({ price: 0 }), intent({ price: 1 }), intent({ price: Number.NaN }), intent({ count: 2.5 }), intent({ count: 0 })]) {
+      const r = await oms.submit(bad, snap());
+      expect(r.ok).toBe(false);
+    }
+    expect(calls.length).toBe(0);
+  });
+});
