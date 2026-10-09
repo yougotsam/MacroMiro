@@ -277,3 +277,19 @@ describe("seeder relevance (no homepage seeds)", () => {
     expect(mainText(page, CPI).startsWith("The Consumer Price Index for All Urban")).toBe(true);
   });
 });
+
+describe("extraction from real MiroFish report shapes", () => {
+  const blk = (lean: string, contra = "x") => `**Structured summary**\n\nsentiment propagation: a\ncontradictions: ${contra}\ncrowding: c\nliquidity hypotheses: d\ninvalidation conditions: e\nsource confidence: Medium\ndisagreement: g\nlean: ${lean}\n`;
+  it("parses bold-line blocks, picks the last complete one, never merges blocks", () => {
+    const md = `# R\n## A\n${blk("bullish")}\n## B\n${blk("Mixed", "late")}\n## ## Structured summary\n\nprose only, no fields\n`;
+    const x = extractStructured(md);
+    expect(x.complete).toBe(true);
+    expect(x.lean).toBe("mixed");
+    expect(x.contradictions).toBe("late");
+  });
+  it("incomplete blocks stay incomplete (no filling in)", () => {
+    const x = extractStructured("**Structured summary**\nsentiment propagation: a\nlean: bullish\n");
+    expect(x.complete).toBe(false);
+    expect(x.crowding).toBeNull();
+  });
+});

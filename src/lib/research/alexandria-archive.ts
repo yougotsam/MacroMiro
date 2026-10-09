@@ -6,7 +6,7 @@
  * Gate: MiroFish-derived features may only affect decisions after (1) proven out-of-sample value here AND (2) an owner
  * flag. The flag is false and nothing on the order path imports this module (research-isolation tests).
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, renameSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Job, ScenarioExtract } from "./pipeline";
 
@@ -38,6 +38,17 @@ export class Archive {
     if (this.all().some((x) => x.id === item.id)) return item.id;
     appendFileSync(this.file, JSON.stringify(item) + "\n");
     return item.id;
+  }
+  /** re-derive fields of an existing item (e.g. parser fix); atomic rewrite, ids/report untouched */
+  update(id: string, patch: Partial<Pick<ArchiveItem, "extracted" | "cost">>) {
+    const items = this.all();
+    const it = items.find((x) => x.id === id);
+    if (!it) return false;
+    Object.assign(it, patch);
+    const tmp = `${this.file}.tmp`;
+    writeFileSync(tmp, items.map((x) => JSON.stringify(x)).join("\n") + "\n");
+    renameSync(tmp, this.file);
+    return true;
   }
   archiveJob(job: Job, markdown: string, extracted: ScenarioExtract, regime = "unknown") {
     const reportFile = join(this.dir, "reports", `${job.id}.md`);

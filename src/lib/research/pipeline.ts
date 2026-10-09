@@ -74,8 +74,17 @@ export function requirementFor(spec: JobSpec) {
 
 /** Parse the structured block. Unknown/missing → null; complete only when every field is present. Probabilities are stripped. */
 export function extractStructured(md: string): ScenarioExtract {
-  const i = md.search(/^#{1,6}\s*Structured summary\s*$/im);
-  const block = i >= 0 ? md.slice(i) : "";
+  // MiroFish's report agent writes the block as a heading or a bold line, sometimes once per section.
+  // Parse every block; prefer the last complete one, else the last one with the most fields. Never merge blocks.
+  const starts = [...md.matchAll(/^(?:#{1,6}\s*)*\**\s*Structured summary\s*\**\s*:?\s*$/gim)].map((m) => m.index ?? 0);
+  const parsed = starts.map((i, k) => parseBlock(md.slice(i, starts[k + 1] ?? md.length)));
+  const complete = parsed.filter((x) => x.complete);
+  if (complete.length) return complete[complete.length - 1];
+  return parsed.reduce<ScenarioExtract>((best, x) => (filled(x) >= filled(best) ? x : best), parseBlock(""));
+}
+const filled = (x: ScenarioExtract) => EXTRACT_FIELDS.filter((f) => x[f] != null).length;
+
+function parseBlock(block: string): ScenarioExtract {
   const out = { ...Object.fromEntries(EXTRACT_FIELDS.map((f) => [f, null])), complete: false } as unknown as ScenarioExtract;
   for (const f of EXTRACT_FIELDS) {
     const re = new RegExp(`^[-*\\s]*\\**${f.replace(/_/g, "[ _]")}\\**\\s*[:：]\\s*(.+)$`, "im");
@@ -86,6 +95,7 @@ export function extractStructured(md: string): ScenarioExtract {
     out[f] = v.replace(/\b\d{1,3}(?:\.\d+)?\s*(%|percent)/gi, "[number removed]").replace(/\bprobability\b[^.]*\./gi, "[probability removed].").slice(0, 600);
   }
   if (out.lean && !/^(bullish|bearish|mixed|unclear)\b/i.test(out.lean)) out.lean = null;
+  if (out.lean) out.lean = out.lean.toLowerCase();
   out.complete = EXTRACT_FIELDS.every((f) => out[f] != null);
   return out;
 }
@@ -312,6 +322,7 @@ export async function step(job: Job, d: Deps): Promise<number> {
       if (!md.trim() || str(r.status) && str(r.status) !== "completed") throw new TownError("report incomplete (no markdown / not completed); nothing archived", 200, false);
       const extracted = extractStructured(md);
       job.stage = "archive";
+      job.cost.actualUsd = d.meterSpentUsd?.(job.id) ?? null;
       const archivedAs = await d.archiver(job, md);
       job.result = { reportChars: md.length, extracted, archivedAs, completedAt: new Date().toISOString() };
       job.cost.actualUsd = d.meterSpentUsd?.(job.id) ?? null;

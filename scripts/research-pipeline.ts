@@ -73,6 +73,17 @@ if (cmd === "plan") {
   } finally { release(); }
 } else if (cmd === "cancel") {
   console.log(JSON.stringify(store.cancel(args[1], opt("--reason", "operator cancel"))?.stage ?? "not found"));
+} else if (cmd === "reextract") {
+  // re-parse an archived report after a parser fix; reads the saved markdown only, no MiroFish/LLM calls
+  const id = args[1];
+  const it = archive.all().find((x) => x.id === id);
+  const job = store.get(id);
+  if (!it || !existsSync(it.reportFile)) { console.log("not found"); process.exit(1); }
+  const extracted = extractStructured(readFileSync(it.reportFile, "utf8"));
+  const actualUsd = job?.cost.actualUsd ?? it.cost.actualUsd;
+  archive.update(id, { extracted, cost: { estimatedUsd: it.cost.estimatedUsd, actualUsd } });
+  if (job?.result) { job.result.extracted = extracted; store.save(job, "re-extracted from archived report"); }
+  console.log(JSON.stringify({ id, complete: extracted.complete, lean: extracted.lean, actualUsd }));
 } else if (cmd === "status") {
   for (const j of store.list()) console.log(j.id, j.stage, j.spec.catalyst.id, j.spec.scenario, `seed=${j.spec.seed}`, `est=$${j.cost.estimatedUsd}`, `actual=${j.cost.actualUsd ?? "n/a"}`, j.error ?? "", JSON.stringify(j.ids));
 } else if (cmd === "dashboard") {
