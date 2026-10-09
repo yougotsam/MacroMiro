@@ -85,19 +85,40 @@ export class Oms {
     this.file = `${dir}/oms-journal.jsonl`;
   }
 
+  /** Rows that could not be read on the last journal pass (bad JSON, missing fields, unknown risk). */
+  corruptRows = 0;
+
+  /**
+   * Readable journal rows. A corrupt row never throws into the engine loop (review B5): it is skipped and
+   * counted, and `submit` refuses every new order while any corrupt row exists (fail closed). Cancels and
+   * reconciliation of the readable rows keep working.
+   */
   journal(): JournalRow[] {
-    if (!existsSync(this.file)) return [];
-    return readFileSync(this.file, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
-        try {
-          return JSON.parse(l) as JournalRow;
-        } catch {
-          throw new Error("OMS journal corrupted: trading must remain disabled until reconciliation");
+    if (!existsSync(this.file)) {
+      this.corruptRows = 0;
+      return [];
+    }
+    let bad = 0;
+    const rows: JournalRow[] = [];
+    for (const l of readFileSync(this.file, "utf8").split("\n")) {
+      if (!l.trim()) continue;
+      try {
+        const r = JSON.parse(l) as JournalRow;
+        if (!r || typeof r !== "object" || typeof r.cid !== "string" || typeof r.stage !== "string" || typeof r.ticker !== "string") {
+          bad += 1;
+          continue;
         }
-      })
-      .filter((x): x is JournalRow => Boolean(x));
+        if (r.stage === "intent" && !(Number.isFinite(r.worst) && (r.worst as number) > 0)) {
+          bad += 1; // an intent whose risk is unknown cannot be reserved correctly
+          continue;
+        }
+        rows.push(r);
+      } catch {
+        bad += 1;
+      }
+    }
+    this.corruptRows = bad;
+    return rows;
   }
 
   private write(row: Omit<JournalRow, "ts">) {
@@ -134,7 +155,6 @@ export class Oms {
       // Once Kalshi acknowledged it (sent/found) or it was cancelled, Kalshi's own resting/position/fill
       // records carry its exposure; counting it here as well would add it forever, across ET days (review B1).
       if (st !== "intent" && st !== "unknown") continue;
-      if (!Number.isFinite(i.worst) || i.worst! <= 0) throw new Error("OMS intent with unknown risk");
       // A network-ambiguous order never ages out of risk simply because the clock advanced.
       out.push({ cid, ticker: i.ticker, worst: i.worst ?? 0 });
     }
@@ -162,6 +182,8 @@ export class Oms {
 
   /** The single choke point. */
   async submit(intent: OrderIntent, snapshot: AccountSnapshot | null): Promise<{ ok: boolean; why: string; cid?: string; orderId?: string; status?: string; fill?: number }> {
+    this.journal();
+    if (this.corruptRows > 0) return { ok: false, why: `OMS journal has ${this.corruptRows} unreadable row(s): sending disabled until reconciled` };
     if (!CALIBRATED_MODEL_APPROVED) return { ok: false, why: "model not independently calibrated / production release disabled" };
     if (!TICKER_RE.test(intent.ticker)) return { ok: false, why: "ticker" };
     // limit orders only: an explicit price strictly inside (0,1) and a whole contract count, every time

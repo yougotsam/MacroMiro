@@ -26,6 +26,12 @@ export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string
 export const DAILY_STOP_USD = -5; // ET day; realized + fees + worst case of open positions and resting orders
 export const MAX_ORDER_COST_USD = 3; // count × price + fee
 export const MAX_OPEN_WORST_USD = 9; // all open positions + resting orders, worst case
+/**
+ * Worst case allowed in ONE correlated group = the same 15-minute window and direction across all coins.
+ * Set equal to the approved $9 aggregate cap so no approved number changes; the group is now accounted
+ * and enforced separately. A tighter value is an owner decision (reviewed config release).
+ */
+export const MAX_CORRELATED_WORST_USD = MAX_OPEN_WORST_USD;
 export const MAX_ORDERS_PER_TICKER_WINDOW = 3;
 export const MAX_ORDERS_PER_TICK = 1;
 export const LOSS_STREAK_PAUSE = 3; // consecutive losing settlements…

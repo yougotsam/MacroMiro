@@ -29,7 +29,7 @@ import { features, featureShift, minuteBars, type FeatureSnapshot } from "./feat
 import type { FeeInfo } from "./fees";
 import { Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides, type Side } from "./gate";
-import { macroVeto } from "./macro-calendar";
+import { macroGate, type MacroGate } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, type Evidence } from "./sniper";
 import { MoveGuard, against, makerWindowOk, minPriceFor, pullReason, shockOf, type GuardState } from "./guard";
 import { exchangeStatus, fetchSnapshot, marketResult, openMarket, orderbook, eventFee, orderOutcomeSide, sidePrice, type KOrder, type Market, type Position } from "./kalshi-read";
@@ -52,6 +52,9 @@ export type SeriesEval = {
   feats: FeatureSnapshot | null;
   sniper: { long: Evidence; short: Evidence } | null;
   best: Candidate | null;
+  /** what the gate would have done while a release/safety gate (uncalibrated model, macro calendar) blocks it — logged, never sent */
+  shadow: Candidate | null;
+  macro: MacroGate | null;
   failed: string | null;
   quotes: Record<string, number | null> | null;
   tte: number | null;
@@ -141,13 +144,14 @@ export class Engine {
   evaluate(series: Series, m: Market | null, book: Book | null, fee: FeeInfo | null, now: number, exOk: boolean, budget: number): SeriesEval {
     const ref = REFERENCE[series];
     const out: SeriesEval = {
-      series, market: m, book, pBase: null, p: null, shift: 0, sigma: null, spot: null, indexAge: null, feats: null, sniper: null, best: null, failed: null, quotes: null,
+      series, market: m, book, pBase: null, p: null, shift: 0, sigma: null, spot: null, indexAge: null, feats: null, sniper: null, best: null, shadow: null, macro: null, failed: null, quotes: null,
       tte: m ? (m.closeMs - now) / 1000 : null, shock: 0, lockFrac: 0, guard: this.guard.state(series, now), makerOk: false, makerMinEdge: MAKER_MIN_EDGE, minPrice: 0, budget,
     };
     const fail = (g: string) => ((out.failed = g), out);
     if (!exOk) return fail("G0_exchange_paused");
-    const veto = macroVeto(now);
-    if (veto.length) return fail("G0_verified_macro_event_veto");
+    // FAIL-CLOSED macro calendar: evaluated now, enforced after pricing so the shadow ledger keeps the would-be trade.
+    const macro = macroGate(now);
+    out.macro = macro;
     if (!m) return fail("G1_no_open_market");
     if (m.strikeType !== "greater_or_equal") return fail("G1_strike_type");
     if (m.exchangeIndex !== 2 || m.priceRanges.length === 0) return fail("G1_wrong_shard_or_price_grid");
@@ -205,8 +209,8 @@ export class Engine {
     const b15 = resampleComplete(researchBars, 15);
     const b1h = resampleComplete(researchBars, 60);
     out.sniper = {
-      long: evaluateSniper(b15, b1h, "long", !veto.length),
-      short: evaluateSniper(b15, b1h, "short", !veto.length),
+      long: evaluateSniper(b15, b1h, "long", macro.available && !macro.blocked),
+      short: evaluateSniper(b15, b1h, "short", macro.available && !macro.blocked),
     };
     out.shift = shift;
     out.p = clampP(pBase + shift);
@@ -223,8 +227,15 @@ export class Engine {
     out.quotes = g.quotes;
     out.best = g.best;
     if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
+    // Scheduled macro release, or calendar missing/stale/unparseable: no entry (fail closed).
+    if (macro.blocked) {
+      out.shadow = out.best;
+      out.best = null;
+      return fail(`G0_${macro.reason ?? "macro_calendar_unavailable"}`);
+    }
     // A model must be independently calibrated before production eligibility.
     if (!CALIBRATED_MODEL_APPROVED) {
+      out.shadow = out.best;
       out.best = null;
       return fail("G3_uncalibrated_model_shadow_only");
     }
@@ -247,8 +258,11 @@ export class Engine {
       feature_shift: e.shift,
       p: e.p,
       quotes: e.quotes,
+      depth: e.book ? { yes_bid_size: e.book.yesBid?.size ?? null, no_bid_size: e.book.noBid?.size ?? null } : null,
       fee_type: fee?.feeType ?? null,
+      fee_multiplier: fee?.multiplier ?? null,
       best: e.best ? { side: e.best.side, mode: e.best.mode, price: e.best.price, count: e.best.count, fee: e.best.fee, edge: Number(e.best.edge.toFixed(4)), edge_base: Number(e.best.edgeBase.toFixed(4)) } : null,
+      shadow_best: e.shadow ? { side: e.shadow.side, mode: e.shadow.mode, price: e.shadow.price, count: e.shadow.count, fee: e.shadow.fee, edge: Number(e.shadow.edge.toFixed(4)), edge_base: Number(e.shadow.edgeBase.toFixed(4)) } : null,
       action,
       failed_gate: e.failed,
       features: e.feats ? { ...e.feats.groups, score: e.feats.score, ema7: e.feats.ema7, ema14: e.feats.ema14, ema50: e.feats.ema50, rsi14: e.feats.rsi14, candle: e.feats.candle, structure: e.feats.structure } : null,
@@ -293,12 +307,24 @@ export class Engine {
   /** Cancel desk resting bids per the guard rules (fast move, final seconds, 5¢ last minute, edge < hold) or outbid 90 s. */
   private async manageResting(evals: SeriesEval[], now: number) {
     for (const o of this.resting) {
-      if (!(o.client_order_id ?? "").startsWith("mm1-")) continue; // never touch orders the desk didn't place
+      try {
+        await this.manageOne(o, evals, now);
+      } catch (err) {
+        // one bad record must not stop the other resting orders from being checked this tick (review B5)
+        this.errors += 1;
+        log("manageResting error", o.order_id, err instanceof Error ? err.message.slice(0, 160) : err);
+      }
+    }
+  }
+
+  private async manageOne(o: KOrder, evals: SeriesEval[], now: number) {
+    {
+      if (!(o.client_order_id ?? "").startsWith("mm1-")) return; // never touch orders the desk didn't place
       const e = evals.find((x) => x.market?.ticker === o.ticker);
       const parsed = restingOf(o);
       if (!parsed) {
         await this.cancel({ orderId: o.order_id, ticker: o.ticker, series: seriesOf(o.ticker), side: "yes", price: Number.NaN, cid: o.client_order_id ?? "" }, "unreadable order side/price", e);
-        continue;
+        return;
       }
       const r: Resting = parsed;
       let why: string | null = null;
@@ -431,12 +457,13 @@ export class Engine {
         model: `${MODEL_VERSION}+${MODEL_REV}`,
         tickId,
         errors: this.errors,
+        omsJournalCorruptRows: this.oms.corruptRows,
         feeds: this.feeds.status,
         exchangeTradingActive: this.ex.tradingActive,
         switches: { live: switches.live(), begin: switches.begin(), arm: switches.arm() },
         latched: latched?.latchReason ?? null,
         budget,
-        macroVeto: macroVeto(now2),
+        macro: macroGate(now2),
         strategyReadiness: {
           settlementModel: CALIBRATED_MODEL_APPROVED ? "reviewed" : "unapproved / shadow only",
           microstructure: "not integrated: distinct signed-trade and true venue-volume feeds required",

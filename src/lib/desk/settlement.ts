@@ -64,7 +64,7 @@ export function cryptoProb(x: CryptoInput): SettleModel {
     // A valid exchange-calculated partial sum is more authoritative than
     // locally missing packets. Refuse mismatched timestamps/counts.
     if (!Number.isFinite(x.official.value) || x.official.value <= 0 ||
-        x.official.t !== x.last.t || x.official.count !== expectedCount) {
+        !Number.isFinite(x.official.t) || Math.floor(x.official.t / 1000) !== lastSec || x.official.count !== expectedCount) {
       throw new Error("official settlement accumulator mismatch");
     }
     printed = expectedCount;

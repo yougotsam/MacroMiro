@@ -16,6 +16,7 @@ import {
   ENABLE_RISK_OVERRIDES,
   LOSS_STREAK_PAUSE,
   LOSS_STREAK_PAUSE_MS,
+  MAX_CORRELATED_WORST_USD,
   MAX_OPEN_WORST_USD,
   MAX_ORDER_COST_USD,
   MAX_ORDERS_PER_TICK,
@@ -43,6 +44,8 @@ export type AccountSnapshot = {
   settledToday: Settled[];
   /** desk orders already sent per ticker (Kalshi + local journal, max of both) */
   ordersPerTicker: Record<string, number>;
+  /** worst case per (15-minute window, direction) across all coins: open + resting + pending */
+  correlated?: Record<string, number>;
   exchangeTradingActive: boolean;
   exchangeCheckedAt: number;
   /** set when a dated risk override (override.ts) re-based the day: baseline = realized before its start */
@@ -200,6 +203,9 @@ export class RiskEngine {
     if (projected < DAILY_STOP_USD) return no(`would breach daily stop: ${dayWorst.toFixed(2)} − ${orderWorst.toFixed(2)} < ${DAILY_STOP_USD}`, dayWorst, projected);
     const exposure = s.openWorst + s.restWorst + s.pendingWorst + orderWorst;
     if (exposure > MAX_OPEN_WORST_USD + 1e-9) return no(`exposure ${exposure.toFixed(2)} > ${MAX_OPEN_WORST_USD}`, dayWorst, projected);
+    const corrKey = `${o.ticker.split("-")[1] ?? o.ticker}|${o.side === "no" ? "down" : "up"}`;
+    const corr = (s.correlated?.[corrKey] ?? 0) + orderWorst;
+    if (corr > MAX_CORRELATED_WORST_USD + 1e-9) return no(`correlated window ${corrKey} ${corr.toFixed(2)} > ${MAX_CORRELATED_WORST_USD}`, dayWorst, projected);
     if ((s.ordersPerTicker[o.ticker] ?? 0) >= MAX_ORDERS_PER_TICKER_WINDOW) return no(`ticker order cap ${MAX_ORDERS_PER_TICKER_WINDOW}`, dayWorst, projected);
     if ((this.tickCount.get(o.tickId) ?? 0) >= MAX_ORDERS_PER_TICK) return no("one order per tick", dayWorst, projected);
     if (s.shard2Cash < orderWorst) return no(`shard 2 cash ${s.shard2Cash.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);

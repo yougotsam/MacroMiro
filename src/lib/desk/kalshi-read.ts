@@ -145,6 +145,11 @@ export type KOrder = {
 };
 
 /** Ticker inside a desk client_order_id "mm1-<ticker>-<y|n>-<seq>". */
+/** "KXBTC15M-26OCT081200-00" + up → "26OCT081200|up": all coins closing in the same window, same direction. */
+export function correlationKey(ticker: string, dir: "up" | "down") {
+  return `${ticker.split("-")[1] ?? ticker}|${dir}`;
+}
+
 export function tickerOfCid(cid: string) {
   const m = /^mm1-(.+)-[yn]-\d+$/.exec(cid);
   return m ? m[1] : null;
@@ -237,11 +242,14 @@ export function buildSnapshot(input: {
   // The order record shows a fill before /positions does, so the max covers the lag without double counting.
   const settledTickers = new Set(input.settlements.map((x) => x.ticker));
   const openBy = new Map<string, number>();
+  const openDir = new Map<string, "up" | "down">();
   for (const p of input.positions) {
-    if (!desk(p.ticker)) continue;
+    // a settled contract is already in realized P/L; Kalshi can still list it under /positions for a while (double count)
+    if (!desk(p.ticker) || settledTickers.has(p.ticker)) continue;
     const held = Number(p.position_fp);
     if (!Number.isFinite(held)) throw new Error("unknown open position size");
     if (Math.abs(held) < 1e-9) continue;
+    openDir.set(p.ticker, held > 0 ? "up" : "down");
     openBy.set(p.ticker, finiteAmount(p.market_exposure_dollars, "position market exposure") +
       finiteAmount(p.fees_paid_dollars, "paid position fees", true));
   }
@@ -253,21 +261,38 @@ export function buildSnapshot(input: {
     const cost = filled * sidePrice(o) + finiteAmount(o.taker_fees_dollars, "taker fees", true) +
       finiteAmount(o.maker_fees_dollars, "maker fees", true);
     fillBy.set(o.ticker, (fillBy.get(o.ticker) ?? 0) + cost);
+    if (!openDir.has(o.ticker)) openDir.set(o.ticker, orderOutcomeSide(o) === "no" ? "down" : "up");
   }
+  // correlated exposure: every coin's contract for the same 15-minute window, same direction, is one group
+  const correlated: Record<string, number> = {};
+  const addCorr = (ticker: string, dir: "up" | "down", worst: number) => {
+    const k = correlationKey(ticker, dir);
+    correlated[k] = Number(((correlated[k] ?? 0) + worst).toFixed(4));
+  };
   let openWorst = 0;
-  for (const t of new Set([...openBy.keys(), ...fillBy.keys()])) openWorst += Math.max(openBy.get(t) ?? 0, fillBy.get(t) ?? 0);
-  const known = new Set(input.ordersToday.map((o) => o.client_order_id).filter(Boolean));
+  for (const t of new Set([...openBy.keys(), ...fillBy.keys()])) {
+    const w = Math.max(openBy.get(t) ?? 0, fillBy.get(t) ?? 0);
+    openWorst += w;
+    addCorr(t, openDir.get(t) ?? "up", w);
+  }
+  // a pending send is "known" once Kalshi lists it anywhere (today's orders OR the resting list); then Kalshi's numbers count
+  const known = new Set([...input.ordersToday, ...input.resting].map((o) => o.client_order_id).filter(Boolean));
   let pendingWorst = 0;
   for (const i of input.pendingIntents ?? []) {
     if (!Number.isFinite(i.worst) || i.worst < 0) throw new Error("invalid pending order risk");
-    if (!known.has(i.cid)) pendingWorst += i.worst;
+    if (known.has(i.cid)) continue;
+    pendingWorst += i.worst;
+    const t = tickerOfCid(i.cid);
+    if (t) addCorr(t, /-n-\d+$/.test(i.cid) ? "down" : "up", i.worst);
   }
   let restWorst = 0;
   for (const o of input.resting) {
     if (!desk(o.ticker)) continue;
     const left = finiteAmount(o.remaining_count_fp, "resting order remaining");
     const px = sidePrice(o);
-    restWorst += left * px + quadraticFee(left, px);
+    const w = left * px + quadraticFee(left, px);
+    restWorst += w;
+    addCorr(o.ticker, orderOutcomeSide(o) === "no" ? "down" : "up", w);
   }
   const ordersPerTicker: Record<string, number> = {};
   for (const o of input.ordersToday) {
@@ -287,6 +312,7 @@ export function buildSnapshot(input: {
     shard2Cash: input.shard2Cash,
     settledToday,
     ordersPerTicker,
+    correlated,
     exchangeTradingActive: input.exchangeTradingActive,
     exchangeCheckedAt: input.exchangeCheckedAt,
   };
