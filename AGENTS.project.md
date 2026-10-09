@@ -1,11 +1,16 @@
-# Envelope project rules
+# AURIX-X project rules
+Read `docs/STRATEGY.md` and `docs/AURIX_RELEASE_REPORT.md` first.
+One canonical evidence-based Kalshi settlement-probability strategy;
+technical indicators provide independently tested structure and timing
+evidence, never heuristic percentage boosts. MiroFish, Firecrawl, Spark2
+and Alexandria contribute timestamped context; their narrative confidence
+is not a calibrated contract win probability.
 
-Approved features get implemented and tested. Do not dismiss one because another bot has no published fills.
+All orders must use `src/lib/desk/oms.ts` → risk check. No direct alternate
+API POST paths. No missing prices, synthetic settlement prints or silent
+risk-latch overrides. Perpetual orders remain disabled pending a separate
+production release. Live deployment stays blocked while
+CALIBRATED_MODEL_APPROVED is false.
 
-Unproven ideas are marked experimental and run in shadow mode. They do not place orders.
-
-Live trading stays off until the settlement print matches the contract (BRTI 60-second average for BTC, Pyth GOLD 1-minute close for gold), the shadow log has a real sample, and a human turns the live flag on.
-
-A missing credential blocks a live decision. It does not block building the adapter, the stale check, or the tests.
-
-Indicators confirm a thesis. RSI, a candle name, or a band touch alone is not a trade.
+No fabricated tests, fill prices, profitability claims, or source certainty.
+Unrelated NFC/transit features remain unless explicitly authorized for removal.

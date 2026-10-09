@@ -8,7 +8,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { KALSHI_HOST, kalshiDelete, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
 import { eventCancelPath } from "@/lib/scan/kalshi-order-status";
-import { ORDER_SHARD, TICKER_RE, dataDir } from "./config";
+import { CALIBRATED_MODEL_APPROVED, ORDER_SHARD, TICKER_RE, dataDir } from "./config";
 import { ordersByClientIds, type KOrder } from "./kalshi-read";
 import type { AccountSnapshot, OrderIntent, RiskEngine } from "./risk";
 
@@ -94,7 +94,7 @@ export class Oms {
         try {
           return JSON.parse(l) as JournalRow;
         } catch {
-          return null;
+          throw new Error("OMS journal corrupted: trading must remain disabled until reconciliation");
         }
       })
       .filter((x): x is JournalRow => Boolean(x));
@@ -131,7 +131,8 @@ export class Oms {
     for (const [cid, i] of intent) {
       const st = last.get(cid)?.stage;
       if (st === "rejected" || st === "not_found") continue;
-      if (now - Date.parse(i.ts) > 30 * 60_000) continue;
+      if (!Number.isFinite(i.worst) || i.worst! <= 0) throw new Error("OMS intent with unknown risk");
+      // A network-ambiguous order never ages out of risk simply because the clock advanced.
       out.push({ cid, ticker: i.ticker, worst: i.worst ?? 0 });
     }
     return out;
@@ -158,6 +159,7 @@ export class Oms {
 
   /** The single choke point. */
   async submit(intent: OrderIntent, snapshot: AccountSnapshot | null): Promise<{ ok: boolean; why: string; cid?: string; orderId?: string; status?: string; fill?: number }> {
+    if (!CALIBRATED_MODEL_APPROVED) return { ok: false, why: "model not independently calibrated / production release disabled" };
     if (!TICKER_RE.test(intent.ticker)) return { ok: false, why: "ticker" };
     // limit orders only: an explicit price strictly inside (0,1) and a whole contract count, every time
     if (!(intent.price > 0 && intent.price < 1) || !Number.isInteger(intent.count) || intent.count < 1) return { ok: false, why: "limit price / whole count required" };
@@ -224,7 +226,8 @@ export class Oms {
     for (const r of open) {
       const h = hits.find((o) => o.client_order_id === r.cid);
       if (h) this.write({ cid: r.cid, stage: "found", ticker: r.ticker, orderId: h.order_id, status: h.status, fill: Number(h.fill_count_fp ?? 0) });
-      else if (now - Date.parse(r.ts) > 120_000) this.write({ cid: r.cid, stage: "not_found", ticker: r.ticker });
+      // Not observed is NOT authoritative proof an order was never filled.
+      // Preserve pending risk until fill/order/account history conclusively reconciles it.
     }
     return open.length;
   }

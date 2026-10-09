@@ -10,6 +10,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   BAR_MAX_AGE_MS,
+  DAILY_STOP_USD,
+  CALIBRATED_MODEL_APPROVED,
   BOOK_MAX_AGE_MS,
   INDEX_MAX_AGE_MS,
   MAKER_MIN_EDGE,
@@ -27,8 +29,10 @@ import { features, featureShift, minuteBars, type FeatureSnapshot } from "./feat
 import type { FeeInfo } from "./fees";
 import { Feeds } from "./feeds";
 import { type Book, type Candidate, scoreSides, type Side } from "./gate";
+import { readDeskIntelligence } from "./intelligence";
+import { resampleComplete, evaluateSniper, type Evidence } from "./sniper";
 import { MoveGuard, against, makerWindowOk, minPriceFor, pullReason, shockOf, type GuardState } from "./guard";
-import { exchangeStatus, fetchSnapshot, marketResult, openMarket, orderbook, seriesFee, sidePrice, type KOrder, type Market, type Position } from "./kalshi-read";
+import { exchangeStatus, fetchSnapshot, marketResult, openMarket, orderbook, eventFee, sidePrice, type KOrder, type Market, type Position } from "./kalshi-read";
 import { DecisionLedger, type Decision } from "./ledger";
 import { Oms } from "./oms";
 import { RiskEngine, dayWorstOf, switches, type AccountSnapshot } from "./risk";
@@ -46,6 +50,7 @@ export type SeriesEval = {
   spot: number | null;
   indexAge: number | null;
   feats: FeatureSnapshot | null;
+  sniper: { long: Evidence; short: Evidence } | null;
   best: Candidate | null;
   failed: string | null;
   quotes: Record<string, number | null> | null;
@@ -106,38 +111,43 @@ export class Engine {
     return m;
   }
 
-  private async fee(series: Series, now: number): Promise<FeeInfo | null> {
-    const c = this.fees.get(series);
-    if (c && now - c.at < 3600_000) return c.info;
+  private async fee(market: Market | null, now: number): Promise<FeeInfo | null> {
+    if (!market) return null;
+    const c = this.fees.get(market.eventTicker);
+    if (c && now - c.at < 60_000) return c.info;
     try {
-      const info = await seriesFee(series);
-      this.fees.set(series, { info, at: now });
+      const info = await eventFee(market.series, market.eventTicker);
+      this.fees.set(market.eventTicker, { info, at: now });
       return info;
     } catch {
-      return c?.info ?? null;
+      // Fee source unavailable: do not reuse an expired or cross-event cached fee.
+      return null;
     }
   }
 
   evaluate(series: Series, m: Market | null, book: Book | null, fee: FeeInfo | null, now: number, exOk: boolean, budget: number): SeriesEval {
     const ref = REFERENCE[series];
     const out: SeriesEval = {
-      series, market: m, book, pBase: null, p: null, shift: 0, sigma: null, spot: null, indexAge: null, feats: null, best: null, failed: null, quotes: null,
+      series, market: m, book, pBase: null, p: null, shift: 0, sigma: null, spot: null, indexAge: null, feats: null, sniper: null, best: null, failed: null, quotes: null,
       tte: m ? (m.closeMs - now) / 1000 : null, shock: 0, lockFrac: 0, guard: this.guard.state(series, now), makerOk: false, makerMinEdge: MAKER_MIN_EDGE, minPrice: 0, budget,
     };
     const fail = (g: string) => ((out.failed = g), out);
     if (!exOk) return fail("G0_exchange_paused");
+    if (readDeskIntelligence(now).macroVeto) return fail("G0_verified_macro_event_veto");
     if (!m) return fail("G1_no_open_market");
     if (m.strikeType !== "greater_or_equal") return fail("G1_strike_type");
+    if (m.exchangeIndex !== 2 || m.priceRanges.length === 0) return fail("G1_wrong_shard_or_price_grid");
     const ruleOk = ref.kind === "rti60" ? m.rules.includes(ref.index.replace("USD_RTI", "USDRTI")) || m.rules.includes(ref.index) : /pyth|gold/i.test(m.rules) || m.rules.toLowerCase().includes("gold");
     if (!ruleOk) return fail("G1_rules_mismatch");
     const left = (m.closeMs - now) / 1000;
     if (left < MIN_SECONDS_LEFT) return fail("G1_too_close_to_close");
     const last = this.feeds.last(ref.index);
     out.indexAge = last ? now - last.t : null;
-    if (!last || now - last.t > INDEX_MAX_AGE_MS) return fail("G1_index_stale");
+    if (!last || last.t > now + 500 || now - last.t > INDEX_MAX_AGE_MS ||
+        now - last.recv > INDEX_MAX_AGE_MS) return fail("G1_index_stale");
     out.spot = last.v;
     if (!book) return fail("G1_no_book");
-    if (now - book.ts > BOOK_MAX_AGE_MS) return fail("G1_book_stale");
+    if (book.ts > now + 500 || now - book.ts > BOOK_MAX_AGE_MS) return fail("G1_book_stale");
     const prints = this.feeds.prints(ref.index, now - 3600_000);
     const bars = minuteBars(prints, now);
     const lastBar = bars[bars.length - 1];
@@ -146,11 +156,28 @@ export class Engine {
     if (sig.sigma == null || sig.n < MIN_VOL_SAMPLES) return fail("G1_vol_warmup");
     out.sigma = sig.sigma;
     this.sigmaBy.set(series, sig.sigma);
-    const windowPrints = ref.kind === "rti60" ? this.feeds.windowMap(ref.index, m.closeMs - 60_000, m.closeMs) : new Map<number, number>();
+    const windowPrints = ref.kind === "rti60" ?
+      this.feeds.windowMap(ref.index, m.closeMs - 59_000, m.closeMs + 1000) :
+      new Map<number, number>();
+    const afterWindowStart = ref.kind === "rti60" &&
+      last.t >= m.closeMs - 59_000 && last.t <= m.closeMs;
+    const official = afterWindowStart ? this.feeds.lastOfficialAverage(ref.index) : null;
+    if (afterWindowStart) {
+      const expected = Math.floor(last.t / 1000) - Math.floor(m.closeMs / 1000) + 60;
+      if (!official || official.t !== last.t || official.windowSize !== expected) {
+        return fail("G1_official_settlement_accumulator_missing_or_mismatched");
+      }
+    }
     const pAt = (v: number) =>
       ref.kind === "rti60"
-        ? cryptoProb({ closeMs: m.closeMs, strike: m.strike, dp: ref.dp, last: { t: last.t, v }, windowPrints, sigma: sig.sigma! })
+        ? cryptoProb({
+            closeMs: m.closeMs, strike: m.strike, dp: ref.dp,
+            last: { t: last.t, v }, windowPrints, sigma: sig.sigma!,
+            official: official ? { value: official.value, count: official.windowSize, t: official.t } : undefined,
+          })
         : goldProb({ closeMs: m.closeMs, strike: m.strike, dp: ref.dp, last: { t: last.t, v }, sigma: sig.sigma! });
+    // On a packet gap, the official aggregate (if matched) is authoritative.
+    // Any divergence in a complete local window is rejected by cryptoProb().
     const model = pAt(last.v);
     out.lockFrac = ref.kind === "rti60" ? model.printed / 60 : 0;
     out.shock = shockOf((v) => clampP(pAt(v).p), last.v, sig.sigma);
@@ -159,6 +186,15 @@ export class Engine {
     const shift = featureShift(pBase, feats.score);
     out.pBase = pBase;
     out.feats = feats;
+    // Current CF index 1m candles do not have real exchange volume. These are
+    // RESEARCH observations only; unavailable 1h/flow conditions remain missing.
+    const researchBars = bars.map((b) => ({ ...b, t: b.t * 60_000 }));
+    const b15 = resampleComplete(researchBars, 15);
+    const b1h = resampleComplete(researchBars, 60);
+    out.sniper = {
+      long: evaluateSniper(b15, b1h, "long", !readDeskIntelligence(now).macroVeto),
+      short: evaluateSniper(b15, b1h, "short", !readDeskIntelligence(now).macroVeto),
+    };
     out.shift = shift;
     out.p = clampP(pBase + shift);
     // execution guard
@@ -166,13 +202,19 @@ export class Engine {
     out.makerOk = makerWindowOk(left, out.lockFrac, ref.kind);
     out.makerMinEdge = MAKER_MIN_EDGE + out.shock;
     out.minPrice = minPriceFor(left);
-    if (!fee) return fail("G1_fee_unknown");
+    if (!fee || fee.feeType !== "quadratic" || !Number.isFinite(fee.multiplier) || fee.multiplier <= 0)
+      return fail("G1_fee_unknown_or_unsupported");
     if (out.guard.cooling) return fail(`G2_fast_move_cooldown_${out.guard.dir}`);
     if (budget <= 0) return fail("G2_no_room");
-    const g = scoreSides(out.p, pBase, book, fee, { allowMaker: out.makerOk, allowTaker: true, budget, makerMinEdge: out.makerMinEdge, minPrice: out.minPrice });
+    const g = scoreSides(out.p, pBase, book, fee, { allowMaker: out.makerOk, allowTaker: true, budget, makerMinEdge: out.makerMinEdge, minPrice: out.minPrice, priceRanges: m.priceRanges });
     out.quotes = g.quotes;
     out.best = g.best;
     if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
+    // A model must be independently calibrated before production eligibility.
+    if (!CALIBRATED_MODEL_APPROVED) {
+      out.best = null;
+      return fail("G3_uncalibrated_model_shadow_only");
+    }
     return out;
   }
 
@@ -310,7 +352,7 @@ export class Engine {
       const evals = await Promise.all(
         SERIES.map(async (s) => {
           const m = await this.market(s, t0);
-          const [book, fee] = await Promise.all([m ? orderbook(m.ticker).catch(() => null) : Promise.resolve(null), this.fee(s, t0)]);
+          const [book, fee] = await Promise.all([m ? orderbook(m.ticker).catch(() => null) : Promise.resolve(null), this.fee(m, t0)]);
           return { e: this.evaluate(s, m, book, fee, Date.now(), exOk, budget), fee };
         }),
       );
@@ -374,7 +416,15 @@ export class Engine {
         switches: { live: switches.live(), begin: switches.begin(), arm: switches.arm() },
         latched: latched?.latchReason ?? null,
         budget,
-        snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt, override: this.snapshot.override ?? null, roomToStop: Number((dayWorstOf(this.snapshot) + 15).toFixed(4)) } : null,
+        intelligence: readDeskIntelligence(now2),
+        strategyReadiness: {
+          settlementModel: CALIBRATED_MODEL_APPROVED ? "reviewed" : "unapproved / shadow only",
+          microstructure: "not integrated: distinct signed-trade and true venue-volume feeds required",
+          higherTimeframes: "not integrated: persistent 15m and 1h spot/futures OHLCV required",
+          mirofish: "real output read-only; not calibrated to Kalshi settlement",
+          sparkAlexandria: "sourced macro veto/context; no unsupported probability adjustment",
+        },
+        snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt, override: this.snapshot.override ?? null, roomToStop: Number((dayWorstOf(this.snapshot) - DAILY_STOP_USD).toFixed(4)) } : null,
         resting: [...this.known.values()],
         sentThisTick: sent,
         series: evals.map(({ e }) => ({
@@ -391,6 +441,10 @@ export class Engine {
           moveZ: Number(e.guard.z.toFixed(2)),
           cooling: e.guard.cooling,
           makerOk: e.makerOk,
+          sniper: e.sniper ? {
+            long: { score: e.sniper.long.score, eligible: e.sniper.long.eligible, missing: e.sniper.long.missing },
+            short: { score: e.sniper.short.score, eligible: e.sniper.short.eligible, missing: e.sniper.short.missing }
+          } : null,
         })),
       };
       writeFileSync(`${dataDir()}/status.json`, JSON.stringify(this.lastStatus, null, 1));

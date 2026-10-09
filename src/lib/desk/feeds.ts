@@ -21,6 +21,9 @@ type Buf = { bySec: Map<number, number>; lastTs: number; lastRecv: number };
 
 export class Feeds {
   private bufs = new Map<string, Buf>();
+  private officialAverages = new Map<string, { value: number; windowSize: number; t: number }>();
+  /** Kalshi-provided final-minute accumulation, NOT our locally invented index value. */
+  lastOfficialAverage(index: string) { return this.officialAverages.get(index) ?? null; }
   private ws: WebSocket | null = null;
   private pending: string[] = [];
   private stopped = false;
@@ -34,7 +37,8 @@ export class Feeds {
 
   push(index: string, tMs: number, v: number, recv = Date.now()) {
     const b = this.bufs.get(index);
-    if (!b || !(v > 0)) return;
+    if (!b || !Number.isFinite(v) || v <= 0 || !Number.isFinite(tMs) || !Number.isFinite(recv)) return;
+    if (tMs > recv + 2_000 || tMs < recv - 7 * 24 * 3600_000) return;
     const sec = Math.floor(tMs / 1000) * 1000;
     if (!b.bySec.has(sec) && this.record) this.pending.push(JSON.stringify({ i: index, t: sec, v, r: recv }));
     b.bySec.set(sec, v);
@@ -161,6 +165,15 @@ export class Feeds {
         try {
           const inner = JSON.parse(String(m.msg.data)) as { time: number; id: string; value: string };
           this.push(inner.id, inner.time, Number(inner.value), recv);
+          const avg = m.msg.last_60s_windowed_average_15min as {
+            value?: string; window_size?: number
+          } | undefined;
+          const count = Number(avg?.window_size);
+          const value = Number(avg?.value);
+          if (avg && Number.isInteger(count) && count >= 1 && count <= 60 &&
+              Number.isFinite(value) && value > 0 && Math.abs(inner.time - recv) < 5_000) {
+            this.officialAverages.set(inner.id, { value, windowSize: count, t: inner.time });
+          }
         } catch {
           this.errors += 1;
         }

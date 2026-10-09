@@ -2,7 +2,11 @@
  * MacroMiro desk engine v1 — one place for every live limit.
  * Every number here is enforced in code (risk.ts / gate.ts), not just displayed.
  */
-export const MODEL_VERSION = "desk-v1.0-settle-martingale-2026-10-08";
+export const MODEL_VERSION = "aurix-x-v1.2-settlement-correctness-2026-10-09";
+/** Explicit human-reviewed model release; false prevents all live orders. */
+export const CALIBRATED_MODEL_APPROVED: boolean = false;
+/** Never reset an intraday loss latch with an on-disk override. */
+export const ENABLE_RISK_OVERRIDES: boolean = false;
 
 export const SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXGOLD15M"] as const;
 export type Series = (typeof SERIES)[number];
@@ -19,9 +23,9 @@ export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string
 };
 
 // ── Risk (hard) ──────────────────────────────────────────────────────────────
-export const DAILY_STOP_USD = -15; // ET day; realized + fees + worst case of open positions and resting orders
+export const DAILY_STOP_USD = -5; // ET day; realized + fees + worst case of open positions and resting orders
 export const MAX_ORDER_COST_USD = 3; // count × price + fee
-export const MAX_OPEN_WORST_USD = 12; // all open positions + resting orders, worst case
+export const MAX_OPEN_WORST_USD = 9; // all open positions + resting orders, worst case
 export const MAX_ORDERS_PER_TICKER_WINDOW = 3;
 export const MAX_ORDERS_PER_TICK = 1;
 export const LOSS_STREAK_PAUSE = 3; // consecutive losing settlements…
@@ -34,7 +38,7 @@ export const PRICE_MAX = 0.93;
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;
 export const BASE_MIN_EDGE = 0.01; // the settlement model alone (no features) must show this much on the chosen side/price
-export const FEATURE_MAX_SHIFT = 0.04;
+export const FEATURE_MAX_SHIFT = 0; // no probability reweighting without held-out calibration
 export const P_CLAMP = 0.98; // never claim more certainty than this
 export const MIN_SECONDS_LEFT = 3;
 

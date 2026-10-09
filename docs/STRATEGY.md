@@ -1,45 +1,105 @@
-# Desk rule
+# AURIX-X / MACROMIRO — CANONICAL TRADING RULEBOOK v1.1
+Date: 2026-10-09 | Scope: Kalshi 15m BTC/ETH/SOL/XRP/gold outcomes, separate perps
+STATUS: RESEARCH / SHADOW. **CALIBRATED_MODEL_APPROVED=false** blocks all live orders.
+Code truth: `src/lib/desk/engine.ts` (research decision engine), `gate.ts` (quote evaluation),
+`oms.ts` (sole signed order writer), `risk.ts` (mandatory permission), `config.ts`.
+The prior handoff references `src/lib/scan/edge.ts`, a file that does not exist in this ZIP; this retired reference must NOT guide execution.
+The original handoff/main-branch and $15 loss rules are retired; see docs/archive.
 
-Two engines. They do not share cash.
+## ONE STRATEGY, TWO PRODUCT ENGINES
+AURIX-X trades only when: valid setup AND independent evidence AND calibrated outcome model AND executable after-cost positive edge AND final risk approval.
+The prediction engine models Kalshi's exact market outcome. The perp engine models a specified target-before-stop policy, fees, funding, liquidation and market impact. Their labels, position sizes and APIs are independent. A confluence score is NOT a win probability.
 
-The 15-minute ticket function is `src/lib/scan/edge.ts`. The perpetual function is `src/lib/scan/perp-desk.ts`. If this page and those functions disagree, the functions are wrong until they are fixed to match this page.
+## PIPELINE (MANDATORY ORDER)
+0. STOP/auth/credential integrity and unknown-order reconciliation.
+1. Exchange shard and market-status verification; market ticker, resolution rules and price ranges.
+2. Source validity: reference index, timestamps, exchange spot trades, order-book bids, news, funding/OI where applicable.
+3. Regime: TREND_UP, TREND_DOWN, RANGE, COMPRESSION, EXPANSION, SHOCK, UNKNOWN.
+4. Map confirmed 15m/1h market structure, liquidity references, and session-specific ranges.
+5. Generate candidates from approved strategy modules; no setup => NO_TRADE.
+6. Assess independent confluence groups; check conflicting signals.
+7. Estimate exact contract settlement probability using an OUT-OF-SAMPLE CALIBRATED model.
+8. Compute executable YES and NO net expectancy separately; include fee rounding, queue/fill uncertainty and adverse selection.
+9. Allocate total risk across correlated contracts, already-held inventory, pending and open orders.
+10. OMS performs final independent check, submits one uniquely identified order, reconciles fills and cancels.
+11. Record features, reasons, quote, fills, fee, risk, result. Calibrate only on leakage-free historical periods.
 
-## Trade
+## REGIME FILTERS (UNVALIDATED RESEARCH DEFAULTS)
+- ADX14(15m) <18 => range candidate; >25 => trend candidate.
+- EMA50(1h) 5-closed-bar slope + confirmed BOS/MSS => directional context.
+- Bollinger 20,2 width <20th percentile => compression; >80th => expansion.
+- ATR14 ratio versus rolling median and exceptional spread => shock veto.
+- Use completed bars for structure. Intracontract reference-value prints can update settlement model.
+- No universal FX kill-zone requirement for 24/7 crypto; study hour-of-week and actual liquidity.
 
-| Field | Value |
-| --- | --- |
-| Broker | Kalshi only |
-| Tickets | `KXBTC15M`, `KXETH15M`, `KXSOL15M`, `KXXRP15M`, `KXGOLD15M` |
-| Up | Buy the yes ticket |
-| Down | Buy the no ticket |
-| Chart | Kalshi 1-minute candles of that contract |
-| Settlement check | Bitcoin `BRTI` 60-second average. Ether `ETHUSD_RTI`. Solana `SOLUSD_RTI`. XRP `XRPUSD_RTI`. Gold Pyth 1-minute close. That number pays the ticket. The drawing does not pay. |
-| Size | $1, $2, or $5. Never more than $5 on one ticket. $1 when the 30-minute lean does not agree. $2 when it agrees. $5 when it agrees and the ticket is 35¢ or cheaper. One open ticket per contract. The next ticket is a different chart. A news window does not raise the cap. The day stops at $15 down. A losing streak does not stop it. |
-| Clock | Active from second 6 through second 870 of the 900-second window. Resting orders are pulled at 30 seconds before settlement. The shock window is a shot, not a sit. |
+## CONFIRMATION STACK, 13 POINTS TOTAL
+1. Confirmed BOS/MSS + higher-timeframe structural bias: 0–2.
+2. Sweep/rejection and location at real prior highs/lows, FVG, OB, fib: 0–3.
+3. Genuine traded volume/flow (RVOL, CVD, book) where available: 0–2.
+4. Trend/momentum group: EMA7/14/50/200, RSI14, Stoch RSI 14/14/3/3, MACD12/26/9: 0–2.
+5. Regime, timing, and volatility fitness (ATR14, BB20/2, opening range): 0–2.
+6. Fundamental/funding/OI/major event compatibility: 0–1.
+7. Confirmed entry candle, price space, validity of trigger: 0–1.
+Starting ranking: <8 reject; 8 watch; 9–10 research-qualified; 11–13 high-confluence.
+At least 4 independent groups must contribute. Scores NEVER become percentages and never override pricing or risk veto. Thresholds must be walk-forward tested.
 
-## Entry
+## QUANTIFIED SNIPER MODULES
+A. GHOST_SWEEP REVERSAL: Confirmed session/swing extreme; price crosses by >=0.10 ATR15; closes back inside on current/next 15m bar; rejection close upper/lower 35% appropriate to side; confirm 1m/5m MSS or flow. Enter only retest/confirmed trigger.
+B. VELOCITY_RELOAD CONTINUATION: 1h trend + 15m BOS, retrace into VWAP/EMA20/FVG/OB or 61.8–65% golden pocket, pullback volume decays, 1m/5m resume trigger.
+C. ORB_PREDATOR: Instrument-specific opening range, break >=0.15 ATR15, RVOL >=1.5 versus matched time baseline, retest/acceptance; reject nearby opposing liquidity.
+D. MAGNET_SCALPER: Only in RANGE; price touches tested range edge / value area, rejection plus exhaustion; target VWAP/midrange; never fade a genuine expansion.
+E. LEVERAGE_TRAP (perps only): Funding >95th or <5th percentile, OI regime shift, liquidation events, and CONFIRMED price reversal or continuation; funding alone is never a trade.
+F. EXPIRY_EDGE (Kalshi outcome): Contract-specific index, precise strike, quarter-hour settlement arithmetic, observed final-window index ticks, time-to-expiry, volatility and quote-dependent expected value. Scalp repricing or hold-to-settlement policy must be validated separately.
+G. MAKER_HUNTER (Kalshi): Post only at permitted market tick grid when conservative EV and estimated after-fill adverse selection remain positive; otherwise don't post.
 
-The contract pays $1 or $0 per contract when the official index finishes above or below Kalshi's line. The clip is not one contract. The order buys the whole contracts that fit in the clip: clip divided by the price, rounded down. A win pays that count in dollars. At 20¢ a $3 clip buys 15 contracts and pays $15. At 60¢ it buys 5 and pays $5. The screen multiple is about 1 divided by the price, before the fee. The fee on these tickets uses multiplier 1: round up of 0.07 times contracts times price times 1 minus price. The percent on the screen is the price of that side. It does not pick the side.
+## REQUIRED FEATURE DATA AND HONEST LIMITATIONS
+Kalshi CF index 1-second series are suitable for settlement probability and index price bars. THEY DO NOT CONTAIN EXCHANGE-TRADED VOLUME, AGGRESSOR SIDE, VWAP, CVD OR VOLUME PROFILE.
+Separate exchange spot/futures trade, volume and order-book feeds are required. Keep feed/source tags; never represent a proxy as consolidated volume.
+15m and 1h EMA200 need sufficiently long HISTORY: a one-hour buffer of one-second prints cannot produce them. A new candles/feature-registry service must produce trustworthy multi-timeframe features. No retrospective pivot use until confirmation.
 
-1. The side is the index versus Kalshi's line. Above the line is YES. Below the line is NO. The move has to clear at least half the last minute's noise. A 30-second wiggle is not enough by itself. A falling 30-second print sits a YES. A rising one sits a NO. RSI above 78 sits a YES. A bullish wick (4¢–35¢, RSI at or under 38, lower wick at least 0.40 or a bullish engulf) can name a YES that is already above the line. A bearish wick is the NO mirror, and only when the index is already below the line. The 20 EMA names a breakout when it agrees. It does not cancel the side the index is already on. The spread width does not sit. The ticket is still 4¢–75¢. The 30-minute lean only sizes the clip.
-2. If that 30-minute lean matches the print, the clip is full. If the lean is flat, missing, or the other way, the clip is half. That half clip is a scalp. It is still the side the index is already on.
-3. A stall or a candle flip does not fade the print. The order follows the index versus the line.
-4. The ticket must cost 4¢ to 75¢ on every window, including CPI, jobs, and the Fed. Both the bid and the ask have to be on the book. The width of the spread does not sit. Zero volume does not sit. A new window is often empty for the first minute. Above 75¢ the payout multiple is too small. Under 4¢ is a pass.
-5. The last 30 seconds is a pass, and any resting order is pulled then. The first 5 seconds is a pass. The distance check in rule 1 is required on every entry, not only the last minute. A flat $10 gap is not used. A CPI, jobs, or Fed window does not change the price band and does not raise the $5 cap. If the official index socket drops, Kalshi's own perp mark can pick the side only when that quote is 2 seconds old or newer. It is the $1 clip. It does not settle the ticket.
-6. $1, $2, or $5. One open ticket per contract. No second bite on the same contract. The day stops at $15 down. How many tickets lost does not matter. The open book stops at $20. Gold and XRP stay in the scan.
-7. A filled ticket is held to the clock. There is no mid-window sell.
-8. Every order is immediate-or-cancel at the ask. Nothing rests one cent under. If it does not fill, it is cancelled.
+## MARKET LOCATION / SWING RULES
+- 15m and 1h swing pivot: 3 preceding and 3 following completed candles; becomes valid at confirmation, not formation time.
+- Equal high/low tolerance max(2 venue ticks, 0.10 ATR15).
+- BOS: confirmed close beyond pivot by 0.15 ATR15 plus candle-body displacement >1.2 × median past 20 bodies.
+- Bullish three-candle FVG A,B,C: high(A)<low(C); size >=0.12 ATR15, invalidate after confirmed opposing structure; reverse for bear.
+- Order block candidate: last opposite candle preceding structural displacement; NO assumption of institutional execution.
+- Fib range position=(spot-swingLow)/(swingHigh-swingLow). For bullish retracement to 61.8% from HIGH, normalized position is 0.382. Test fib zone incremental predictive value.
 
-Every new order pays the ask and cancels if it does not fill. A pass on one contract is not a pass on the day.
+## PRICE / PROBABILITY / ECONOMICS
+Binary YES payout $1 success/$0 failure. pYES and pNO=1-pYES for the true binary settlement.
+BUY YES conservative EV/share = pYES_lower - executableYESask - all expected fees and costs.
+BUY NO conservative EV/share = pNO_lower - executableNOask - all expected fees and costs.
+For a MAKER order, use fill probability, likelihood of adverse selection, queue priority, and expected fee; do not treat a resting bid as guaranteed execution.
+Candidate research thresholds: conservative YES/NO maker >1c, taker >4c. NOT validated; select by training, then hold out test. Never insert a ±4 percentage point price-action adjustment without calibration.
+Limit orders can cross inadvertently if the book moves; server post_only or IOC conditions must be verified.
+Classify NO_TRADE explicitly: market paused, unknown settlement, index stale, missing historical tick, missing fee, no volume source, no qualified setup, uncalibrated, negative edge, too thin book, risk, unknown order.
 
-## Spark
+## NEWS / FUNDAMENTAL STACK
+Spark2 parses sourced events (time, consensus, actual, surprise, direction candidates, uncertainty). Alexandria stores observed event-to-asset and regime response, leakage-free train/validation/test splits, and calibrated probabilities. Neither LLM may directly authorize trading.
+Default major scheduled macro veto: new trades 30m before and until at least 15m after release, subject to spread/vol normalizing. Crypto exchange outages and oracle/source anomalies hard veto. News model relevance is asset- and horizon-specific.
 
-Spark does not send the order. The model is `spark-2`. It reads the Fed, jobs, and inflation calendars for today's date and cites up to three headlines. Its card is shown on screen and seeds the MiroFish Knock. It does not open the catalyst shot: that window comes from the fixed release list in `src/lib/scan/blackout.ts`, and today it only labels the ticket. It does not pick up or down.
+## RISK / ALLOCATION
+Live is disabled until human approval and unit/integration/shadow tests. Research cap for the previously cited ~$36 account: $3/order, $9 aggregate planned worst loss, -$5 daily new-risk latch; these are changeable only in a reviewed config release. Split same-underlying opportunities into ONE aggregate risk budget.
+Optional high-risk promotion is a separate reviewed release and must be justified by demonstrated net edge and real fills, not a 13/13 score. Avoid grid, martingale, uncapped leverage. Pending unknown orders keep maximum-loss reserves until reconciled.
+STOP persists across restarts. An override file must not be allowed to silently rebase losses. Perps require an independent margin/liquidation/stop policy.
 
-## Perps
+## PROOF BEFORE PROMOTION
+- Source and exact settlement rule for each series verified.
+- Settlement reconstruction benchmark against authoritative venue outcomes, including boundary ticks, missing seconds and near-strike cases.
+- 3,579 scans grouped by 328 reported distinct contracts; prove unique count independently.
+- Training/testing split by expiry event/date; purge overlapping labels.
+- Compare price-only settlement model and market quote vs full-feature stack; reject added features without incremental net EV.
+- Full order-book bid/ask, tick-grid, fee rounding, exchange shard, timeout replay and WebSocket reconnect tests.
+- 200 simulated ambiguous/timeout sends, zero duplicate positions; unknowns remain reserved.
+- No live orders until calibrated probabilities, complete data, independent OMS risk checks, and profitable shadow/executable pricing metrics exist.
+- After every deployment: actual fills, Brier/log loss, EV after fees, slippage, risk, drawdown, maker selection, and model drift by instrument/expiry bucket.
 
-A second engine. Kalshi margin only. Tickers: `KXGOLDPERP`, `KXBTCPERP`, `KXETHPERP`, `KXSOLPERP`, `KXXRPPERP`, `KXBNBPERP`, `KXSILVERPERP`, `KXUS500PERP`. Long is bid. Short is ask. The order is immediate-or-cancel on `POST /trade-api/v2/margin/orders`, inside an order group when Kalshi accepts one. A bracket stop goes to the cross-margin exit trigger: about 10% of the margin at risk, first target about 20%. Collateral per try is $25 to $35, and only if the margin account has at least $25. The 15-minute cash is not used. Three finished minutes have to point the same way, and the push has to be at least twice the recent noise. A normal push uses 3x or 5x unless the slider on the perpetuals tab is lower. The slider is the ceiling. The debate in `src/lib/intelligence/tauric-debate.ts` may use less. It may not use more, and it may not flip the side the tape already picked. Only a push of at least three times the noise may use the contract maximum, and only if the slider is already there. Kalshi does not accept a leverage field on the order. Lower leverage means a smaller position for the same dollars, so the liquidation wick is farther away. The bull/bear check in `src/lib/agent/tauric-debate.ts` does not sit a wide spread. The MiroFish forecast in `src/lib/intelligence/mirofish-client.ts` can promote a push to the maximum when the crowd agrees, and it can kill the trade when the crowd strongly disagrees. If the swarm is down, the tape still decides. Three losses in a row pause every order for 60 minutes, then the count resets. MiroFish is the swarm on port 5001. Its memory is Zep Cloud (`ZEP_API_KEY` on that process). Its model is an OpenAI-compatible key (`LLM_API_KEY` on that process). This desk does not use DuckDB, Supabase, or Notion for that memory, and it does not invent a probability when the swarm is down. The client speaks `/api/graph`, `/api/simulation`, and `/api/report`. Five minutes before CPI, jobs, or the Fed, the note says the volatility window is opening.
+## OWNERSHIP / STATUS
+Desk: market structure / regime / feature definitions. Quillgate: code and tests. Rail: requirement→file→test map. Spark2: live news events. Alexandria: historical calibration evidence. Risk Sentinel: independent approval. OMS: only permitted execution path, audited. The LLM narrates; deterministic code trades.
 
-## Not in this rule
-
-Coinbase and Yahoo draw the chart only. They do not send the order. Binance and Polymarket do not enter. A perpetual price is not allowed to settle a 15-minute ticket. Martingale is not used.
+## IMPLEMENTATION STATUS AS OF 2026-10-09
+- PRESENT in source: settlement-model partial last-minute logic, index feed, maker/taker edge, exchange shard and price grids, three-signal guard, risk/OMS, final-market outcome recorder.
+- ADDED: `sniper.ts` parameterized feature/evidence diagnostics, read-only `intelligence.ts` bridge to Spark/MiroFish/Alexandria/Firecrawl-backed artifacts.
+- NOT AVAILABLE from the supplied source data: true exchange market order flow, 205 confirmed 1h OHLCV bars, CVD, traded-volume VWAP/POC, calibrated historical event probabilities, full broker-perp margin safety, production keys and live exchange validation.
+- Correct behavior while unavailable: NO LIVE TRADE; preserve missing-data reasons and continue data collection.
+- `docs/AURIX_RELEASE_REPORT.md` is authoritative for testing/provisional fixes.

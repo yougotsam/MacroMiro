@@ -13,6 +13,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   DAILY_STOP_USD,
+  ENABLE_RISK_OVERRIDES,
   LOSS_STREAK_PAUSE,
   LOSS_STREAK_PAUSE_MS,
   MAX_OPEN_WORST_USD,
@@ -118,7 +119,7 @@ export class RiskEngine {
 
   /** The day P/L view the stop is enforced on: Kalshi's snapshot, re-based by an active dated override (if any). */
   effective(s: AccountSnapshot, now = Date.now()): AccountSnapshot {
-    const o = activeOverride(loadOverrides(this.dir), now);
+    const o = ENABLE_RISK_OVERRIDES ? activeOverride(loadOverrides(this.dir), now) : null;
     if (o && !this.announced.has(o.id)) {
       this.announced.add(o.id);
       try {
@@ -133,8 +134,12 @@ export class RiskEngine {
   read(): RiskFile {
     try {
       return JSON.parse(readFileSync(this.file, "utf8")) as RiskFile;
-    } catch {
-      return { latchedDay: null, latchReason: null, latchedAt: null, updatedAt: new Date().toISOString() };
+    } catch (error) {
+      if (!existsSync(this.file)) {
+        return { latchedDay: null, latchReason: null, latchedAt: null, updatedAt: new Date().toISOString() };
+      }
+      // Existing but unreadable risk state must NEVER reset trading eligibility.
+      return { latchedDay: etDay(Date.now()), latchReason: "risk state unreadable", latchedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     }
   }
 
@@ -142,7 +147,7 @@ export class RiskEngine {
     const f = this.read();
     if (f.latchedDay !== etDay(now)) return null;
     // a latch set before an active fresh-start override belongs to the re-based part of the day
-    const o = activeOverride(loadOverrides(this.dir), now);
+    const o = ENABLE_RISK_OVERRIDES ? activeOverride(loadOverrides(this.dir), now) : null;
     if (o && f.latchedAt && Date.parse(f.latchedAt) < Date.parse(o.start)) return null;
     return f;
   }
@@ -168,11 +173,17 @@ export class RiskEngine {
     const orderWorst = Number((o.count * o.price + Math.max(0, o.fee)).toFixed(4));
     const no = (why: string, dayWorst = NaN, projected = NaN): RiskDecision => ({ ok: false, why, dayWorst, projected, orderWorst });
     if (o.product !== "event") return no("perps disabled");
+    if (!Number.isInteger(o.count) || o.count < 1 || !Number.isFinite(o.price) ||
+        !Number.isFinite(o.fee) || o.fee < 0 || !Number.isInteger(o.tickId)) return no("invalid order parameters");
     if (!this.sw.live()) return no("switch kalshi_live off");
     if (!this.sw.begin()) return no("switch kalshi_begin off");
     if (!this.sw.arm()) return no("ARM off");
     if (!s) return no("no account snapshot");
-    if (now - s.fetchedAt > SNAPSHOT_MAX_AGE_MS) return no("account snapshot stale");
+    if (!Number.isFinite(s.fetchedAt) || s.fetchedAt > now + 500 ||
+        now - s.fetchedAt > SNAPSHOT_MAX_AGE_MS) return no("account snapshot stale");
+    const amounts = [s.realizedToday, s.openWorst, s.restWorst, s.pendingWorst, s.shard2Cash];
+    if (amounts.some((x) => !Number.isFinite(x)) ||
+        s.openWorst < 0 || s.restWorst < 0 || s.pendingWorst < 0 || s.shard2Cash < 0) return no("invalid account snapshot");
     if (s.etDay !== etDay(now)) return no("snapshot from another ET day");
     if (!s.exchangeTradingActive || now - s.exchangeCheckedAt > 15_000) return no("exchange trading paused/unknown");
     const l = this.latched(now);

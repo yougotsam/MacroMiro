@@ -946,27 +946,12 @@ function PerpsLater() {
         <PerpCockpit
           key={book?.ticker ?? "KXGOLDPERP"}
           ticker={book?.ticker ?? "KXGOLDPERP"}
-          maxLeverage={book && book.lev >= 1 ? book.lev : 15.2}
+          maxLeverage={book && book.lev >= 1 ? book.lev : 1}
           currentPrice={price > 0 ? price : 0}
           balanceUsd={cash}
           dailyPnL={0}
-          onDispatchOrder={(cfg: { side: "bid" | "ask"; leverage: number; clipSizeUsd: number; tpMultiple: number; slPercent: number }) => {
-            setFireNote("Sending the bracket…");
-            void fetch("/api/live/perp-fire", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...cfg,
-                ticker: book?.ticker ?? "KXGOLDPERP",
-                price,
-                bid: book?.bid ?? price,
-                ask: book?.ask ?? price,
-                maxLeverage: book?.lev ?? 15.2,
-              }),
-            })
-              .then((r) => r.json())
-              .then((j: { why?: string; orderId?: string }) => setFireNote(j.orderId ? `${j.why} · ${j.orderId}` : (j.why ?? "no answer")))
-              .catch(() => setFireNote("The fire route did not answer."));
+          onDispatchOrder={() => {
+            setFireNote("Perpetual orders are disabled until their independent margin, fees, bracket safety and risk tests pass.");
           }}
         />
       </div>
