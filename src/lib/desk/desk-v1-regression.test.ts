@@ -35,6 +35,8 @@ function snap(over: Partial<AccountSnapshot> = {}): AccountSnapshot {
     shard2Cash: 36,
     settledToday: [],
     ordersPerTicker: {},
+    correlated: {},
+    tickerWorst: {},
     exchangeTradingActive: true,
     exchangeCheckedAt: NOW,
     ...over,
@@ -52,15 +54,15 @@ function spyTransport(res: PostResult = { status: 201, body: { order_id: "oid-1"
   return { t, calls };
 }
 
-describe("risk layer: −$5 daily stop at the submit choke point (POLICY aurix-x: was −$15)", () => {
-  it("(a) ledger at −$4.50 rejects a $1 order and nothing is sent", async () => {
+describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 3, Sameer 2026-10-09: −$15; aurix-x had −$5)", () => {
+  it("(a) ledger at −$14.50 rejects a $1 order and nothing is sent", async () => {
     const dir = tmp("a");
     const risk = new RiskEngine(dir, ON);
-    const s = snap({ realizedToday: -4.5 });
+    const s = snap({ realizedToday: -14.5 });
     const v = risk.check(intent({ price: 0.5, count: 2 }), s, NOW);
     expect(v.ok).toBe(false);
     expect(v.why).toContain("would breach daily stop");
-    expect(v.projected).toBeCloseTo(-5.5, 6);
+    expect(v.projected).toBeCloseTo(-15.5, 6);
     const { t, calls } = spyTransport();
     const oms = new Oms(risk, t, async () => [], dir);
     const r = await oms.submit(intent({ price: 0.5, count: 2 }), s);
@@ -69,14 +71,14 @@ describe("risk layer: −$5 daily stop at the submit choke point (POLICY aurix-x
     expect(oms.journal().length).toBe(0);
   });
 
-  it("POLICY (aurix-x): the same $1 order passes risk at −$3.50, but the OMS sends nothing until a calibrated model is approved", async () => {
+  it("POLICY: the same $1 order passes risk at −$13.50, but the OMS sends nothing until a calibrated model is approved", async () => {
     const dir = tmp("a2");
     const risk = new RiskEngine(dir, ON);
     expect(CALIBRATED_MODEL_APPROVED).toBe(false);
-    expect(risk.check(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -3.5 }), NOW).ok).toBe(true);
+    expect(risk.check(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }), NOW).ok).toBe(true);
     const { t, calls } = spyTransport();
     const oms = new Oms(risk, t, async () => [], dir);
-    const r = await oms.submit(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -3.5 }));
+    const r = await oms.submit(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }));
     expect(r.ok).toBe(false);
     expect(r.why).toContain("not independently calibrated");
     expect(calls.length).toBe(0);
@@ -86,8 +88,8 @@ describe("risk layer: −$5 daily stop at the submit choke point (POLICY aurix-x
 
   it("open positions, resting orders and unconfirmed sends count at worst case", () => {
     const risk = new RiskEngine(tmp("w"), ON);
-    const s = snap({ realizedToday: 0, openWorst: 3, restWorst: 1.2, pendingWorst: 0.4 });
-    expect(dayWorstOf(s)).toBeCloseTo(-4.6, 6);
+    const s = snap({ realizedToday: -10, openWorst: 3, restWorst: 1.2, pendingWorst: 0.4 });
+    expect(dayWorstOf(s)).toBeCloseTo(-14.6, 6);
     expect(risk.check(intent({ price: 0.5, count: 2 }), s, NOW).ok).toBe(false);
     expect(risk.check(intent({ price: 0.2, count: 2 }), s, NOW).ok).toBe(true);
   });
@@ -95,7 +97,7 @@ describe("risk layer: −$5 daily stop at the submit choke point (POLICY aurix-x
   it("taker fees count toward the order's worst case", () => {
     const risk = new RiskEngine(tmp("f"), ON);
     const fee = quadraticFee(2, 0.5);
-    const v = risk.check(intent({ mode: "taker", price: 0.5, count: 2, fee }), snap({ realizedToday: -4 }), NOW);
+    const v = risk.check(intent({ mode: "taker", price: 0.5, count: 2, fee }), snap({ realizedToday: -14 }), NOW);
     expect(v.orderWorst).toBeCloseTo(1 + fee, 6);
     expect(v.ok).toBe(false);
   });
@@ -103,7 +105,7 @@ describe("risk layer: −$5 daily stop at the submit choke point (POLICY aurix-x
   it("(d) the daily latch survives a restart and clears on the next ET day", () => {
     const dir = tmp("d");
     const r1 = new RiskEngine(dir, ON);
-    r1.observe(snap({ realizedToday: -2, openWorst: 3.2 }), NOW);
+    r1.observe(snap({ realizedToday: -12, openWorst: 3.2 }), NOW);
     expect(r1.latched(NOW)).not.toBeNull();
     const r2 = new RiskEngine(dir, ON); // "restart": fresh process state, same data dir
     expect(r2.latched(NOW)).not.toBeNull();
@@ -441,7 +443,7 @@ describe("account snapshot (Kalshi records → day P/L)", () => {
     expect(dayWorstOf(s)).toBeCloseTo(s.realizedToday - 2.06 - s.restWorst - 0.5, 6);
     expect(s.etDay).toBe("2026-10-08");
     expect(TICKER_RE.test("KXGOLD15M-26OCT081200-00")).toBe(true);
-    expect(DAILY_STOP_USD).toBe(-5); // POLICY (aurix-x): was −15
+    expect(DAILY_STOP_USD).toBe(-15); // POLICY round 3 (Sameer 2026-10-09): −15 (aurix-x had −5)
   });
   it("ET day starts at 00:00 America/New_York", () => {
     expect(new Date(etDayStart(Date.parse("2026-10-08T15:00:00Z"))).toISOString()).toBe("2026-10-08T04:00:00.000Z");
@@ -601,12 +603,12 @@ describe("adverse-selection guard", () => {
 });
 
 describe("size to room", () => {
-  it("POLICY (aurix-x): budget = min($3, room to −$5, room under $9 exposure); under one contract → skip", async () => {
+  it("POLICY (round 3): budget = min($3, room to −$15, room under $9 exposure); under one contract → skip", async () => {
     const { roomBudget } = await import("./sizing");
     expect(roomBudget(snap())).toBe(3);
-    expect(roomBudget(snap({ realizedToday: -2.16 }))).toBeCloseTo(2.84, 6);
+    expect(roomBudget(snap({ realizedToday: -12.16 }))).toBeCloseTo(2.84, 6);
     expect(roomBudget(snap({ realizedToday: 5, openWorst: 3, restWorst: 4.5 }))).toBeCloseTo(1.5, 6); // exposure room 1.5 < daily room 2.5
-    expect(roomBudget(snap({ realizedToday: -5 }))).toBe(0);
+    expect(roomBudget(snap({ realizedToday: -15 }))).toBe(0);
     expect(roomBudget(null)).toBe(0);
     const fee = { feeType: "quadratic", multiplier: 1 };
     const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
@@ -619,7 +621,7 @@ describe("size to room", () => {
 
   it("an order sized to the room passes the unchanged risk check exactly at the edge", async () => {
     const { roomBudget } = await import("./sizing");
-    const s = snap({ realizedToday: -2.16 });
+    const s = snap({ realizedToday: -12.16 });
     const budget = roomBudget(s);
     const r = new RiskEngine(tmp("room"), ON);
     const count = sizeFor(0.5, true, { feeType: "quadratic", multiplier: 1 }, budget);
@@ -681,7 +683,7 @@ describe("dated risk override (Sameer t107u) — POLICY (aurix-x): overrides are
     { ticker: "KXETH15M-26OCT080615-15", pnl: -4.06, settledMs: Date.parse("2026-10-08T10:15:03.668Z") },
   ];
   const at = (now: number, over: Partial<AccountSnapshot> = {}): AccountSnapshot =>
-    snap({ fetchedAt: now, exchangeCheckedAt: now, etDay: etDay(now), realizedToday: -12.16, settledToday: early, ...over });
+    snap({ fetchedAt: now, exchangeCheckedAt: now, etDay: etDay(now), realizedToday: -14.66, settledToday: early, ...over }); // round 3: −2.50 more so the real day sits inside $1 of the −$15 stop
   const T2 = "KXBTC15M-26OCT081230-30";
 
   it("the switch is off in config", () => {
@@ -693,8 +695,8 @@ describe("dated risk override (Sameer t107u) — POLICY (aurix-x): overrides are
     for (const now of [START - 60_000, START + 1_000, START + 3 * 3600_000]) {
       const s = r.effective(at(now), now);
       expect(s.override).toBeUndefined();
-      expect(dayWorstOf(s)).toBeCloseTo(-12.16, 6);
-      expect(roomBudgetTop(s)).toBe(0);
+      expect(dayWorstOf(s)).toBeCloseTo(-14.66, 6);
+      expect(roomBudgetTop(s)).toBeCloseTo(0.34, 6);
       expect(r.check(intent({ ticker: T2, price: 0.5, count: 2 }), at(now), now).ok).toBe(false);
     }
   });

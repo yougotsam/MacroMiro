@@ -64,7 +64,7 @@ describe("AURIX-X executable trading gate",()=>{
   });
   it("unreviewed probability model prevents live order approval",()=>{
     expect(CALIBRATED_MODEL_APPROVED).toBe(false);
-    expect(DAILY_STOP_USD).toBe(-5);
+    expect(DAILY_STOP_USD).toBe(-15); // POLICY round 3
   });
 });
 

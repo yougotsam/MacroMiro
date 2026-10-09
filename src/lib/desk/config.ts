@@ -23,15 +23,57 @@ export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string
 };
 
 // ── Risk (hard) ──────────────────────────────────────────────────────────────
-export const DAILY_STOP_USD = -5; // ET day; realized + fees + worst case of open positions and resting orders
-export const MAX_ORDER_COST_USD = 3; // count × price + fee
-export const MAX_OPEN_WORST_USD = 9; // all open positions + resting orders, worst case
 /**
- * Worst case allowed in ONE correlated group = the same 15-minute window and direction across all coins.
- * Set equal to the approved $9 aggregate cap so no approved number changes; the group is now accounted
- * and enforced separately. A tighter value is an owner decision (reviewed config release).
+ * Approved research risk settings (Sameer, 2026-10-09, PR #2 round 3). One typed object, enforced in risk.ts
+ * on the final OMS choke point. Changing a number is a reviewed code release; there is no on-disk override.
+ *  - mode "usd": the USD numbers apply as written.
+ *  - mode "pct_of_account": each limit = pct × account value (Kalshi balance + portfolio value), but never looser
+ *    than `ceilingUsd` (the ceilings default to the approved USD numbers, so % mode can only tighten until a
+ *    reviewed release raises a ceiling). Unknown account value in % mode refuses every order (fail closed).
+ * Day stop: realized + fees + worst case of open positions, resting orders and ambiguous sends (ET day).
  */
-export const MAX_CORRELATED_WORST_USD = MAX_OPEN_WORST_USD;
+export type LimitSet = { dayStop: number; total: number; perTicker: number; correlated: number; perOrder: number };
+export type RiskLimits = { mode: "usd" | "pct_of_account"; usd: LimitSet; pct: LimitSet; ceilingUsd: LimitSet };
+const APPROVED_USD: LimitSet = { dayStop: -15, total: 9, perTicker: 3, correlated: 4, perOrder: 3 };
+export const RISK_LIMITS: RiskLimits = Object.freeze({
+  mode: "usd",
+  usd: Object.freeze({ ...APPROVED_USD }),
+  // placeholders for later scaling — owner to set; inactive while mode = "usd"
+  pct: Object.freeze({ dayStop: -0.15, total: 0.09, perTicker: 0.03, correlated: 0.04, perOrder: 0.03 }),
+  ceilingUsd: Object.freeze({ ...APPROVED_USD }),
+}) as RiskLimits;
+
+export type ResolvedLimits = ({ ok: true } & LimitSet) | { ok: false; why: string };
+/** Pure: the USD limits in force for an account value (null = unknown). */
+export function resolveRiskLimits(l: RiskLimits, accountValueUsd: number | null | undefined): ResolvedLimits {
+  const vals = (x: LimitSet) => [x.dayStop, x.total, x.perTicker, x.correlated, x.perOrder];
+  const sane = (x: LimitSet) => vals(x).every(Number.isFinite) && x.dayStop < 0 && x.total > 0 && x.perTicker > 0 && x.correlated > 0 && x.perOrder > 0;
+  if (!sane(l.usd) || !sane(l.ceilingUsd)) return { ok: false, why: "risk limits misconfigured" };
+  if (l.mode === "usd") return { ok: true, ...l.usd };
+  if (l.mode !== "pct_of_account") return { ok: false, why: "risk limit mode unknown" };
+  if (!sane(l.pct) || vals(l.pct).some((x) => Math.abs(x) > 1)) return { ok: false, why: "risk % limits misconfigured" };
+  if (accountValueUsd == null || !Number.isFinite(accountValueUsd) || accountValueUsd <= 0) return { ok: false, why: "account value unknown (% limits)" };
+  const a = accountValueUsd;
+  const r4 = (x: number) => Math.round(x * 10_000) / 10_000;
+  return {
+    ok: true,
+    dayStop: r4(Math.max(l.pct.dayStop * a, l.ceilingUsd.dayStop)), // less negative = tighter
+    total: r4(Math.min(l.pct.total * a, l.ceilingUsd.total)),
+    perTicker: r4(Math.min(l.pct.perTicker * a, l.ceilingUsd.perTicker)),
+    correlated: r4(Math.min(l.pct.correlated * a, l.ceilingUsd.correlated)),
+    perOrder: r4(Math.min(l.pct.perOrder * a, l.ceilingUsd.perOrder)),
+  };
+}
+export const DAILY_STOP_USD = RISK_LIMITS.usd.dayStop; // −15 (approved 2026-10-09; was −5)
+export const MAX_ORDER_COST_USD = RISK_LIMITS.usd.perOrder; // count × price + fee
+export const MAX_OPEN_WORST_USD = RISK_LIMITS.usd.total; // all open positions + resting orders + ambiguous sends, worst case
+/** Worst case allowed on ONE ticker: open + resting + ambiguous sends + the new order. */
+export const MAX_TICKER_WORST_USD = RISK_LIMITS.usd.perTicker;
+/**
+ * Worst case allowed in ONE correlated group: same direction across all crypto series (BTC/ETH/SOL/XRP), any open
+ * window; gold is its own group (exposure.ts). Approved $4.
+ */
+export const MAX_CORRELATED_WORST_USD = RISK_LIMITS.usd.correlated;
 export const MAX_ORDERS_PER_TICKER_WINDOW = 3;
 export const MAX_ORDERS_PER_TICK = 1;
 export const LOSS_STREAK_PAUSE = 3; // consecutive losing settlements…

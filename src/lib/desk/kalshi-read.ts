@@ -1,6 +1,7 @@
 /** Read-only Kalshi Trade API calls used by the engine (GET only). */
 import { kalshiGet } from "@/lib/scan/kalshi-auth";
 import { DAILY_STOP_USD, SERIES, TICKER_RE } from "./config";
+import { correlationKey } from "./exposure";
 import { quadraticFee } from "./fees";
 import type { Book } from "./gate";
 import type { AccountSnapshot, Settled } from "./risk";
@@ -144,10 +145,7 @@ export type KOrder = {
   maker_fees_dollars?: string;
 };
 
-/** "KXBTC15M-26OCT081200-00" + up → "26OCT081200|up": all coins closing in the same window, same direction. */
-export function correlationKey(ticker: string, dir: "up" | "down") {
-  return `${ticker.split("-")[1] ?? ticker}|${dir}`;
-}
+export { correlationKey };
 
 /** Ticker inside a desk client_order_id "mm1-<ticker>-<y|n>-<seq>". */
 export function tickerOfCid(cid: string) {
@@ -223,6 +221,8 @@ export function buildSnapshot(input: {
   /** OMS sends (persisted intents). Counted only while Kalshi doesn't list the client_order_id yet. */
   pendingIntents?: Array<{ cid: string; worst: number }>;
   localOrdersPerTicker?: Record<string, number>;
+  /** Kalshi balance + portfolio value in USD (only needed for % limits) */
+  accountValueUsd?: number;
 }): AccountSnapshot {
   const start = etDayStart(input.now);
   const settledToday: Settled[] = [];
@@ -265,9 +265,11 @@ export function buildSnapshot(input: {
   }
   // correlated exposure: every coin's contract for the same 15-minute window, same direction, is one group
   const correlated: Record<string, number> = {};
+  const tickerWorst: Record<string, number> = {};
   const addCorr = (ticker: string, dir: "up" | "down", worst: number) => {
     const k = correlationKey(ticker, dir);
     correlated[k] = Number(((correlated[k] ?? 0) + worst).toFixed(4));
+    tickerWorst[ticker] = Number(((tickerWorst[ticker] ?? 0) + worst).toFixed(4));
   };
   let openWorst = 0;
   for (const t of new Set([...openBy.keys(), ...fillBy.keys()])) {
@@ -283,7 +285,8 @@ export function buildSnapshot(input: {
     if (known.has(i.cid)) continue;
     pendingWorst += i.worst;
     const t = tickerOfCid(i.cid);
-    if (t) addCorr(t, /-n-\d+$/.test(i.cid) ? "down" : "up", i.worst);
+    // an ambiguous send whose ticker can't be read still counts in the totals; per-ticker/group it is charged to a sentinel
+    addCorr(t ?? "unknown", /-n-\d+$/.test(i.cid) ? "down" : "up", i.worst);
   }
   let restWorst = 0;
   for (const o of input.resting) {
@@ -313,6 +316,8 @@ export function buildSnapshot(input: {
     settledToday,
     ordersPerTicker,
     correlated,
+    tickerWorst,
+    accountValueUsd: input.accountValueUsd,
     exchangeTradingActive: input.exchangeTradingActive,
     exchangeCheckedAt: input.exchangeCheckedAt,
   };
@@ -330,7 +335,7 @@ export async function fetchSnapshot(ex: { tradingActive: boolean; at: number }, 
     pages<Position>(`/trade-api/v2/portfolio/positions?count_filter=position`, "market_positions", 5),
     restingOrders(),
     ordersSince(minTs),
-    kalshiGet<{ balance_breakdown?: Array<{ balance?: string; exchange_index?: number }> }>("/trade-api/v2/portfolio/balance"),
+    kalshiGet<{ balance?: number; portfolio_value?: number; balance_breakdown?: Array<{ balance?: string; exchange_index?: number }> }>("/trade-api/v2/portfolio/balance"),
   ]);
   const shard2Cash = Number(bal.data.balance_breakdown?.find((b) => b.exchange_index === 2)?.balance ?? 0);
   void SERIES_SET;
@@ -346,6 +351,7 @@ export async function fetchSnapshot(ex: { tradingActive: boolean; at: number }, 
     exchangeCheckedAt: ex.at,
     pendingIntents: local.pendingIntents,
     localOrdersPerTicker: local.perTicker,
+    accountValueUsd: Number.isFinite(bal.data.balance) && Number.isFinite(bal.data.portfolio_value) ? ((bal.data.balance as number) + (bal.data.portfolio_value as number)) / 100 : undefined,
   });
   return { snap, resting: resting.filter((o) => desk(o.ticker)), positions: positions.filter((p) => desk(p.ticker) && Math.abs(Number(p.position_fp ?? 0)) > 1e-9) };
 }

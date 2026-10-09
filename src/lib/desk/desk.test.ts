@@ -20,7 +20,7 @@ const intent = (extra: Partial<OrderIntent> = {}): OrderIntent => ({
 const snap = (extra: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
   fetchedAt: NOW, etDay: "2026-10-09", realizedToday: 0, openWorst: 0,
   restWorst: 0, pendingWorst: 0, shard2Cash: 36, settledToday: [],
-  ordersPerTicker: {}, exchangeTradingActive: true, exchangeCheckedAt: NOW,
+  ordersPerTicker: {}, correlated: {}, tickerWorst: {}, exchangeTradingActive: true, exchangeCheckedAt: NOW,
   ...extra,
 });
 
@@ -37,11 +37,13 @@ describe("AURIX-X risk and emergency stops", () => {
     expect(sends).toBe(0);
   });
 
-  it("enforces the -$5 risk stop and keeps an existing latch after restart", () => {
-    expect(DAILY_STOP_USD).toBe(-5);
+  it("enforces the −$15 risk stop (POLICY round 3, Sameer 2026-10-09; was −$5) and keeps an existing latch after restart", () => {
+    expect(DAILY_STOP_USD).toBe(-15);
     const dir = folder();
     const risk = new RiskEngine(dir, permit);
-    risk.observe(snap({ realizedToday: -5.2 }), NOW);
+    risk.observe(snap({ realizedToday: -4.8 }), NOW);
+    expect(risk.latched(NOW)).toBeNull(); // −$4.80 no longer latches under −$15
+    risk.observe(snap({ realizedToday: -15.2 }), NOW);
     expect(risk.latched(NOW)).not.toBeNull();
     const restarted = new RiskEngine(dir, permit);
     expect(restarted.latched(NOW)).not.toBeNull();
@@ -55,8 +57,8 @@ describe("AURIX-X risk and emergency stops", () => {
       JSON.stringify({ id: "old", kind: "fresh_from_start", start: "2026-10-09T12:00:00Z",
         expires: "2026-10-10T04:00:00Z" }));
     const risk = new RiskEngine(dir, permit);
-    const s = snap({ realizedToday: -4.8 });
-    expect(dayWorstOf(risk.effective(s, NOW))).toBeCloseTo(-4.8);
+    const s = snap({ realizedToday: -14.8 });
+    expect(dayWorstOf(risk.effective(s, NOW))).toBeCloseTo(-14.8);
     expect(risk.check(intent(), s, NOW).ok).toBe(false);
   });
 
@@ -79,10 +81,13 @@ describe("AURIX-X risk and emergency stops", () => {
   });
 
   it("includes unknown pending order worst-case in all aggregate risk", () => {
-    const s = snap({ realizedToday: -1, openWorst: 1.5, restWorst: 0.5, pendingWorst: 2 });
-    expect(dayWorstOf(s)).toBe(-5);
+    // POLICY round 3: −$15 stop (was −$5); realized shifted by −$10 so the ambiguous send still decides it
+    const s = snap({ realizedToday: -11, openWorst: 1.5, restWorst: 0.5, pendingWorst: 2 });
+    expect(dayWorstOf(s)).toBe(-15);
     const risk = new RiskEngine(folder(), permit);
     expect(risk.check(intent(), s, NOW).ok).toBe(false);
+    // without the $2 ambiguous send the same order would pass: pending risk is what blocks it
+    expect(new RiskEngine(folder(), permit).check(intent(), snap({ realizedToday: -11, openWorst: 1.5, restWorst: 0.5 }), NOW).ok).toBe(true);
   });
 });
 

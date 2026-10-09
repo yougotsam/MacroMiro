@@ -12,21 +12,21 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
-  DAILY_STOP_USD,
   ENABLE_RISK_OVERRIDES,
   LOSS_STREAK_PAUSE,
   LOSS_STREAK_PAUSE_MS,
-  MAX_CORRELATED_WORST_USD,
-  MAX_OPEN_WORST_USD,
-  MAX_ORDER_COST_USD,
   MAX_ORDERS_PER_TICK,
   MAX_ORDERS_PER_TICKER_WINDOW,
   PRICE_MAX,
   PRICE_MIN,
+  RISK_LIMITS,
   SECRETS_DIR,
   TICKER_RE,
   dataDir,
+  resolveRiskLimits,
+  type RiskLimits,
 } from "./config";
+import { correlationKey } from "./exposure";
 import { etDay } from "./time";
 import { activeOverride, applyOverride, loadOverrides } from "./override";
 
@@ -44,8 +44,12 @@ export type AccountSnapshot = {
   settledToday: Settled[];
   /** desk orders already sent per ticker (Kalshi + local journal, max of both) */
   ordersPerTicker: Record<string, number>;
-  /** worst case per (15-minute window, direction) across all coins: open + resting + pending */
+  /** worst case per correlated group (exposure.ts: crypto|up, crypto|down, gold|up, gold|down): open + resting + pending */
   correlated?: Record<string, number>;
+  /** worst case per ticker: open + resting + pending. Missing → every order refused (fail closed). */
+  tickerWorst?: Record<string, number>;
+  /** Kalshi balance + portfolio value, USD (only used by % limits) */
+  accountValueUsd?: number;
   exchangeTradingActive: boolean;
   exchangeCheckedAt: number;
   /** set when a dated risk override (override.ts) re-based the day: baseline = realized before its start */
@@ -114,7 +118,7 @@ export class RiskEngine {
   private dir: string;
   private tickCount = new Map<number, number>();
   private announced = new Set<string>();
-  constructor(dir = dataDir(), private sw = switches) {
+  constructor(dir = dataDir(), private sw = switches, private limits: RiskLimits = RISK_LIMITS) {
     mkdirSync(dir, { recursive: true });
     this.dir = dir;
     this.file = `${dir}/risk-state.json`;
@@ -165,8 +169,11 @@ export class RiskEngine {
   observe(snap: AccountSnapshot, now = Date.now()) {
     const s = this.effective(snap, now);
     const worst = dayWorstOf(s);
-    if (s.etDay === etDay(now) && worst <= DAILY_STOP_USD && !this.latched(now)) {
-      this.latch(`day worst ${worst.toFixed(2)} ≤ ${DAILY_STOP_USD}`, now);
+    const L = resolveRiskLimits(this.limits, s.accountValueUsd);
+    // unknown limits (e.g. % mode without account value) latch at the approved USD stop, never looser
+    const stop = L.ok ? L.dayStop : this.limits.usd.dayStop;
+    if (s.etDay === etDay(now) && worst <= stop && !this.latched(now)) {
+      this.latch(`day worst ${worst.toFixed(2)} ≤ ${stop}`, now);
     }
     return worst;
   }
@@ -198,14 +205,19 @@ export class RiskEngine {
     if (!TICKER_RE.test(o.ticker)) return no("ticker not a desk 15m series", dayWorst);
     if (!(o.count >= 1) || !Number.isFinite(o.price)) return no("bad size/price", dayWorst);
     if (o.price < PRICE_MIN || o.price > PRICE_MAX) return no("price band", dayWorst);
-    if (orderWorst > MAX_ORDER_COST_USD + 1e-9) return no(`order cost ${orderWorst.toFixed(2)} > ${MAX_ORDER_COST_USD}`, dayWorst);
+    const L = resolveRiskLimits(this.limits, s.accountValueUsd);
+    if (!L.ok) return no(`risk limits: ${L.why}`, dayWorst);
+    if (orderWorst > L.perOrder + 1e-9) return no(`order cost ${orderWorst.toFixed(2)} > ${L.perOrder}`, dayWorst);
     const projected = Number((dayWorst - orderWorst).toFixed(4));
-    if (projected < DAILY_STOP_USD) return no(`would breach daily stop: ${dayWorst.toFixed(2)} − ${orderWorst.toFixed(2)} < ${DAILY_STOP_USD}`, dayWorst, projected);
+    if (projected < L.dayStop) return no(`would breach daily stop: ${dayWorst.toFixed(2)} − ${orderWorst.toFixed(2)} < ${L.dayStop}`, dayWorst, projected);
     const exposure = s.openWorst + s.restWorst + s.pendingWorst + orderWorst;
-    if (exposure > MAX_OPEN_WORST_USD + 1e-9) return no(`exposure ${exposure.toFixed(2)} > ${MAX_OPEN_WORST_USD}`, dayWorst, projected);
-    const corrKey = `${o.ticker.split("-")[1] ?? o.ticker}|${o.side === "no" ? "down" : "up"}`;
-    const corr = (s.correlated?.[corrKey] ?? 0) + orderWorst;
-    if (corr > MAX_CORRELATED_WORST_USD + 1e-9) return no(`correlated window ${corrKey} ${corr.toFixed(2)} > ${MAX_CORRELATED_WORST_USD}`, dayWorst, projected);
+    if (exposure > L.total + 1e-9) return no(`exposure ${exposure.toFixed(2)} > ${L.total}`, dayWorst, projected);
+    if (!s.tickerWorst || !s.correlated) return no("per-ticker / correlated exposure unknown", dayWorst, projected);
+    const tick = (s.tickerWorst[o.ticker] ?? 0) + orderWorst;
+    if (!Number.isFinite(tick) || tick > L.perTicker + 1e-9) return no(`ticker exposure ${o.ticker} ${tick.toFixed(2)} > ${L.perTicker}`, dayWorst, projected);
+    const corrKey = correlationKey(o.ticker, o.side === "no" ? "down" : "up");
+    const corr = (s.correlated[corrKey] ?? 0) + orderWorst;
+    if (!Number.isFinite(corr) || corr > L.correlated + 1e-9) return no(`correlated ${corrKey} ${corr.toFixed(2)} > ${L.correlated}`, dayWorst, projected);
     if ((s.ordersPerTicker[o.ticker] ?? 0) >= MAX_ORDERS_PER_TICKER_WINDOW) return no(`ticker order cap ${MAX_ORDERS_PER_TICKER_WINDOW}`, dayWorst, projected);
     if ((this.tickCount.get(o.tickId) ?? 0) >= MAX_ORDERS_PER_TICK) return no("one order per tick", dayWorst, projected);
     if (s.shard2Cash < orderWorst) return no(`shard 2 cash ${s.shard2Cash.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
