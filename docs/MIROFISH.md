@@ -26,6 +26,14 @@ Gemini note: Gemini 3 rejects a tool-call history that lacks its `thought_signat
 
 Live view: `GET /api/live/swarm` (stage), `GET /api/live/swarm/feed?limit=50` (agent actions), `GET /api/live/swarm/stream` (SSE). Screen: port 3000.
 
+## Private backend (since round 3.2)
+
+The backend binds `127.0.0.1` only and every `/api/*` call needs `Authorization: Bearer $MIROFISH_AUTH_TOKEN` (token in the MiroFish `.env`, chmod 600, never printed; missing/short token fails closed with 503). The desk clients (`src/lib/intel/mirofish.ts`, `src/lib/research/*`) send it automatically. LLM calls go through the loopback cost meter (`scripts/llm-meter-proxy.ts`) when `MIROFISH_LLM_METER_URL` is set.
+
+## Event research pipeline (round 3.2)
+
+`scripts/research-pipeline.ts` runs scenario jobs (baseline/bullish/bearish/unexpected) for verified official-calendar catalysts only, never per 15-minute contract, and archives the report to Alexandria (`/workspace/data/research/`). Research output is context: it cannot place/cancel/authorize orders or feed a probability (enforced by tests), and `MIROFISH_FEATURES_APPROVED=false`. See `docs/MIROFISH_VERIFICATION.md`.
+
 ## Start
 
-`/workspace/startup.sh` starts the desk, the heart worker and MiroFish (`/workspace/desk/run-mirofish.sh`). Until port 5001 answers, the 15-minute book keeps running on its own rule.
+Do not run `/workspace/startup.sh` for research: it also starts the desk engine supervisor. Start the meter and backend by hand (see `docs/MIROFISH_VERIFICATION.md`). Until port 5001 answers, the 15-minute book and the collector keep running on their own.

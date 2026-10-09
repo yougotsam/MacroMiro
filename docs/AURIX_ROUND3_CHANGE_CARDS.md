@@ -29,8 +29,10 @@ Why:         Historical OOS Brier of desk-v1.0+guard-1 is WORSE than the Kalshi 
              95 % cluster CI [−0.068, +0.005]); raw model probabilities are not a basis for taking prices.
 Hypothesis:  With the rule, shadow approvals have mean net P/L per trade ≥ 0 after fees at executable prices.
 Metric:      desk-analyze.ts live-shadow `approval_rule` P/L, clustered by close window.
-Sample:      ≥ 200 independent close windows with ≥ 1 approval (CI half-width ≈ 2×SE; chosen so a 5¢/trade edge is
-             distinguishable from 0 at the observed ~$0.07–0.08 SE per window-level trade).
+Sample:      ≥ 200 COMPLETED independent close windows of shadow data with ZERO approved trades (round 3.1 fix: the
+             old wording "≥ 200 windows with ≥ 1 approval" was circular — approvals need a calibrator, which needs the
+             data). Order: collect 200 windows → walk-forward validation (walkforward.ts `milestone()`) → candidate
+             calibrator (approvedBy = null, refused by loadCalibrator) → owner review → only then a shadow-approval stage.
 Pass rule:   mean − 1.96·clustered SE > 0 AND OOS Brier skill vs mid > 0 with CI lower bound > 0.
 Kill rule:   mean + 1.96·clustered SE < 0 after ≥ 100 windows, or calibrator Brier ≥ mid Brier on new data.
 Rollback:    config.ts APPROVAL_POLICY_ENFORCED = false (exact old gate behaviour). Owner flips.
@@ -60,3 +62,26 @@ MiroFish / Firecrawl / Spark2 / Alexandria / news are loaded by `research-contex
 Probabilities are dropped; undated items are dropped. `research-context.test.ts` walks the import graph and fails if any
 order-path module (settlement, gate, approval, risk, oms, evaluator, engine, sizing, calibration, desk-engine script)
 can reach research-context / intelligence / lib/live / lib/intel / lib/kb.
+
+## Card 5 — official macro calendar (round 3.1)
+```
+Change:      The macro veto reads macro-calendar.json built from official sources (BLS iCalendar, BEA iCalendar, Fed FOMC
+             page), verified by CONTENT: required sources (BLS, Fed) fetched OK ≤ 7 d ago, every event has its https
+             source, and ≥ 1 real upcoming major event within 45 d. desk-news.json is no longer the default source.
+Why:         desk-news.json was dated 2026-10-03 and the old check used the file mtime (a fresh mtime proved nothing).
+Hypothesis:  The gate stays available while the refresher runs and blocks (fail closed) if sources break.
+Metric:      verifyCalendar verdict over time (refresh log), gate reason counts in the collector.
+Sample:      Deterministic tests + every 6 h refresh.
+Pass rule:   verified = true after every successful refresh; CPI/PPI/NFP vetoes at −30/+15 min; FOMC day blocked.
+Kill rule:   any refresh producing a veto for a non-major event, or missing a listed CPI/NFP/FOMC → revert.
+Rollback:    macroGate(now, "/workspace/data/desk-news.json") (legacy reader kept); git revert d61d2e3. Owner flips.
+Touches:     official-calendar.ts, macro-calendar.ts, scripts/desk-calendar-refresh.ts. Stricter only (more fail-closed).
+```
+Collector: never waits on the calendar (it only records the gate result). Narratives (MiroFish, news) cannot veto:
+macro-calendar.ts imports only official-calendar.ts, time.ts and data-root.ts (test).
+
+## Card 6 — research swarm (MiroFish) stays context-only (no flag needed: invariant + `MIROFISH_FEATURES_APPROVED=false`)
+Event-driven runs only (verified FOMC/CPI/NFP/PPI; other catalyst kinds by operator), 4 scenarios × few seeds, ≤ 10
+rounds, explicit per-job cost estimate and a hard LLM budget enforced by the local meter. Outputs are archived in
+Alexandria and matched to official index moves; they may enter a decision only after out-of-sample incremental value on
+≥ 30 eval cases per group AND a new owner-approved card.

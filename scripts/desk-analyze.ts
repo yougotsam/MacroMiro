@@ -131,7 +131,17 @@ const obsRowsAll = await readAll<ObsRow>(LIVE, "observations-");
 const collector = collectorStats(obsRowsAll, lOut as unknown as Parameters<typeof collectorStats>[1]);
 let calendar: unknown = null;
 try { calendar = verifyCalendar(JSON.parse(readFileSync(officialCalendarPath(), "utf8")), Date.now()); } catch { calendar = { verified: false, reason: "official_calendar_missing" }; }
+const archivePath = "/workspace/data/research/alexandria-archive.jsonl";
+const archived = existsSync(archivePath) ? readFileSync(archivePath, "utf8").split("\n").filter(Boolean).length : 0;
+const hm = Object.values(historical)[Object.keys(historical).length - 1] as { walkForward?: { scores?: Record<string, unknown>; executablePnl?: Record<string, unknown> } } | undefined;
+const lm = Object.values(live)[0] as { namedSetups?: Record<string, { contracts: number; verdict: string }> } | undefined;
+const modelComparison = {
+  settlement_only: { source: "historical walk-forward (latest model version with data)", oosScores: { model_raw: hm?.walkForward?.scores?.model_raw ?? null, model_wf_platt: hm?.walkForward?.scores?.model_wf_platt ?? null, market_mid: hm?.walkForward?.scores?.market_mid ?? null } },
+  technical_confluence: { source: "live shadow named setups vs settlement-only residual", setups: Object.fromEntries(Object.entries(lm?.namedSetups ?? {}).map(([k, v]) => [k, { contracts: v.contracts, verdict: v.verdict }])) },
+  mirofish_enhanced: { archivedRuns: archived, verdict: "not evaluable: no matched out-of-sample MiroFish runs yet; features stay out of every decision (MIROFISH_FEATURES_APPROVED=false)" },
+};
 const report = {
+  modelComparison,
   collector,
   milestone: milestone(collector.independentClosingWindows.completed),
   calendar,

@@ -148,3 +148,23 @@ Change cards: `docs/AURIX_ROUND3_CHANGE_CARDS.md`.
   Historical (desk-v1.0+guard-1, OOS 329 obs / 92 contracts / 19 windows): Brier 0.1162 vs mid 0.1130, skill −0.029
   [−0.068, +0.005]. Executable trades 0 (no depth recorded). Hypothetical depth-1: gate −$2.42 / 22 trades (mean −$0.110,
   SE $0.069); approval rule OOS −$2.52 / 21 trades (mean −$0.120, SE $0.081). No profitability claim.
+
+## Round 3.1 + 3.2 — still do-not-merge, live lock ON (`CALIBRATED_MODEL_APPROVED = false`, `MIROFISH_FEATURES_APPROVED = false`)
+
+Change cards 5–6 in `docs/AURIX_ROUND3_CHANGE_CARDS.md`; install findings in `docs/MIROFISH_VERIFICATION.md`.
+- Calendar (`d61d2e3`): official BLS ics + BEA ics + Fed FOMC page, refreshed every 6 h (`scripts/desk-calendar-refresh.ts`,
+  GET-only). Verified by content: all required sources fetched, ≤ 7 d old, every event sourced, ≥ 1 real major event within 45 d.
+  Unverified → the trading gate fails closed; the collector never reads it. Live: verified, 6 upcoming majors, next CPI 2026-10-14 08:30 ET.
+- Validation (`fbacf29`): walk-forward by close window (min 20 train windows, step 5, 30-min purge), executable YES and NO after
+  fees, never auto-approves (candidate files have `approvedBy: null` and are refused by the loader). Historical OOS (365 rows,
+  5 folds): Brier mid 0.1114, model 0.1147 (skill −0.030 [−0.064, +0.003]), Platt-recalibrated 0.1146 (−0.029 [−0.055, −0.002]),
+  threshold+vol 0.1172, threshold+time 0.1218, coin 0.25. Executable trades 0 (no depth recorded historically).
+  Milestone is non-circular: 200 completed independent windows with 0 approved trades, then evaluate.
+- Named shadow setups (8) vs settlement-only: all < 30 contracts → insufficient. Timing buckets measured, not activated.
+- Research pipeline (`ff6f2f2`, `b380af1`, `5af6829`): Firecrawl/official page → Spark card → MiroFish graph → OASIS sim →
+  report → Alexandria → `/research` dashboard (scenarios and calibrated probabilities in separate panels). Real runs (CPI 2026-10-14):
+  `rj-mv0y26fq-156cd2` baseline (graph mirofish_21950b20b1724e7e, sim sim_8213826f62a5, report report_8ee84b659189, 3 rounds,
+  2 actions, $0.1715 — seeded with the BLS homepage, flagged) and `rj-mv0yehbx-c3446f` bearish (graph mirofish_a3a4bac329164e7a,
+  sim sim_f73efb2d9a04, report report_5a1ac0209f57, 5 rounds, 6 actions, $0.1808). Total metered spend $0.352 (cap $0.90).
+  Both sims are tiny (2–5 agents); they are narrative context, not order flow. MiroFish-enhanced vs settlement-only: not evaluable
+  (0 matched out-of-sample runs).
