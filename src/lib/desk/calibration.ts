@@ -143,7 +143,13 @@ export type ReplayTrade = { ticker: string; closeMs: number; side: "yes" | "no";
  * P/L is per contract-dollar outcome: count × (payout − price) − actual fee.
  */
 export function takerReplay(obs: Obs[], prob: (o: Obs) => number, budget = MAX_ORDER_COST_USD, opts: { assumeDepth?: number } = {}) {
-  const skipped = { feeUnknown: 0, depthUnknown: 0, gate: 0, alreadyEntered: 0 };
+  const { trades, skipped } = takerTrades(obs, prob, budget, opts);
+  return summarizeTrades(trades, skipped);
+}
+
+/** The individual replay trades (one per contract) — used by the per-market/strategy/bucket analysis. */
+export function takerTrades(obs: Obs[], prob: (o: Obs) => number, budget = MAX_ORDER_COST_USD, opts: { assumeDepth?: number; accept?: (o: Obs, c: { side: "yes" | "no"; price: number; feePer: number }) => boolean } = {}) {
+  const skipped = { feeUnknown: 0, depthUnknown: 0, gate: 0, alreadyEntered: 0, notAccepted: 0 };
   const trades: ReplayTrade[] = [];
   const entered = new Set<string>();
   const order = [...obs].sort((a, b) => a.closeMs - b.closeMs || b.tte - a.tte);
@@ -158,10 +164,15 @@ export function takerReplay(obs: Obs[], prob: (o: Obs) => number, budget = MAX_O
     const g = scoreSides(p, o.pBase, book, { feeType: "quadratic", multiplier: o.feeMultiplier }, { allowMaker: false, allowTaker: true, budget, minPrice: minPriceFor(o.tte) });
     if (!g.best) { skipped.gate += 1; continue; }
     const b = g.best;
+    if (opts.accept && !opts.accept(o, b)) { skipped.notAccepted += 1; continue; }
     const win = b.side === "yes" ? o.y === 1 : o.y === 0;
     trades.push({ ticker: o.ticker, closeMs: o.closeMs, side: b.side, price: b.price, count: b.count, fee: b.fee, tte: o.tte, pnl: b.count * ((win ? 1 : 0) - b.price) - b.fee });
     entered.add(o.ticker);
   }
+  return { trades, skipped };
+}
+
+export function summarizeTrades(trades: ReplayTrade[], skipped: Record<string, number> = {}) {
   const n = trades.length;
   const total = trades.reduce((a, t) => a + t.pnl, 0);
   const mean = n ? total / n : 0;
@@ -169,7 +180,7 @@ export function takerReplay(obs: Obs[], prob: (o: Obs) => number, budget = MAX_O
   const cse = clusteredSe(trades.map((t) => ({ cluster: t.closeMs, pnl: t.pnl })));
   const r4 = (x: number | null) => (x == null ? null : Number(x.toFixed(4)));
   return {
-    trades: n, contracts: entered.size, windows: new Set(trades.map((t) => t.closeMs)).size,
+    trades: n, contracts: new Set(trades.map((t) => t.ticker)).size, windows: new Set(trades.map((t) => t.closeMs)).size,
     total: Number(total.toFixed(4)), meanPerTrade: r4(mean), naiveSe: r4(naiveSe), clusteredSe: r4(cse), skipped,
   };
 }
