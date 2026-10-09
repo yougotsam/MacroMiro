@@ -11,6 +11,11 @@ import { createInterface } from "node:readline";
 import { approvalRuleOos, calibrationTables, gateTaker, groupBy, pnlTables, purgedSplit, sniperTaker, type Trade } from "../src/lib/desk/analysis";
 import { eventOf, joinObservations, type LedgerRow, type Obs, type OutcomeRow } from "../src/lib/desk/calibration";
 import { eventFee } from "../src/lib/desk/kalshi-read";
+import { collectorStats, type ObsRow } from "../src/lib/desk/collector-stats";
+import { evaluateSetups, indexIndicators, type IndicatorRow } from "../src/lib/desk/setups";
+import { candidateCalibrator, milestone, scoreSources, sourcePnl, timingBuckets, walkForward } from "../src/lib/desk/walkforward";
+import { verifyCalendar, officialCalendarPath } from "../src/lib/desk/official-calendar";
+import { readFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
 const opt = (k: string, d: string | null) => (args.indexOf(k) >= 0 ? args[args.indexOf(k) + 1] : d);
@@ -18,6 +23,23 @@ const HIST = opt("--hist", "/workspace/data/desk")!;
 const LIVE = opt("--live", "/workspace/data/desk-observe")!;
 const OUT = opt("--out", null);
 const OFFLINE = args.includes("--offline");
+const CANDIDATE_DIR = opt("--candidates", LIVE)!;
+
+function wfSection(obs: Obs[], model: string, completedWindows: number) {
+  const wf = walkForward(obs);
+  const scores = scoreSources(wf.preds) as Record<string, { brier: number; skillCi95: [number, number] | null } | number | null>;
+  const pnl = sourcePnl(wf.preds) as Record<string, { all: { ci95: [number, number] | null } } | string>;
+  const platt = scores.model_wf_platt as { brier: number; skillCi95: [number, number] | null } | null;
+  const plattPnl = pnl.model_wf_platt as { all: { ci95: [number, number] | null } } | undefined;
+  const ms = milestone(completedWindows, completedWindows >= 200 ? { skillCi95: platt?.skillCi95 ?? null, pnlCi95: plattPnl?.all.ci95 ?? null } : undefined);
+  let candidate: string | null = null;
+  if (wf.preds.length >= 30 && platt && typeof scores.market_mid === "object" && scores.market_mid) {
+    const c = candidateCalibrator(obs, model, { contracts: new Set(wf.preds.map((x) => x.o.ticker)).size, windows: new Set(wf.preds.map((x) => x.o.closeMs)).size, brierModel: platt.brier, brierMarket: (scores.market_mid as { brier: number }).brier });
+    candidate = `${CANDIDATE_DIR}/calibrator-CANDIDATE-${model.replace(/[^\w.-]+/g, "_")}.json`;
+    writeFileSync(candidate, JSON.stringify({ ...c, note: "CANDIDATE ONLY — approvedBy is null; loadCalibrator refuses it. Owner review required." }, null, 2));
+  }
+  return { folds: wf.folds.length, oosRows: wf.preds.length, scores, executablePnl: pnl, timingBuckets: timingBuckets(wf.preds), milestone: ms, candidateCalibratorFile: candidate };
+}
 
 async function readJsonl<T>(file: string, keep: (l: string) => boolean = () => true): Promise<T[]> {
   const out: T[] = [];
@@ -62,7 +84,9 @@ for (const [model, rows] of groupBy(hDec, (d) => d.model)) {
   const gateDepth1 = gateTaker(d1(test));
   const apprDepth1 = approvalRuleOos(train, d1(test));
   const appr = approvalRuleOos(train, test);
+  const histWf = wfSection(obs, model, new Set(obs.map((o) => o.closeMs)).size);
   historical[model] = {
+    walkForward: histWf,
     split: { train: train.length, test: test.length, note: "all tables below are the TEST (out-of-sample) part" },
     ...section(test, [...gate.trades, ...appr.trades], {
       skipped: { settlement_gate_taker: gate.skipped, approval_rule_oos: appr.skipped },
@@ -93,14 +117,24 @@ for (const [model, rows] of groupBy(lRows, (d) => d.model)) {
   const obs = joinObservations(rows, lOut, undefined, fees);
   const gate = gateTaker(obs);
   const sn = sniperTaker(obs, signal);
+  const indexed = indexIndicators(ind as unknown as IndicatorRow[]);
   live[model] = section(obs, [...gate.trades, ...sn.trades], {
+    walkForward: wfSection(obs, model, new Set(obs.map((o) => o.closeMs)).size),
+    namedSetups: evaluateSetups(obs, indexed),
     rowsRecorded: rows.length,
     skipped: { settlement_gate_taker: gate.skipped, sniper_confluence_research: sn.skipped },
     approval_rule: "0 trades by construction — no approved calibrator exists for this model version; a calibrator fitted on another model version must not be reused",
   });
 }
 
+const obsRowsAll = await readAll<ObsRow>(LIVE, "observations-");
+const collector = collectorStats(obsRowsAll, lOut as unknown as Parameters<typeof collectorStats>[1]);
+let calendar: unknown = null;
+try { calendar = verifyCalendar(JSON.parse(readFileSync(officialCalendarPath(), "utf8")), Date.now()); } catch { calendar = { verified: false, reason: "official_calendar_missing" }; }
 const report = {
+  collector,
+  milestone: milestone(collector.independentClosingWindows.completed),
+  calendar,
   generatedAt: new Date().toISOString(),
   method: "Executable prices only (displayed ask; size ≤ displayed depth; event fee multiplier; one entry per contract; ≤ $3/order). Clustered SE by 15-minute close window. Kalshi implied probability = YES mid.",
   historical: { decisions: hDec.length, outcomes: hOut.length, rowsWithDepth: hDec.filter((d) => d.depth != null).length, byModel: historical },

@@ -23,6 +23,7 @@ export type LedgerRow = {
   depth?: { yes_bid_size: number | null; no_bid_size: number | null } | null;
   fee_multiplier?: number | null;
   fee_type?: string | null;
+  spot?: number | null; strike?: number | null; sigma?: number | null;
 };
 export type OutcomeRow = { ticker: string; result: string };
 export type Obs = {
@@ -32,6 +33,8 @@ export type Obs = {
   yesBidSize: number | null; noBidSize: number | null;
   /** event-specific quadratic fee multiplier — null when unknown */
   feeMultiplier: number | null;
+  /** baseline inputs: ln(S/K)/(σ√t) and ln(S/K)/√t — null when spot/strike/σ were not recorded */
+  z?: number | null; dist?: number | null;
 };
 
 export const TTE_BUCKETS = [600, 300, 120, 45];
@@ -68,11 +71,18 @@ export function joinObservations(rows: LedgerRow[], outcomes: OutcomeRow[], buck
         d,
         o: { ticker: r.ticker, series: r.ticker.split("-")[0], model, closeMs, tteBucket: b, tte: r.tte_s, p: r.p, pBase: r.p_base,
           yesBid, yesAsk, mid: (yesBid + yesAsk) / 2, y: result.get(r.ticker)!,
-          yesBidSize: posOrNull(r.depth?.yes_bid_size), noBidSize: posOrNull(r.depth?.no_bid_size), feeMultiplier },
+          yesBidSize: posOrNull(r.depth?.yes_bid_size), noBidSize: posOrNull(r.depth?.no_bid_size), feeMultiplier, ...baselineInputs(r) },
       });
     }
   }
   return [...best.values()].map((x) => x.o).sort((a, b) => a.closeMs - b.closeMs || b.tteBucket - a.tteBucket);
+}
+
+function baselineInputs(r: LedgerRow) {
+  const S = r.spot, K = r.strike, sg = r.sigma, t = r.tte_s;
+  if (!(typeof S === "number" && S > 0 && typeof K === "number" && K > 0 && typeof t === "number" && t > 0)) return { z: null, dist: null };
+  const lr = Math.log(S / K);
+  return { z: typeof sg === "number" && sg > 0 ? lr / (sg * Math.sqrt(t)) : null, dist: lr / Math.sqrt(t) };
 }
 
 /** Temporal split on close time; everything closing in the purge gap before the test start is dropped. */
