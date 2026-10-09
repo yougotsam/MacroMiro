@@ -11,13 +11,14 @@ import { eventCancelPath } from "@/lib/scan/kalshi-order-status";
 import { CALIBRATED_MODEL_APPROVED, ORDER_SHARD, TICKER_RE, dataDir } from "./config";
 import { ordersByClientIds, type KOrder } from "./kalshi-read";
 import type { AccountSnapshot, OrderIntent, RiskEngine } from "./risk";
+import type { Evidence, RecoveryQueue } from "./recovery";
 
 export const ORDER_PATH = "/trade-api/v2/portfolio/events/orders";
 
 export type JournalRow = {
   ts: string;
   cid: string;
-  stage: "intent" | "sent" | "unknown" | "found" | "not_found" | "rejected" | "refused" | "cancel";
+  stage: "intent" | "sent" | "unknown" | "found" | "not_found" | "rejected" | "refused" | "cancel" | "released";
   ticker: string;
   side?: string;
   mode?: string;
@@ -279,6 +280,39 @@ export class Oms {
     return open.length;
   }
 
+  /** Order ids of desk orders on a ticker the journal knows (sent/found/cancel rows): used to explain fills. */
+  knownOrderIds(ticker: string): Set<string> {
+    const out = new Set<string>();
+    for (const r of this.journal()) if (r.ticker === ticker && r.orderId) out.add(r.orderId);
+    return out;
+  }
+
+  /** Is this cid still an ambiguous send (last stage intent/unknown)? */
+  isAmbiguous(cid: string) {
+    return this.pendingIntents().some((p) => p.cid === cid);
+  }
+
+  /** A read-only recovery scan found the order on Kalshi under our client_order_id: record it (exchange record = proof). */
+  recordFound(e: Evidence) {
+    if (e.classification !== "found" || !e.order || !this.isAmbiguous(e.cid)) return false;
+    this.write({ cid: e.cid, stage: "found", ticker: e.ticker, orderId: e.order.order_id, status: e.order.status, fill: Number(e.order.fill_count_fp ?? 0), note: "read-only recovery scan" });
+    return true;
+  }
+
+  /**
+   * Release an ambiguous send's reserved risk ONLY with an operator approval bound to the latest read-only evidence.
+   * Never time-based. Writes the approval id into the journal and the audit queue.
+   */
+  releaseApproved(cid: string, queue: RecoveryQueue, now = Date.now()): { ok: boolean; why: string } {
+    if (!this.isAmbiguous(cid)) return { ok: false, why: "not an ambiguous send" };
+    const a = queue.approvalFor(cid);
+    if (!a) return { ok: false, why: "no operator approval for the latest evidence" };
+    const ticker = this.pendingIntents().find((p) => p.cid === cid)!.ticker;
+    this.write({ cid, stage: "released", ticker, note: `operator ${a.by} approval ${a.approvalId} (${a.classification}): ${a.reason.slice(0, 120)}` });
+    queue.markReleased(cid, a.approvalId, now);
+    return { ok: true, why: `released by approval ${a.approvalId}` };
+  }
+
   async cancel(orderId: string, ticker: string, cid: string, why: string) {
     // the real path is always the signed event-order DELETE; only a constructor-validated mock replaces it
     const r = this.del ? await this.del(eventCancelPath(orderId, ticker)) : await kalshiDelete(eventCancelPath(orderId, ticker));
@@ -286,3 +320,15 @@ export class Oms {
     return r.status;
   }
 }
+
+/**
+ * Journal-only OMS for the read-only recovery tool: transport, lookup and canceller all throw, and the risk engine
+ * has every switch off, so it can record evidence-backed "found" rows and operator-approved releases but never send.
+ */
+export function recoveryOms(risk: RiskEngine, dir: string): Oms {
+  const never = async (): Promise<never> => {
+    throw new Error("recovery OMS never sends, looks up or cancels");
+  };
+  return new Oms(risk, never, never, dir, { canceller: never });
+}
+
