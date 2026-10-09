@@ -7,7 +7,7 @@
  * as does a major release whose time cannot be pinned to an explicit timezone (whole ET day blocked).
  */
 import { readFileSync, statSync } from "node:fs";
-import { DATA_ROOT } from "@/lib/data-root";
+import { officialCalendarPath, verifyCalendar, type OfficialCalendar } from "./official-calendar";
 import { etDay } from "./time";
 
 export type Scheduled = { name?: string; when?: string };
@@ -55,7 +55,20 @@ export function macroGateFrom(raw: unknown, now: number, fileAgeMs: number | nul
   return { available: true, blocked: events.length > 0, reason: events.length ? "verified_macro_event_veto" : null, events };
 }
 
-export function macroGate(now = Date.now(), path = `${DATA_ROOT}/desk-news.json`): MacroGate {
+/**
+ * Gate over the OFFICIAL calendar (official-calendar.ts): verified by content (sources OK, fetchedAt ≤ 7 d, sourced
+ * events, ≥ 1 real upcoming major event), not by file mtime. Unverified → unavailable → blocks entries (fail closed).
+ */
+export function macroGateOfficial(raw: unknown, now: number): MacroGate {
+  const v = verifyCalendar(raw, now);
+  if (!v.verified) return { available: false, blocked: true, reason: v.reason ?? "official_calendar_unverified", events: [] };
+  const evs = (raw as OfficialCalendar).events;
+  // reuse the legacy rules: timed events veto −30/+15 min; date-only major events (FOMC day) block the whole ET day
+  return macroGateFrom({ calendar: { thisWeek: evs.map((e) => ({ name: e.name, when: e.when })) } }, now, 0);
+}
+
+/** Default: the official calendar file. A legacy desk-news-format file is still understood when passed explicitly. */
+export function macroGate(now = Date.now(), path = officialCalendarPath()): MacroGate {
   let raw: unknown = null;
   let age: number | null = null;
   try {
@@ -64,5 +77,7 @@ export function macroGate(now = Date.now(), path = `${DATA_ROOT}/desk-news.json`
   } catch {
     raw = null;
   }
+  if (raw && typeof raw === "object" && (raw as { version?: unknown }).version === 1 && Array.isArray((raw as { sources?: unknown }).sources)) return macroGateOfficial(raw, now);
+  if (path === officialCalendarPath()) return { available: false, blocked: true, reason: raw ? "official_calendar_malformed" : "official_calendar_missing", events: [] };
   return macroGateFrom(raw, now, age);
 }
