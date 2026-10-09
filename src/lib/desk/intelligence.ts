@@ -6,7 +6,9 @@
 import { readFileSync, statSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
 
-type Scheduled = { name?: string; when?: string };
+import { scheduledVeto, type Scheduled } from "./macro-calendar";
+
+export { scheduledVeto };
 export type DeskIntelligence = {
   mirofish: { stage: string; ageMs: number | null; probability: number | null; usableForSettlement: false };
   spark: { status: string; at: string | null; fresh: boolean };
@@ -16,20 +18,6 @@ export type DeskIntelligence = {
   vetoEvents: string[];
   /** No LLM-derived model confidence is returned for order submission. */
 };
-const MAJOR = /\b(CPI|consumer price|FOMC|Federal Reserve rate|nonfarm|NFP|employment situation|PPI|producer price)\b/i;
-
-/** Date.parse accepts many ambiguous formats; require explicit timezone for a trading veto. */
-function eventMs(raw: string): number | null {
-  if (!/\d{4}-\d{2}-\d{2}T\d\d:\d\d.*(?:Z|[+-]\d\d:\d\d)$/.test(raw)) return null;
-  const at = Date.parse(raw);
-  return Number.isFinite(at) ? at : null;
-}
-export function scheduledVeto(events: Scheduled[], now: number): string[] {
-  return events.filter((e) => {
-    const ts = eventMs(e.when ?? "");
-    return ts != null && MAJOR.test(e.name ?? "") && ts - 30 * 60_000 <= now && now <= ts + 15 * 60_000;
-  }).map((e) => `${e.name}: ${e.when}`);
-}
 
 function readJson(path: string): Record<string, unknown> | null {
   try {

@@ -99,7 +99,7 @@ export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeI
     no_ask: book.yesBid ? r4(1 - book.yesBid.price) : null,
   };
   if (!book.yesBid && !book.noBid) return { best: null, all, failed: "no_quote", quotes };
-  let failed = "no_edge";
+  const failed = "no_edge";
   let bandHit = false;
   for (const side of ["yes", "no"] as const) {
     const p = side === "yes" ? pYes : 1 - pYes;

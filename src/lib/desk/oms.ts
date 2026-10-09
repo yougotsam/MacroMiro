@@ -117,10 +117,10 @@ export class Oms {
   }
 
   /**
-   * Every send from the last 30 min that might be live (not rejected / not_found). The snapshot counts its worst
-   * case only while Kalshi does not list the client_order_id yet; once listed, Kalshi's own resting/fill numbers count.
+   * Every send whose outcome is still ambiguous (last journal stage intent/unknown), at any age. The snapshot counts its
+   * worst case only while Kalshi does not list the client_order_id; once acknowledged, Kalshi's own numbers count.
    */
-  pendingIntents(now = Date.now()): Array<{ cid: string; ticker: string; worst: number }> {
+  pendingIntents(_now = Date.now()): Array<{ cid: string; ticker: string; worst: number }> {
     const last = new Map<string, JournalRow>();
     const intent = new Map<string, JournalRow>();
     for (const r of this.journal()) {
@@ -130,7 +130,10 @@ export class Oms {
     const out: Array<{ cid: string; ticker: string; worst: number }> = [];
     for (const [cid, i] of intent) {
       const st = last.get(cid)?.stage;
-      if (st === "rejected" || st === "not_found") continue;
+      // Only a send whose outcome is still ambiguous (no order id ever seen) is pending risk.
+      // Once Kalshi acknowledged it (sent/found) or it was cancelled, Kalshi's own resting/position/fill
+      // records carry its exposure; counting it here as well would add it forever, across ET days (review B1).
+      if (st !== "intent" && st !== "unknown") continue;
       if (!Number.isFinite(i.worst) || i.worst! <= 0) throw new Error("OMS intent with unknown risk");
       // A network-ambiguous order never ages out of risk simply because the clock advanced.
       out.push({ cid, ticker: i.ticker, worst: i.worst ?? 0 });
@@ -211,8 +214,8 @@ export class Oms {
     return null;
   }
 
-  /** On boot and every tick: settle every intent/unknown row against Kalshi. Older than 2 min and still absent → not_found. */
-  async reconcilePending(now = Date.now()) {
+  /** On boot and every tick: look every intent/unknown row up on Kalshi by client_order_id. Absent rows stay pending (never auto not_found). */
+  async reconcilePending(_now = Date.now()) {
     const last = new Map<string, JournalRow>();
     for (const r of this.journal()) last.set(r.cid, r);
     const open = [...last.values()].filter((r) => r.stage === "intent" || r.stage === "unknown");

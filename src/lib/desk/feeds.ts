@@ -193,3 +193,15 @@ export class Feeds {
     };
   }
 }
+
+/**
+ * Does Kalshi's official 60 s accumulator describe the same second as our latest index print?
+ * Our prints are floored to the whole second; the accumulator carries the raw millisecond time,
+ * so both are compared at second resolution (review B3). The count must equal the seconds of the
+ * window (close − 60 s, close] printed so far.
+ */
+export function officialMatches(official: { t: number; windowSize: number } | null | undefined, lastT: number, closeMs: number): boolean {
+  if (!official || !Number.isFinite(official.t) || !Number.isFinite(lastT)) return false;
+  const expected = Math.floor(lastT / 1000) - Math.floor(closeMs / 1000) + 60;
+  return Math.floor(official.t / 1000) === Math.floor(lastT / 1000) && official.windowSize === expected;
+}

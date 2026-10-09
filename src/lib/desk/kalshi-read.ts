@@ -188,13 +188,17 @@ function finiteAmount(raw: unknown, field: string, allowMissing = false): number
   return n;
 }
 
-export function sidePrice(o: KOrder) {
-  // Desk V2 BUY YES is "bid" and BUY NO is "ask" (NO encoded as complementary YES ask).
-  // An explicit outcome_side/book_side takes precedence if supplied by Kalshi.
+/** Which contract an order buys. Desk V2 BUY YES is "bid", BUY NO is "ask"; an explicit outcome_side/book_side wins. */
+export function orderOutcomeSide(o: KOrder): "yes" | "no" | null {
   const sideRaw = o.outcome_side ?? o.book_side ??
     (o.side === "bid" ? "yes" : o.side === "ask" ? "no" : o.side);
   const side = String(sideRaw ?? "").toLowerCase();
-  if (side !== "yes" && side !== "no") throw new Error("unknown order outcome_side");
+  return side === "yes" || side === "no" ? side : null;
+}
+
+export function sidePrice(o: KOrder) {
+  const side = orderOutcomeSide(o);
+  if (side == null) throw new Error("unknown order outcome_side");
   const raw = side === "no" ? o.no_price_dollars : o.yes_price_dollars;
   const price = finiteAmount(raw, "order price");
   if (!(price > 0 && price < 1)) throw new Error("invalid order price range");

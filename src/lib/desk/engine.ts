@@ -27,12 +27,12 @@ import {
 } from "./config";
 import { features, featureShift, minuteBars, type FeatureSnapshot } from "./features";
 import type { FeeInfo } from "./fees";
-import { Feeds } from "./feeds";
+import { Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides, type Side } from "./gate";
-import { readDeskIntelligence } from "./intelligence";
+import { macroVeto } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, type Evidence } from "./sniper";
 import { MoveGuard, against, makerWindowOk, minPriceFor, pullReason, shockOf, type GuardState } from "./guard";
-import { exchangeStatus, fetchSnapshot, marketResult, openMarket, orderbook, eventFee, sidePrice, type KOrder, type Market, type Position } from "./kalshi-read";
+import { exchangeStatus, fetchSnapshot, marketResult, openMarket, orderbook, eventFee, orderOutcomeSide, sidePrice, type KOrder, type Market, type Position } from "./kalshi-read";
 import { DecisionLedger, type Decision } from "./ledger";
 import { Oms } from "./oms";
 import { RiskEngine, dayWorstOf, switches, type AccountSnapshot } from "./risk";
@@ -64,11 +64,24 @@ export type SeriesEval = {
   budget: number;
 };
 
-type Resting = { orderId: string; ticker: string; series: string; side: Side; price: number; cid: string };
+export type Resting = { orderId: string; ticker: string; series: string; side: Side; price: number; cid: string };
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a);
 const seriesOf = (ticker: string) => ticker.split("-")[0];
-const sideOf = (o: KOrder): Side => ((o.outcome_side ?? o.side ?? "yes").toLowerCase() === "no" ? "no" : "yes");
+/** V2 desk orders say "bid" (YES) / "ask" (NO); reading "ask" as YES mis-judged NO bids in the fast-move pull (review B2). */
+const sideOf = (o: KOrder): Side | null => orderOutcomeSide(o);
+/** A desk resting order as the guard sees it, or null if its side/price cannot be read (then it is pulled, never guessed). */
+export function restingOf(o: KOrder): Resting | null {
+  const side = sideOf(o);
+  if (side == null) return null;
+  let price: number;
+  try {
+    price = sidePrice(o);
+  } catch {
+    return null;
+  }
+  return { orderId: o.order_id, ticker: o.ticker, series: seriesOf(o.ticker), side, price, cid: o.client_order_id ?? "" };
+}
 
 export class Engine {
   feeds = new Feeds(true);
@@ -133,7 +146,8 @@ export class Engine {
     };
     const fail = (g: string) => ((out.failed = g), out);
     if (!exOk) return fail("G0_exchange_paused");
-    if (readDeskIntelligence(now).macroVeto) return fail("G0_verified_macro_event_veto");
+    const veto = macroVeto(now);
+    if (veto.length) return fail("G0_verified_macro_event_veto");
     if (!m) return fail("G1_no_open_market");
     if (m.strikeType !== "greater_or_equal") return fail("G1_strike_type");
     if (m.exchangeIndex !== 2 || m.priceRanges.length === 0) return fail("G1_wrong_shard_or_price_grid");
@@ -163,8 +177,7 @@ export class Engine {
       last.t >= m.closeMs - 59_000 && last.t <= m.closeMs;
     const official = afterWindowStart ? this.feeds.lastOfficialAverage(ref.index) : null;
     if (afterWindowStart) {
-      const expected = Math.floor(last.t / 1000) - Math.floor(m.closeMs / 1000) + 60;
-      if (!official || official.t !== last.t || official.windowSize !== expected) {
+      if (!officialMatches(official, last.t, m.closeMs)) {
         return fail("G1_official_settlement_accumulator_missing_or_mismatched");
       }
     }
@@ -192,8 +205,8 @@ export class Engine {
     const b15 = resampleComplete(researchBars, 15);
     const b1h = resampleComplete(researchBars, 60);
     out.sniper = {
-      long: evaluateSniper(b15, b1h, "long", !readDeskIntelligence(now).macroVeto),
-      short: evaluateSniper(b15, b1h, "short", !readDeskIntelligence(now).macroVeto),
+      long: evaluateSniper(b15, b1h, "long", !veto.length),
+      short: evaluateSniper(b15, b1h, "short", !veto.length),
     };
     out.shift = shift;
     out.p = clampP(pBase + shift);
@@ -282,7 +295,12 @@ export class Engine {
     for (const o of this.resting) {
       if (!(o.client_order_id ?? "").startsWith("mm1-")) continue; // never touch orders the desk didn't place
       const e = evals.find((x) => x.market?.ticker === o.ticker);
-      const r: Resting = { orderId: o.order_id, ticker: o.ticker, series: seriesOf(o.ticker), side: sideOf(o), price: sidePrice(o), cid: o.client_order_id ?? "" };
+      const parsed = restingOf(o);
+      if (!parsed) {
+        await this.cancel({ orderId: o.order_id, ticker: o.ticker, series: seriesOf(o.ticker), side: "yes", price: Number.NaN, cid: o.client_order_id ?? "" }, "unreadable order side/price", e);
+        continue;
+      }
+      const r: Resting = parsed;
       let why: string | null = null;
       if (!e || !e.market) why = "market gone";
       else {
@@ -320,7 +338,9 @@ export class Engine {
       this.known = new Map(
         r.resting
           .filter((o) => (o.client_order_id ?? "").startsWith("mm1-"))
-          .map((o) => [o.order_id, { orderId: o.order_id, ticker: o.ticker, series: seriesOf(o.ticker), side: sideOf(o), price: sidePrice(o), cid: o.client_order_id ?? "" }]),
+          .map((o) => restingOf(o))
+          .filter((x): x is Resting => x != null)
+          .map((x) => [x.orderId, x]),
       );
       this.risk.observe(r.snap);
     } catch (e) {
@@ -416,13 +436,12 @@ export class Engine {
         switches: { live: switches.live(), begin: switches.begin(), arm: switches.arm() },
         latched: latched?.latchReason ?? null,
         budget,
-        intelligence: readDeskIntelligence(now2),
+        macroVeto: macroVeto(now2),
         strategyReadiness: {
           settlementModel: CALIBRATED_MODEL_APPROVED ? "reviewed" : "unapproved / shadow only",
           microstructure: "not integrated: distinct signed-trade and true venue-volume feeds required",
           higherTimeframes: "not integrated: persistent 15m and 1h spot/futures OHLCV required",
-          mirofish: "real output read-only; not calibrated to Kalshi settlement",
-          sparkAlexandria: "sourced macro veto/context; no unsupported probability adjustment",
+          externalContext: "not read by the engine; only the scheduled macro calendar can block entries",
         },
         snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt, override: this.snapshot.override ?? null, roomToStop: Number((dayWorstOf(this.snapshot) - DAILY_STOP_USD).toFixed(4)) } : null,
         resting: [...this.known.values()],

@@ -103,3 +103,20 @@ Output: modified complete repository ZIP intended for a NEW review branch. NOT p
 - https://docs.kalshi.com/api-reference/events/get-event
 - https://docs.kalshi.com/api-reference/orders/create-order-v2
 - https://docs.kalshi.com/llms.txt
+
+## fix/aurix-x follow-up (2026-10-09, applied on the box from desk-brain-mirofish @ 07277d9)
+Run with Bun 1.4.2 and installed dependencies. Live orders stay off: `CALIBRATED_MODEL_APPROVED = false`, switch files untouched, engine not started.
+- Results: `bun test` 411 pass / 0 fail (34 files); `tsc --noEmit` clean; `eslint .` 0 errors / 60 warnings; `npm run check:auth` OK.
+  Production `vite build` fails, and it fails the same way on the base branch: `src/routes/index.tsx` imports `@/lib/envelope/kill.server` into client code. This is outside this patch and was not changed.
+- Fixed in this branch:
+  - Brain safety test: `engine.ts` no longer imports the MiroFish/Spark/Firecrawl bridge. The macro veto lives in `macro-calendar.ts`, which reads only the calendar.
+  - Review B1: pending order risk counts only sends that are still ambiguous (intent/unknown). Before, every acknowledged order from every past day was counted. The real journal held $141.16 of that.
+  - Review B2: NO ("ask") orders are now read as NO in the resting-order guard, and unreadable orders are pulled.
+  - Review B3: the official 60 s accumulator is matched to the print at second resolution.
+  - Three lint errors that already existed.
+- Tests: the 767-line legacy suite is back as `desk-v1-regression.test.ts`. 42 checks run unchanged. The 13 that encoded the old numbers (−$15, $12, overrides, live POST) now assert the stricter rules and are labelled "POLICY (aurix-x)".
+- P1 market data: `market-data.ts` pulls public Coinbase 15m/1h OHLCV and signed trades, and adds non-repainting validation, gap reporting, an EMA200 warm-up check and a bar store. Gold is unsupported. These are research inputs only and are not wired into the engine.
+- P1 probability validation: `calibration.ts` and `scripts/desk-validate.ts` do a ledger/outcome join and a purged temporal split. They compute Brier and log loss against the Kalshi mid and the base rate, fit a train-only recalibration, and replay taker trades after costs. The verdict is advisory only.
+  - On the desk's 2026-10-08 ledger (235 contracts, 97 in test): model Brier 0.1119 vs market mid 0.1085. Taker replay lost 32 trades, −$3.46 (mean −$0.108 ± $0.061 SE).
+  - The model does NOT beat the market, and profitability is NOT shown.
+- Still open: the non-repainting BOS/MSS/FVG/OB detector, the 200 forced OMS timeout trials, authenticated Kalshi demo/integration tests, the per-underlying correlated risk budget, the cushion, the max-time-left entry rule, the per-ticker $ cap, the day-stop double count, review B4 (the shadow ledger drops the would-be trade) and review B5 (throws inside loops).

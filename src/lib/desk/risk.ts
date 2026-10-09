@@ -134,7 +134,7 @@ export class RiskEngine {
   read(): RiskFile {
     try {
       return JSON.parse(readFileSync(this.file, "utf8")) as RiskFile;
-    } catch (error) {
+    } catch {
       if (!existsSync(this.file)) {
         return { latchedDay: null, latchReason: null, latchedAt: null, updatedAt: new Date().toISOString() };
       }
