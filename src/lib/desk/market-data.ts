@@ -18,7 +18,7 @@ export const RESEARCH_PRODUCT: Record<Series, string | null> = {
   KXGOLD15M: null,
 };
 export const EMA_WARMUP_BARS = 200;
-export type Interval = 15 | 60;
+export type Interval = 1 | 5 | 15 | 60;
 
 export type BarCheck = { bars: Candle[]; dropped: number; forming: number; gaps: Array<{ from: number; to: number }>; ok: boolean; problems: string[] };
 

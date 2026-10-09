@@ -111,7 +111,8 @@ describe("macro calendar gate (Codex P2: FAIL-CLOSED; order path reads only the 
     expect(macroGateFrom({ calendar: { thisWeek: [{ name: "US CPI m/m", when: "soon" }] } }, now, fresh)).toMatchObject({ available: false, blocked: true });
   });
   it("engine source enforces the gate after pricing and keeps the would-be trade as shadow only", () => {
-    const src = readFileSync(new URL("./engine.ts", import.meta.url), "utf8") as string;
+    // round 3: the evaluation moved verbatim from engine.ts to evaluator.ts (shared with the read-only collector)
+    const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
     expect(src).toContain("if (macro.blocked) {");
     expect(src).toMatch(/macro\.available && !macro\.blocked/);
     expect(src).not.toMatch(/firecrawl|mirofish|spark\.server/i);
@@ -461,9 +462,10 @@ describe("review B4: shadow ledger keeps the would-be trade while live is disabl
       else process.env.DESK_DATA_DIR = prev;
     }
   });
-  it("both blocking gates move the candidate to shadow before clearing best", () => {
-    const src = readFileSync(new URL("./engine.ts", import.meta.url), "utf8") as string;
-    expect(src.match(/out\.shadow = out\.best;\s*out\.best = null;/g)?.length).toBe(2);
+  it("every blocking gate (macro, approval, uncalibrated) moves the candidate to shadow before clearing best", () => {
+    const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
+    expect(src.match(/out\.shadow = out\.best;\s*out\.best = null;/g)?.length).toBe(3);
+    expect(readFileSync(new URL("./engine.ts", import.meta.url), "utf8")).not.toMatch(/firecrawl|mirofish|spark\.server/i);
   });
 });
 

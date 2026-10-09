@@ -119,3 +119,18 @@ export const LAST_MINUTE_MIN_PRICE = 0.05; // never buy under 5¢ in the last mi
 export const TICK_MS = 1_000;
 export const SNAPSHOT_EVERY_MS = 2_000; // account snapshot cadence (refreshed immediately after any send)
 export const GUARD_EVERY_MS = 250; // fast-move guard reads the websocket prints, no REST
+
+// ── Approval policy (round 3, Sameer 2026-10-09) ───────────────────────────────
+/**
+ * Approval needs a CALIBRATED settlement probability (an operator-approved calibrator file bound to this model version)
+ * and a positive conservative EV at the executable Kalshi price after fees and this cushion. The 13-point confluence
+ * score is kept as a ranker/context only. Rollback flag: false = the exact pre-round-3 gate path.
+ */
+export const APPROVAL_POLICY_ENFORCED: boolean = true;
+/** Uncertainty cushion on the calibrated side probability (placeholder until calibration evidence sets it; owner decision). */
+export const APPROVAL_CUSHION = 0.03;
+export function calibratorPath() {
+  return `${dataDir()}/calibrator.json`;
+}
+/** Which time-to-expiry policy is active ("current" reproduces the pre-round-3 timing exactly). */
+export const TIMING_POLICY: "current" | "final10_proposal" = "current";
