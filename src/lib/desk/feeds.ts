@@ -28,6 +28,11 @@ export class Feeds {
   private pending: string[] = [];
   private stopped = false;
   private backoff = 500;
+  private lastMsgAt = 0;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  /** an open socket that stops delivering prints (seen 2026-10-09 18:15Z: "live" for 3 h with no index) is torn down */
+  static readonly STALL_MS = 45_000;
+  stalls = 0;
   status = "init";
   errors = 0;
 
@@ -131,10 +136,26 @@ export class Feeds {
   start() {
     this.stopped = false;
     this.open();
+    if (!this.watchdog) this.watchdog = setInterval(() => this.checkStall(), 15_000);
+  }
+
+  /** Read-only market-data reconnect: no orders, no gate change. Returns true when it forced a reconnect. */
+  checkStall(now = Date.now()) {
+    if (this.stopped || this.status !== "live" || !this.lastMsgAt || now - this.lastMsgAt < Feeds.STALL_MS) return false;
+    this.stalls += 1;
+    this.status = "stalled";
+    const ws = this.ws;
+    this.ws = null;
+    try { ws?.close(); } catch { /* already gone */ }
+    if (ws) { ws.onclose = null; ws.onmessage = null; }
+    setTimeout(() => this.open(), this.backoff);
+    this.backoff = Math.min(15_000, this.backoff * 2);
+    return true;
   }
 
   stop() {
     this.stopped = true;
+    if (this.watchdog) { clearInterval(this.watchdog); this.watchdog = null; }
     try {
       this.ws?.close();
     } catch {
@@ -150,6 +171,7 @@ export class Feeds {
     ws.onopen = () => {
       this.status = "live";
       this.backoff = 500;
+      this.lastMsgAt = Date.now();
       ws.send(JSON.stringify({ id: 1, cmd: "subscribe", params: { channels: ["cfbenchmarks_value"], index_ids: [...RTI] } }));
       ws.send(JSON.stringify({ id: 2, cmd: "subscribe", params: { channels: ["pyth_value"], underlying_tickers: [GOLD] } }));
     };
@@ -161,6 +183,7 @@ export class Feeds {
         return;
       }
       const recv = Date.now();
+      if (m.type === "cfbenchmarks_value" || m.type === "pyth_value") this.lastMsgAt = recv;
       if (m.type === "cfbenchmarks_value" && m.msg) {
         try {
           const inner = JSON.parse(String(m.msg.data)) as { time: number; id: string; value: string };

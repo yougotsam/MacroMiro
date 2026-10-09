@@ -6,7 +6,7 @@
  * same 15-minute window move together, so a window is one cluster).
  */
 import { reportBucket, TIMING_POLICIES, bucketFor } from "./approval";
-import { brier, clusteredSe, fitRecalibration, purgedSplit, takerTrades, type Obs, type ReplayTrade } from "./calibration";
+import { brier, clusteredSe, settlementCluster, fitRecalibration, purgedSplit, takerTrades, type Obs, type ReplayTrade } from "./calibration";
 import { APPROVAL_CUSHION, MAX_ORDER_COST_USD, PRICE_MAX, PRICE_MIN } from "./config";
 import { orderFee } from "./fees";
 import { minPriceFor } from "./guard";
@@ -22,7 +22,7 @@ function rng(seed: number) {
 /** Brier skill vs the Kalshi mid with a 95 % cluster-bootstrap interval (resampling close windows). */
 export function skillVsMarket(obs: Obs[], prob: (o: Obs) => number = (o) => o.p, reps = 1000, seed = 7) {
   const n = obs.length;
-  const windows = [...new Set(obs.map((o) => o.closeMs))];
+  const windows = [...new Set(obs.map((o) => settlementCluster(o.closeMs, o.series)))];
   if (n < 2) return { n, contracts: new Set(obs.map((o) => o.ticker)).size, windows: windows.length, brierModel: null, brierMarket: null, bss: null, ci95: null };
   const bm = brier(obs.map(prob), obs.map((o) => o.y));
   const bk = brier(obs.map((o) => o.mid), obs.map((o) => o.y));
@@ -30,7 +30,7 @@ export function skillVsMarket(obs: Obs[], prob: (o: Obs) => number = (o) => o.p,
   let ci95: [number, number] | null = null;
   if (windows.length >= 5 && bk > 0) {
     const by = new Map<number, Obs[]>();
-    for (const o of obs) by.set(o.closeMs, [...(by.get(o.closeMs) ?? []), o]);
+    for (const o of obs) { const c = settlementCluster(o.closeMs, o.series); by.set(c, [...(by.get(c) ?? []), o]); }
     const r = rng(seed);
     const vals: number[] = [];
     for (let i = 0; i < reps; i += 1) {
@@ -66,9 +66,9 @@ export function pnlSummary(trades: Trade[]) {
   const n = trades.length;
   const total = trades.reduce((a, t) => a + t.pnl, 0);
   const mean = n ? total / n : null;
-  const cse = clusteredSe(trades.map((t) => ({ cluster: t.closeMs, pnl: t.pnl })));
+  const cse = clusteredSe(trades.map((t) => ({ cluster: settlementCluster(t.closeMs, t.ticker), pnl: t.pnl })));
   return {
-    trades: n, windows: new Set(trades.map((t) => t.closeMs)).size, total: r4(total), meanPerTrade: r4(mean), clusteredSe: r4(cse),
+    trades: n, windows: new Set(trades.map((t) => settlementCluster(t.closeMs, t.ticker))).size, total: r4(total), meanPerTrade: r4(mean), clusteredSe: r4(cse),
     ci95: mean != null && cse != null ? [r4(mean - 1.96 * cse), r4(mean + 1.96 * cse)] : null,
   };
 }

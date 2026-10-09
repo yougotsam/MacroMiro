@@ -24,3 +24,38 @@ describe("collector stats", () => {
     expect(s.rejectedByGate.G2_no_edge).toBe(6);
   });
 });
+
+describe("independent clusters and quote completeness (round 3.3)", () => {
+  const close = "2026-10-09T21:00:00.000Z";
+  const full = (series: string, idx = true) => ({
+    ticker: `${series}-26OCT091700-00`, series, close, exec: { complete: true, yes_bid: 0.4, yes_ask: 0.41, no_bid: 0.59, no_ask: 0.6, yes_ask_size: 10, no_ask_size: 12 },
+    threshold: { strike: 100 }, index: idx ? { value: 100, age_ms: 900 } : { value: null, age_ms: 10_000_000 }, fee_type: "quadratic", fee_multiplier: 1,
+  });
+  const out = (series: string, result = "yes") => ({ ticker: `${series}-26OCT091700-00`, series, close, result });
+  it("four coins at one settlement time are ONE crypto cluster; gold is its own", () => {
+    const rows = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXGOLD15M"].map((s) => full(s));
+    const st = collectorStats(rows, rows.map((r) => out(r.series)));
+    expect(st.independentClusters.crypto.settled).toBe(1);
+    expect(st.independentClusters.gold.settled).toBe(1);
+    expect(st.independentClusters.settlementTimes).toBe(1);
+    expect(st.completeness.rowsAllFieldsPct).toBe(100);
+  });
+  it("a stale/missing index or a missing outcome makes the row incomplete", () => {
+    const rows = [full("KXBTC15M", false), full("KXETH15M")];
+    const st = collectorStats(rows, [out("KXBTC15M")]);
+    expect(st.completeness.rowsPctByField.index).toBe(50);
+    expect(st.completeness.rowsPctByField.outcome).toBe(50);
+    expect(st.completeness.rowsAllFieldsPct).toBe(0);
+    expect(st.independentClusters.crypto.withAnyCompleteMarket).toBe(0);
+  });
+});
+
+describe("settlementCluster", () => {
+  it("crypto tickers at one close share a cluster; gold does not", async () => {
+    const { settlementCluster } = await import("./calibration");
+    const t = Date.parse("2026-10-09T21:00:00Z");
+    expect(settlementCluster(t, "KXBTC15M-x")).toBe(settlementCluster(t, "KXXRP15M"));
+    expect(settlementCluster(t, "KXGOLD15M")).not.toBe(settlementCluster(t, "KXBTC15M"));
+    expect(settlementCluster(t + 900_000, "KXBTC15M")).not.toBe(settlementCluster(t, "KXBTC15M"));
+  });
+});

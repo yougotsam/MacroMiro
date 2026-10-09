@@ -134,6 +134,14 @@ export function fitRecalibration(ps: number[], ys: number[], iters = 50, ridge =
   return { a, b, apply: (p: number) => sigm(a * logit(p) + b) };
 }
 
+/**
+ * Independent settlement cluster: BTC/ETH/SOL/XRP closing at the same time are ONE cluster (they move together);
+ * gold closing at that time is its own cluster. Used for every CI/SE and every "windows" count.
+ */
+export function settlementCluster(closeMs: number, seriesOrTicker: string) {
+  return closeMs * 2 + (/GOLD/i.test(seriesOrTicker) ? 1 : 0);
+}
+
 /** Cluster-robust standard error of the mean P/L per contract, clusters = close windows. */
 export function clusteredSe(rows: Array<{ cluster: number; pnl: number }>) {
   const n = rows.length;
@@ -187,10 +195,10 @@ export function summarizeTrades(trades: ReplayTrade[], skipped: Record<string, n
   const total = trades.reduce((a, t) => a + t.pnl, 0);
   const mean = n ? total / n : 0;
   const naiveSe = n > 1 ? Math.sqrt(trades.reduce((a, t) => a + (t.pnl - mean) ** 2, 0) / (n - 1)) / Math.sqrt(n) : null;
-  const cse = clusteredSe(trades.map((t) => ({ cluster: t.closeMs, pnl: t.pnl })));
+  const cse = clusteredSe(trades.map((t) => ({ cluster: settlementCluster(t.closeMs, t.ticker), pnl: t.pnl })));
   const r4 = (x: number | null) => (x == null ? null : Number(x.toFixed(4)));
   return {
-    trades: n, contracts: new Set(trades.map((t) => t.ticker)).size, windows: new Set(trades.map((t) => t.closeMs)).size,
+    trades: n, contracts: new Set(trades.map((t) => t.ticker)).size, windows: new Set(trades.map((t) => settlementCluster(t.closeMs, t.ticker))).size,
     total: Number(total.toFixed(4)), meanPerTrade: r4(mean), naiveSe: r4(naiveSe), clusteredSe: r4(cse), skipped,
   };
 }

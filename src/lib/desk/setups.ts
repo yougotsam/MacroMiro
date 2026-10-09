@@ -6,7 +6,7 @@
  * Features that were unavailable (no volume source, not enough bars) are never filled in: an indicator row whose
  * required module is unavailable simply does not fire that setup.
  */
-import { clusteredSe, type Obs } from "./calibration";
+import { clusteredSe, settlementCluster, type Obs } from "./calibration";
 import { pnlSummary, sniperTaker } from "./analysis";
 
 export type IndicatorRow = {
@@ -79,7 +79,7 @@ export function evaluateSetups(obs: Obs[], ind: Map<string, Array<IndicatorRow &
       const yDir = hit.dir === "long" ? o.y : 1 - o.y;
       const pDir = hit.dir === "long" ? o.p : 1 - o.p;
       const midDir = hit.dir === "long" ? o.mid : 1 - o.mid;
-      resid.push({ cluster: o.closeMs, pnl: yDir - pDir });
+      resid.push({ cluster: settlementCluster(o.closeMs, o.series), pnl: yDir - pDir });
       residMkt.push(yDir - midDir);
     }
     const n = resid.length;
