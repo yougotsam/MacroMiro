@@ -5,13 +5,15 @@
  * Forwards only to allow-listed provider hosts; never logs headers or bodies; refuses (429) once the budget is spent.
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import { costOf, estimateUsage, spent, upstreamOf, usageFrom, type LedgerEntry } from "../src/lib/research/llm-meter";
+import { costOf, costReport, estimateUsage, spent, upstreamOf, usageFrom, type LedgerEntry, type ProviderEntry } from "../src/lib/research/llm-meter";
 
 const port = Number(process.argv[2] ?? 5098);
 const budget = Number(process.env.METER_BUDGET_USD ?? "0.9");
 const ledger = process.env.METER_LEDGER ?? "/workspace/data/research/llm-usage.jsonl";
 const tagFile = process.env.METER_TAG_FILE ?? "/workspace/data/research/meter-tag";
 const tagNow = () => (existsSync(tagFile) ? readFileSync(tagFile, "utf8").trim() : process.env.METER_TAG ?? "untagged");
+const providerLedger = process.env.METER_PROVIDER_LEDGER ?? "/workspace/data/research/provider-usage.jsonl";
+const providerEntries = (): ProviderEntry[] => (existsSync(providerLedger) ? readFileSync(providerLedger, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as ProviderEntry]; } catch { return []; } }) : []);
 const entries: LedgerEntry[] = existsSync(ledger) ? readFileSync(ledger, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as LedgerEntry) : [];
 
 Bun.serve({
@@ -20,7 +22,7 @@ Bun.serve({
   idleTimeout: 255,
   async fetch(req) {
     const url = new URL(req.url);
-    if (url.pathname === "/__meter") return Response.json({ budgetUsd: budget, spentUsd: spent(entries), calls: entries.length, tag: tagNow() });
+    if (url.pathname === "/__meter") return Response.json({ budgetUsd: budget, spentUsd: spent(entries), calls: entries.length, tag: tagNow(), byProvider: costReport(entries, providerEntries(), budget) });
     const up = upstreamOf(url.pathname);
     if (!up) return new Response("upstream not allowed", { status: 403 });
     if (spent(entries) >= budget) return Response.json({ error: { message: `compute budget exhausted ($${budget})`, type: "budget" } }, { status: 429 });

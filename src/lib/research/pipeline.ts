@@ -37,7 +37,7 @@ export type Job = {
     rejected?: Array<{ url: string; reason: string }>;
     spark: { event: string; at: string } | null; file: string | null;
   };
-  progress: { round: number; totalRounds: number; actions: number; message: string };
+  progress: { round: number; totalRounds: number; actions: number; message: string; agents?: number | null };
   result: null | { reportChars: number; extracted: ScenarioExtract; archivedAs: string | null; completedAt: string };
   cost: { estimatedUsd: number; actualUsd: number | null };
   modelVersion: string; reuseUntil: string;
@@ -59,11 +59,11 @@ export function estimateCostUsd(spec: Pick<JobSpec, "maxRounds">, p = { agents: 
   return Number(((inTok * p.inPerM + outTok * p.outPerM) / 1e6).toFixed(4));
 }
 
-const SCENARIO_BRIEF: Record<Scenario, string> = {
+export const SCENARIO_BRIEF: Record<Scenario, string> = {
   baseline: "BASELINE: the release/event lands broadly in line with what the sources say is expected.",
   bullish: "BULLISH SHOCK for risk assets and bitcoin (e.g. softer-than-expected inflation / dovish surprise).",
   bearish: "BEARISH SHOCK for risk assets and bitcoin (e.g. hotter-than-expected inflation / hawkish surprise).",
-  unexpected: "UNEXPECTED: an outcome or side-story the sources do not anticipate (data delay, revision, policy surprise, exchange incident).",
+  unexpected: "UNEXPECTED REACTION: markets react against or out of proportion to the headline (e.g. a hot print but risk assets rally, an in-line print that triggers liquidations), or a side-story the sources do not anticipate.",
 };
 
 export function requirementFor(spec: JobSpec) {
@@ -273,7 +273,13 @@ export async function step(job: Job, d: Deps): Promise<number> {
       const st = str(r.status);
       job.progress.message = str(r.message) || job.progress.message;
       if (st === "failed") throw new TownError(`prepare failed: ${str(r.error).slice(0, 300)}`, 200, false);
-      if (st === "ready" || st === "completed" || r.already_prepared === true) { job.stage = "run"; return 0; }
+      if (st === "ready" || st === "completed" || r.already_prepared === true) {
+        // real agent count, as MiroFish reports it (null if not reported; never guessed)
+        const sim = await call(T, `/api/simulation/${encodeURIComponent(job.ids.simulationId)}`, { method: "GET", timeoutMs: 20_000 }).catch(() => null);
+        job.progress.agents = sim ? num(sim.profiles_count) : null;
+        job.stage = "run";
+        return 0;
+      }
       return poll;
     }
     case "run": {

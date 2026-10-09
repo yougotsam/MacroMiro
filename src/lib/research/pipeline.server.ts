@@ -3,7 +3,7 @@
  * transport (127.0.0.1 only), catalysts from the verified official calendar, and the cost meter reader.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { scrapeArticle } from "@/lib/live/firecrawl.server";
 import { MAJOR_EVENT, officialCalendarPath, verifyCalendar, type OfficialCalendar } from "@/lib/desk/official-calendar";
 import { checkProvenance, publishedAtOf, SEED_DOCS, type SeedDoc } from "./provenance";
@@ -70,6 +70,14 @@ export function mainText(text: string, c: Catalyst) {
   return (i >= 0 ? lines.slice(i) : lines).join("\n");
 }
 
+/** counted (not priced) non-LLM provider usage, tagged with the current job */
+function recordProvider(provider: "firecrawl" | "zep" | "other", units: number, unit: string, dir = process.env.RESEARCH_DIR || "/workspace/data/research") {
+  try {
+    const tag = existsSync(`${dir}/meter-tag`) ? readFileSync(`${dir}/meter-tag`, "utf8").trim() : "untagged";
+    appendFileSync(`${dir}/provider-usage.jsonl`, JSON.stringify({ ts: new Date().toISOString(), tag, provider, units, unit }) + "\n");
+  } catch { /* accounting only */ }
+}
+
 async function fetchText(url: string): Promise<{ text: string; title: string; via: string }> {
   const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", accept: "text/html,application/xhtml+xml,*/*;q=0.8", "accept-language": "en-US,en;q=0.9", referer: `${new URL(url).origin}/` }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
   let raw = r?.ok && r.url.split("#")[0] === url ? await r.text() : "";
@@ -77,6 +85,7 @@ async function fetchText(url: string): Promise<{ text: string; title: string; vi
   if (!raw) { raw = curlGet(url) ?? ""; via = "direct GET (curl)"; }
   if (raw) return { text: htmlText(raw), title: raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? "", via };
   const fc = await scrapeArticle(url).catch(() => ({ ok: false as const, error: "firecrawl failed" }));
+  recordProvider("firecrawl", 1, "scrape credit (attempt)");
   return fc.ok ? { text: fc.markdown, title: fc.title, via: "firecrawl" } : { text: "", title: "", via: "none" };
 }
 

@@ -8,7 +8,7 @@
  */
 import { appendFileSync, renameSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Job, ScenarioExtract } from "./pipeline";
+import { SCENARIO_BRIEF, type Job, type ScenarioExtract } from "./pipeline";
 
 export const MIROFISH_FEATURES_APPROVED = false as const;
 export const HORIZONS_MIN = [15, 60, 240] as const;
@@ -18,9 +18,10 @@ export type ArchiveItem = {
   id: string; kind: "simulation" | "event"; archivedAt: string;
   catalyst: { id: string; kind: string; name: string; when: string | null; sources: string[]; verified: boolean };
   scenario: string | null; seed: number | null; assets: string[]; regime: string;
-  mirofish: { projectId: string; graphId: string; simulationId: string; reportId: string; rounds: number; actions: number } | null;
+  mirofish: { projectId: string; graphId: string; simulationId: string; reportId: string; rounds: number; actions: number; agents?: number | null } | null;
+  assumptions?: string; rejectedSources?: Array<{ url: string; reason: string }>;
   extracted: ScenarioExtract | null; reportFile: string | null;
-  sources: Array<{ url: string; title: string; fetchedAt: string }>;
+  sources: Array<{ url: string; title: string; fetchedAt: string; publishedAt?: string; publishedBasis?: string; docType?: string }>;
   modelVersion: string; promptVersion: string | null;
   cost: { estimatedUsd: number | null; actualUsd: number | null };
   note: "simulated agents are not real order flow; scenario text is not a probability";
@@ -56,7 +57,8 @@ export class Archive {
     return this.add({
       id: job.id, kind: "simulation", archivedAt: new Date().toISOString(),
       catalyst: { ...job.spec.catalyst }, scenario: job.spec.scenario, seed: job.spec.seed, assets: job.spec.catalyst.assets, regime,
-      mirofish: { projectId: job.ids.projectId, graphId: job.ids.graphId, simulationId: job.ids.simulationId, reportId: job.ids.reportId, rounds: job.progress.round, actions: job.progress.actions },
+      mirofish: { projectId: job.ids.projectId, graphId: job.ids.graphId, simulationId: job.ids.simulationId, reportId: job.ids.reportId, rounds: job.progress.round, actions: job.progress.actions, agents: job.progress.agents ?? null },
+      assumptions: SCENARIO_BRIEF[job.spec.scenario], rejectedSources: job.seed.rejected ?? [],
       extracted, reportFile, sources: job.seed.sources, modelVersion: job.modelVersion, promptVersion: job.spec.promptVersion,
       cost: { estimatedUsd: job.cost.estimatedUsd, actualUsd: job.cost.actualUsd }, note: "simulated agents are not real order flow; scenario text is not a probability",
     });

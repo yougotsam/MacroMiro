@@ -317,3 +317,19 @@ describe("provenance-gated seeding", () => {
     expect(typeof seen).toBe("number");
   });
 });
+
+describe("cost report by provider", () => {
+  it("only LLM spend is in dollars; Zep and Firecrawl are reported as not measurable", async () => {
+    const { costReport } = await import("./llm-meter");
+    const r = costReport(
+      [{ ts: "t", tag: "a", model: "gemini-3.8-flash", status: 200, prompt: 1_000_000, completion: 0, estimated: false, costUsd: 0.75 }],
+      [{ ts: "t", tag: "a", provider: "firecrawl", units: 1, unit: "scrape" }], 3,
+    );
+    expect(r.llm.usd).toBe(0.75);
+    expect(r.remainingUsd).toBe(2.25);
+    expect(r.zep.usd).toBeNull();
+    expect(r.zep.measured).toBe(false);
+    expect(r.firecrawl.usd).toBeNull();
+    expect(r.firecrawl.credits).toBe(1);
+  });
+});

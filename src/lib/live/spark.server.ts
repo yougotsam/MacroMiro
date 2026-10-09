@@ -3,6 +3,8 @@ import { firecrawlKey, firecrawlReady } from "@/lib/live/firecrawl.server";
 import { sparkBody, sparkDate, sparkRead } from "@/lib/live/spark";
 import { armClerks } from "@/lib/intel/run.server";
 import { DATA_ROOT } from "@/lib/data-root";
+import { budgetNow, recordCredits } from "@/lib/intel/budget.server";
+import { SOURCES } from "@/lib/intel/sources";
 
 const API = "https://api.firecrawl.dev/v2";
 const FILE = `${DATA_ROOT}/spark-latest.json`;
@@ -68,6 +70,7 @@ async function finishSpark(id: string, forDate: string) {
     error = error || `spark job still running after ${(POLLS * POLL_EVERY_MS) / 60_000} minutes`;
   }
   const row = { status, id, creditsUsed, card, error };
+  recordCredits("fc_spark_brief", creditsUsed, new Date(), id);
   saveSpark(row, forDate);
   return row;
 }
@@ -89,11 +92,13 @@ function saveSpark(row: SparkRun, forDate: string) {
 let refreshing = false;
 let lastKick = 0;
 
-const EVERY = 90 * 60 * 1000;
+/** Cadence comes from the source registry (6 h; was 90 min = ~16 agent runs a day at ~76 credits each). Fresh headlines come from the free RSS feeds hourly.. */
+const EVERY = (SOURCES.find((x) => x.id === "fc_spark_brief")?.everyMin ?? 360) * 60 * 1000;
 
-/** The price loop does not call this. A new reading at most every 90 minutes, even if the screen is closed. */
+/** The price loop does not call this. A new reading at most every 6 hours, and never while the monthly credit ceiling is hit. */
 export function kickSparkIfStale() {
   if (refreshing || Date.now() - lastKick < EVERY) return;
+  if (budgetNow().suspendNonessential) return;
   const row = readSpark();
   const at = Date.parse((row?.at as string | undefined) ?? "");
   if (Number.isFinite(at) && Date.now() - at < EVERY && row?.status === "completed") return;
@@ -114,7 +119,7 @@ if (!clock.__sparkClock) {
   void armClerks();
 }
 
-/** The last Spark card. Older than 6 h (or never completed) comes back with card null and status "expired". */
+/** The last Spark card. Older than 7 h (cadence is 6 h) (or never completed) comes back with card null and status "expired". */
 export function readSpark() {
   try {
     const row = JSON.parse(readFileSync(FILE, "utf8")) as {
@@ -128,7 +133,7 @@ export function readSpark() {
       at?: string;
     };
     const at = Date.parse(row.at ?? "");
-    if (!Number.isFinite(at) || Date.now() - at > 6 * 60 * 60 * 1000) {
+    if (!Number.isFinite(at) || Date.now() - at > 7 * 60 * 60 * 1000) {
       return { ...row, card: null, status: "expired" };
     }
     return row;
