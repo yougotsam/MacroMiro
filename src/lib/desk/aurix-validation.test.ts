@@ -393,3 +393,16 @@ describe("review B4: shadow ledger keeps the would-be trade while live is disabl
     expect(src.match(/out\.shadow = out\.best;\s*out\.best = null;/g)?.length).toBe(2);
   });
 });
+
+describe("vite build: the kill-switch module stays server-only", () => {
+  it("the home route reads the begin flag through a GET server function, never by importing kill.server", () => {
+    const route = readFileSync(new URL("../../routes/index.tsx", import.meta.url), "utf8");
+    expect(route).not.toMatch(/from\s+["'][^"']*\.server["']/);
+    expect(route).toContain("getBegun()");
+    const fn = readFileSync(new URL("../envelope/begun.ts", import.meta.url), "utf8");
+    expect(fn).toContain('createServerFn({ method: "GET" })');
+    expect(fn).toMatch(/await import\("\.\/kill\.server"\)/);
+    expect(fn).not.toMatch(/^import .*kill\.server/m);
+    expect(fn).not.toMatch(/writeFileSync|setArmed|saveKill/);
+  });
+});
