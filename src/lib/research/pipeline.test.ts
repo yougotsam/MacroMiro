@@ -267,3 +267,13 @@ describe("research cannot reach orders", () => {
     expect(graph(join(ROOT, "scripts/research-pipeline.ts"))).toContain("src/lib/research/pipeline.ts");
   });
 });
+
+describe("seeder relevance (no homepage seeds)", () => {
+  it("rejects pages that do not name the catalyst and skips navigation", async () => {
+    const { relevant, mainText } = await import("./pipeline.server");
+    expect(relevant("Employment Situation Summary nonfarm payroll", CPI)).toBe(false);
+    const page = `Skip to Content\nConsumer Price Index menu\n${"The Consumer Price Index for All Urban Consumers increased 0.4 percent in August after rising 0.1 percent in July, said the bureau today."}\n${"Index details. ".repeat(10)}`;
+    expect(relevant(page, CPI)).toBe(true);
+    expect(mainText(page, CPI).startsWith("The Consumer Price Index for All Urban")).toBe(true);
+  });
+});

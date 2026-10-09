@@ -2,6 +2,7 @@
  * Real adapters for the research pipeline: Firecrawl seeder (+ Spark2 card when fresh), authenticated MiroFish
  * transport (127.0.0.1 only), catalysts from the verified official calendar, and the cost meter reader.
  */
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { freshSparkCard } from "@/lib/intel/mirofish";
 import { scrapeArticle } from "@/lib/live/firecrawl.server";
@@ -43,7 +44,33 @@ function htmlText(h: string) {
   return h.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
 }
 
-/** Firecrawl first; a direct public GET of the official page as fallback. Every source carries fetchedAt. */
+/** some official sites reject runtime TLS fingerprints; plain curl (no shell, fixed args, GET only) as a fallback */
+function curlGet(url: string): string | null {
+  try {
+    const p = spawnSync("curl", [ "-s", "-L", "--max-time", "20", "--compressed", "-A", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", "-H", "Accept: text/html,application/xhtml+xml,*/*;q=0.8", "-H", "Accept-Language: en-US,en;q=0.9", "-H", `Referer: ${new URL(url).origin}/`, "-w", "\n%{http_code}", url], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+    const out = String(p.stdout ?? "");
+    const code = out.slice(out.lastIndexOf("\n") + 1);
+    return code === "200" ? out.slice(0, out.lastIndexOf("\n")) : null;
+  } catch {
+    return null;
+  }
+}
+
+export const KIND_WORDS: Partial<Record<CatalystKind, RegExp>> = { cpi: /consumer price index/i, ppi: /producer price index/i, nfp: /employment situation|nonfarm payroll/i, fomc: /FOMC|Federal Open Market Committee/i };
+export function relevant(text: string, c: Catalyst) {
+  const re = KIND_WORDS[c.kind];
+  return text.length >= 200 && (!re || re.test(text.slice(0, 4000)));
+}
+
+/** skip site navigation: start at the first substantial line that names the catalyst */
+export function mainText(text: string, c: Catalyst) {
+  const re = KIND_WORDS[c.kind];
+  const lines = text.split("\n");
+  const i = lines.findIndex((l) => l.length >= 120 && (!re || re.test(l)));
+  return (i >= 0 ? lines.slice(i) : lines).join("\n");
+}
+
+/** Official page (direct GET) first; a direct public GET of the official page as fallback. Every source carries fetchedAt. */
 export const firecrawlSeeder: Seeder = async (c) => {
   const parts: string[] = [];
   const sources: Array<{ url: string; title: string; fetchedAt: string }> = [];
@@ -51,15 +78,18 @@ export const firecrawlSeeder: Seeder = async (c) => {
   for (const url of pages) {
     const at = new Date().toISOString();
     let text = "", title = "", via = "";
-    const fc = await scrapeArticle(url).catch(() => ({ ok: false as const, error: "firecrawl failed" }));
-    if (fc.ok) { text = fc.markdown; title = fc.title; via = "firecrawl"; }
-    else {
-      const r = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) macromiro-research", accept: "text/html", "accept-language": "en-US" }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
-      if (r?.ok) { text = htmlText(await r.text()); via = "direct GET"; }
+    // official page first (direct public GET); Firecrawl as fallback. A page that does not mention the catalyst
+    // (e.g. a redirect to a homepage) is rejected rather than seeded.
+    const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", accept: "text/html,application/xhtml+xml,*/*;q=0.8", "accept-language": "en-US,en;q=0.9", referer: `${new URL(url).origin}/` }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
+    if (r?.ok && r.url.split("#")[0] === url) { text = htmlText(await r.text()); via = "direct GET"; }
+    if (!relevant(text, c)) { const t = curlGet(url); if (t) { text = htmlText(t); via = "direct GET (curl)"; } }
+    if (!relevant(text, c)) {
+      const fc = await scrapeArticle(url).catch(() => ({ ok: false as const, error: "firecrawl failed" }));
+      if (fc.ok) { text = fc.markdown; title = fc.title; via = "firecrawl"; }
     }
-    if (text.length < 200) continue;
+    if (text.length < 200 || !relevant(text, c)) continue;
     sources.push({ url, title: title || url, fetchedAt: at });
-    parts.push(`## Source ${sources.length} (${via}, fetched ${at})\n${url}\n\n${text.slice(0, 2500)}`);
+    parts.push(`## Source ${sources.length} (${via}, fetched ${at})\n${url}\n\n${mainText(text, c).slice(0, 2500)}`);
   }
   const spark = freshSparkCard();
   const sparkCard = spark?.card ? { event: String(spark.card.event ?? ""), at: spark.at } : null;
