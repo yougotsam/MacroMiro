@@ -128,3 +128,23 @@ Run with Bun 1.4.2 and installed dependencies. Live orders stay off: `CALIBRATED
 - Day-stop double count (settled tickers excluded from open), B4 shadow-ledger of would-be trades, B5 corrupt journal rows skipped+counted and sending refused, correlated (window × direction) exposure tracked and checked. Correlated cap = $9 (= aggregate cap; no approved number changed) — accounting only until a tighter cap is chosen.
 - OMS harness (`src/lib/desk/oms-harness.test.ts`): 200 seeded scenarios, mocked Kalshi only, global fetch throws (0 network calls). 600 submits / 600 posts / 405 exchange orders: 0 duplicate posts, 0 posts without intent, 0 unreserved exposure, 0 snapshot mismatches, 0 created-but-unreconciled, 0 rejected-still-reserved, 0 next-day carry-over mismatches. 145 sends that never reached the exchange remain reserved (fail closed, by design; needs an operator-reviewed release rule). Mutation checks: re-sending on timeout → 354 duplicate posts flagged; reverting B1 → 192 next-day mismatches flagged.
 - Validation rerun (genuine fees: 237 events, all multiplier 1): desk-v1.0…+guard-1 test Brier 0.11618 (recal 0.11556) vs market mid 0.11296; 92 test contracts / 19 windows. Executable replay: 0 trades — historical ledger has no recorded depth (329 rows skipped). Sensitivity assuming depth 1: 22 trades / 11 windows, −$2.42, mean −$0.110, clustered SE $0.069. Verdict: not review-worthy. No profitability claim.
+
+## Round 3 — still do-not-merge, live lock ON (`CALIBRATED_MODEL_APPROVED = false`, switch files untouched)
+
+Change cards: `docs/AURIX_ROUND3_CHANGE_CARDS.md`.
+- Risk (`0f2f931`): owner-approved research limits (day −$15, total $9, per ticker $3, same-direction crypto $4, per order $3) in
+  `RISK_LIMITS`; optional %-of-account mode capped by USD ceilings; unknown account value / missing exposure maps → refuse.
+- Recovery (`681de5a`): signed READ-ONLY Kalshi client with a path allow-list (balance, orders, fills, positions, settlements,
+  market); ambiguous sends classified found / evidence_incomplete / market_open / proven_absent / ambiguous; release only via an
+  operator approval (name, reason, evidence ≤ 15 min old) in an append-only queue. No timeout release. `scripts/desk-recover.ts`.
+- Approval/timing/indicators/research (`c10e182`): see cards 2–4. Indicators: BOS/MSS, sweeps, FVG, order blocks, Fibonacci,
+  EMA 7/14/50/200, VWAP, RSI, Stoch RSI, MACD, ATR, Bollinger, candle patterns, RVOL, CVD (gap-aware trade tape), volume profile,
+  each reported available/unavailable with reason (gold: no volume source → volume features unavailable).
+- Collector (`4b2e7d4`): `scripts/desk-observe.ts`, separate process, GET-only fetch guard installed first, no OMS/engine/risk in
+  its import graph (test), WS sends only subscribe. Records quotes, depth, thresholds, index + official average, fees, outcomes,
+  every rejected candidate with its gate, and per-minute indicators.
+- Analysis (`2cdd527`): `scripts/desk-analyze.ts` — model vs Kalshi mid by market and expiry bucket (cluster-bootstrap CI),
+  executable P/L by strategy × market × bucket with SE clustered by close window.
+  Historical (desk-v1.0+guard-1, OOS 329 obs / 92 contracts / 19 windows): Brier 0.1162 vs mid 0.1130, skill −0.029
+  [−0.068, +0.005]. Executable trades 0 (no depth recorded). Hypothetical depth-1: gate −$2.42 / 22 trades (mean −$0.110,
+  SE $0.069); approval rule OOS −$2.52 / 21 trades (mean −$0.120, SE $0.081). No profitability claim.
