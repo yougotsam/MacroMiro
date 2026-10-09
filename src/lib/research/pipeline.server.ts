@@ -78,7 +78,7 @@ function recordProvider(provider: "firecrawl" | "zep" | "other", units: number, 
   } catch { /* accounting only */ }
 }
 
-async function fetchText(url: string): Promise<{ text: string; title: string; via: string }> {
+export async function fetchText(url: string): Promise<{ text: string; title: string; via: string }> {
   const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", accept: "text/html,application/xhtml+xml,*/*;q=0.8", "accept-language": "en-US,en;q=0.9", referer: `${new URL(url).origin}/` }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
   let raw = r?.ok && r.url.split("#")[0] === url ? await r.text() : "";
   let via = "direct GET";
