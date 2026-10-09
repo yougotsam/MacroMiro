@@ -25,7 +25,7 @@ function graph(entry: string): Set<string> {
   return seen;
 }
 const ORDER_PATH = ["lib/desk/settlement.ts", "lib/desk/gate.ts", "lib/desk/approval.ts", "lib/desk/risk.ts", "lib/desk/oms.ts", "lib/desk/evaluator.ts", "lib/desk/engine.ts", "lib/desk/sizing.ts", "lib/desk/calibration.ts"];
-const FORBIDDEN = /lib\/desk\/(research-context|intelligence)\.ts$|lib\/live\/|lib\/intel\/|lib\/kb\//;
+const FORBIDDEN = /lib\/desk\/(research-context|intelligence|setups|walkforward|analysis|collector-stats)\.ts$|lib\/live\/|lib\/intel\/|lib\/kb\/|lib\/research\//;
 
 describe("research never reaches the order path", () => {
   it("no order-path module imports research/news (MiroFish, Firecrawl, Spark2, Alexandria, desk news), directly or transitively", () => {

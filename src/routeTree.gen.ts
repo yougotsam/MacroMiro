@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ResearchRouteImport } from './routes/research'
 import { Route as TapRouteImport } from './routes/tap'
 import { Route as ApiFirecrawlInboxRouteImport } from './routes/api/firecrawl/inbox'
 import { Route as ApiFirecrawlIntelRouteImport } from './routes/api/firecrawl/intel'
@@ -41,6 +42,11 @@ import { Route as ApiLiveSwarmStreamRouteImport } from './routes/api/live/swarm/
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResearchRoute = ResearchRouteImport.update({
+  id: '/research',
+  path: '/research',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TapRoute = TapRouteImport.update({
@@ -181,6 +187,7 @@ const ApiLiveSwarmStreamRoute = ApiLiveSwarmStreamRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/research': typeof ResearchRoute
   '/tap': typeof TapRoute
   '/api/firecrawl/inbox': typeof ApiFirecrawlInboxRoute
   '/api/firecrawl/intel': typeof ApiFirecrawlIntelRoute
@@ -211,6 +218,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/research': typeof ResearchRoute
   '/tap': typeof TapRoute
   '/api/firecrawl/inbox': typeof ApiFirecrawlInboxRoute
   '/api/firecrawl/intel': typeof ApiFirecrawlIntelRoute
@@ -242,6 +250,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/research': typeof ResearchRoute
   '/tap': typeof TapRoute
   '/api/firecrawl/inbox': typeof ApiFirecrawlInboxRoute
   '/api/firecrawl/intel': typeof ApiFirecrawlIntelRoute
@@ -274,6 +283,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/research'
     | '/tap'
     | '/api/firecrawl/inbox'
     | '/api/firecrawl/intel'
@@ -304,6 +314,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/research'
     | '/tap'
     | '/api/firecrawl/inbox'
     | '/api/firecrawl/intel'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/research'
     | '/tap'
     | '/api/firecrawl/inbox'
     | '/api/firecrawl/intel'
@@ -365,6 +377,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ResearchRoute: typeof ResearchRoute
   TapRoute: typeof TapRoute
   ApiFirecrawlInboxRoute: typeof ApiFirecrawlInboxRoute
   ApiFirecrawlIntelRoute: typeof ApiFirecrawlIntelRoute
@@ -399,6 +412,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/research': {
+      id: '/research'
+      path: '/research'
+      fullPath: '/research'
+      preLoaderRoute: typeof ResearchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tap': {
@@ -609,6 +629,7 @@ const ApiLiveSwarmRouteWithChildren = ApiLiveSwarmRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ResearchRoute: ResearchRoute,
   TapRoute: TapRoute,
   ApiFirecrawlInboxRoute: ApiFirecrawlInboxRoute,
   ApiFirecrawlIntelRoute: ApiFirecrawlIntelRoute,
