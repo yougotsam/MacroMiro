@@ -73,16 +73,38 @@ export function orderBody(intent: OrderIntent, cid: string) {
   } as Record<string, unknown>;
 }
 
+export type Canceller = (path: string) => Promise<{ status: number }>;
+export type OmsTestHooks = {
+  /**
+   * Test harness only: stands in for CALIBRATED_MODEL_APPROVED so mocked-exchange scenarios can drive the send
+   * path. Refused at construction unless BOTH the transport and the canceller are mocks — the real signed
+   * Kalshi transport is always gated by the config constant.
+   */
+  releaseGateForMockOnly?: () => boolean;
+  canceller?: Canceller;
+  reconcileWaitMs?: number;
+};
+
 export class Oms {
   private file: string;
+  private gate: () => boolean;
+  private del: Canceller | undefined;
+  private waitMs: number;
   constructor(
     private risk: RiskEngine,
     private transport: Transport = kalshiOrderPost,
     private lookup: Lookup = ordersByClientIds,
     dir = dataDir(),
+    hooks: OmsTestHooks = {},
   ) {
     mkdirSync(dir, { recursive: true });
     this.file = `${dir}/oms-journal.jsonl`;
+    if (hooks.releaseGateForMockOnly && (transport === kalshiOrderPost || !hooks.canceller || hooks.canceller === kalshiDelete)) {
+      throw new Error("release-gate override is only allowed with a mock transport and a mock canceller");
+    }
+    this.gate = hooks.releaseGateForMockOnly ?? (() => CALIBRATED_MODEL_APPROVED);
+    this.del = hooks.canceller;
+    this.waitMs = hooks.reconcileWaitMs ?? 700;
   }
 
   /** Rows that could not be read on the last journal pass (bad JSON, missing fields, unknown risk). */
@@ -184,7 +206,7 @@ export class Oms {
   async submit(intent: OrderIntent, snapshot: AccountSnapshot | null): Promise<{ ok: boolean; why: string; cid?: string; orderId?: string; status?: string; fill?: number }> {
     this.journal();
     if (this.corruptRows > 0) return { ok: false, why: `OMS journal has ${this.corruptRows} unreadable row(s): sending disabled until reconciled` };
-    if (!CALIBRATED_MODEL_APPROVED) return { ok: false, why: "model not independently calibrated / production release disabled" };
+    if (!this.gate()) return { ok: false, why: "model not independently calibrated / production release disabled" };
     if (!TICKER_RE.test(intent.ticker)) return { ok: false, why: "ticker" };
     // limit orders only: an explicit price strictly inside (0,1) and a whole contract count, every time
     if (!(intent.price > 0 && intent.price < 1) || !Number.isInteger(intent.count) || intent.count < 1) return { ok: false, why: "limit price / whole count required" };
@@ -220,7 +242,7 @@ export class Oms {
   }
 
   /** Look an order up by client_order_id (never re-sends). */
-  async reconcileOne(cid: string, ticker: string, tries = 3, waitMs = 700): Promise<KOrder | null> {
+  async reconcileOne(cid: string, ticker: string, tries = 3, waitMs = this.waitMs): Promise<KOrder | null> {
     for (let i = 0; i < tries; i += 1) {
       try {
         const hit = (await this.lookup([cid])).find((o) => o.client_order_id === cid);
@@ -258,7 +280,8 @@ export class Oms {
   }
 
   async cancel(orderId: string, ticker: string, cid: string, why: string) {
-    const r = await kalshiDelete(eventCancelPath(orderId, ticker));
+    // the real path is always the signed event-order DELETE; only a constructor-validated mock replaces it
+    const r = this.del ? await this.del(eventCancelPath(orderId, ticker)) : await kalshiDelete(eventCancelPath(orderId, ticker));
     this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${r.status}` });
     return r.status;
   }

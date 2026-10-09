@@ -144,12 +144,12 @@ export type KOrder = {
   maker_fees_dollars?: string;
 };
 
-/** Ticker inside a desk client_order_id "mm1-<ticker>-<y|n>-<seq>". */
 /** "KXBTC15M-26OCT081200-00" + up → "26OCT081200|up": all coins closing in the same window, same direction. */
 export function correlationKey(ticker: string, dir: "up" | "down") {
   return `${ticker.split("-")[1] ?? ticker}|${dir}`;
 }
 
+/** Ticker inside a desk client_order_id "mm1-<ticker>-<y|n>-<seq>". */
 export function tickerOfCid(cid: string) {
   const m = /^mm1-(.+)-[yn]-\d+$/.exec(cid);
   return m ? m[1] : null;
