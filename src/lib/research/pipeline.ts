@@ -22,7 +22,7 @@ export type Catalyst = { id: string; kind: CatalystKind; name: string; when: str
 export type JobSpec = { catalyst: Catalyst; scenario: Scenario; seed: number; maxRounds: number; budgetUsd: number; promptVersion: string };
 export const ACTIVE_STAGES = ["queued", "seed", "ontology", "graph", "create", "prepare", "run", "report", "extract", "archive"] as const;
 export type Stage = (typeof ACTIVE_STAGES)[number] | "done" | "failed" | "cancelled";
-export const PROMPT_VERSION = "scenario-v1";
+export const PROMPT_VERSION = "scenario-v2-provenance";
 export const MAX_ROUNDS_CAP = 10;
 export const MAX_SEED_CHARS = 6000;
 
@@ -30,7 +30,13 @@ export type Job = {
   id: string; key: string; spec: JobSpec; stage: Stage; createdAt: string; updatedAt: string; heartbeatAt: string | null;
   attempts: number; retries: number; error: string | null; failedAt: Stage | null; cancelRequested: boolean;
   ids: { projectId: string; graphTask: string; graphId: string; simulationId: string; prepTask: string; runStarted: boolean; reportId: string; reportTask: string };
-  seed: { chars: number; sources: Array<{ url: string; title: string; fetchedAt: string }>; spark: { event: string; at: string } | null; file: string | null };
+  seed: {
+    chars: number;
+    sources: Array<{ url: string; title: string; fetchedAt: string; publishedAt?: string; publishedBasis?: string; docType?: string }>;
+    /** documents fetched but refused by the provenance gate, with the reason */
+    rejected?: Array<{ url: string; reason: string }>;
+    spark: { event: string; at: string } | null; file: string | null;
+  };
   progress: { round: number; totalRounds: number; actions: number; message: string };
   result: null | { reportChars: number; extracted: ScenarioExtract; archivedAs: string | null; completedAt: string };
   cost: { estimatedUsd: number; actualUsd: number | null };
@@ -192,7 +198,7 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const need = (v: string, what: string, path: string) => { if (!v) throw new TownError(`${path} malformed response (no ${what})`, 200, false); return v; };
 
-export type Seeder = (c: Catalyst) => Promise<{ text: string; sources: Job["seed"]["sources"]; spark: Job["seed"]["spark"] }>;
+export type Seeder = (c: Catalyst, simStartMs?: number) => Promise<{ text: string; sources: Job["seed"]["sources"]; spark: Job["seed"]["spark"]; rejected?: Job["seed"]["rejected"] }>;
 export type Archiver = (job: Job, reportMarkdown: string) => Promise<string | null>;
 export type Deps = { transport: Transport; seeder: Seeder; archiver: Archiver; seedDir: string; pollMs?: number; meterSpentUsd?: (jobId: string) => number | null };
 
@@ -203,13 +209,14 @@ export async function step(job: Job, d: Deps): Promise<number> {
   switch (job.stage) {
     case "queued": job.stage = "seed"; return 0;
     case "seed": {
-      const s = await d.seeder(job.spec.catalyst);
+      const s = await d.seeder(job.spec.catalyst, Date.now());
       const text = s.text.slice(0, MAX_SEED_CHARS);
+      if (!s.sources.length) { job.seed = { chars: 0, sources: [], rejected: s.rejected ?? [], spark: null, file: null }; throw new TownError("no source passed the provenance gate; nothing to simulate", 0, false); }
       if (text.trim().length < 200) throw new TownError("seed too short (sources gave < 200 chars); nothing to simulate", 0, false);
       mkdirSync(d.seedDir, { recursive: true });
       const file = join(d.seedDir, `${job.id}.md`);
       writeFileSync(file, text);
-      job.seed = { chars: text.length, sources: s.sources, spark: s.spark, file };
+      job.seed = { chars: text.length, sources: s.sources, rejected: s.rejected ?? [], spark: s.spark, file };
       job.stage = "ontology";
       return 0;
     }

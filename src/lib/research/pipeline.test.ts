@@ -293,3 +293,27 @@ describe("extraction from real MiroFish report shapes", () => {
     expect(x.crowding).toBeNull();
   });
 });
+
+describe("provenance-gated seeding", () => {
+  it("a seed with no accepted source fails at 'seed' (no MiroFish call, no spend) and records the rejections", async () => {
+    const dir = tmp();
+    const s = new JobStore(dir);
+    const { job } = s.create(spec(), NOW);
+    const town = fakeTown({});
+    const d = { ...deps(town.t, dir), seeder: async () => ({ text: "# header only ".repeat(40), sources: [], rejected: [{ url: "https://www.bls.gov/", reason: "homepage" }], spark: null }) };
+    const done = await drive(s, job.id, d, { sleepFn: noSleep });
+    expect(done?.stage).toBe("failed");
+    expect(done?.failedAt).toBe("seed");
+    expect(done?.seed.rejected).toEqual([{ url: "https://www.bls.gov/", reason: "homepage" }]);
+    expect(town.calls.length).toBe(0);
+  });
+  it("the seeder receives the sim start time (provenance cut-off)", async () => {
+    const dir = tmp();
+    const s = new JobStore(dir);
+    const { job } = s.create(spec(), NOW);
+    let seen: number | undefined;
+    const d = { ...deps(fakeTown({}).t, dir), seeder: async (_c: Catalyst, at?: number) => { seen = at; return { text: "", sources: [], spark: null }; } };
+    await drive(s, job.id, d, { sleepFn: noSleep });
+    expect(typeof seen).toBe("number");
+  });
+});

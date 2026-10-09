@@ -4,15 +4,15 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { freshSparkCard } from "@/lib/intel/mirofish";
 import { scrapeArticle } from "@/lib/live/firecrawl.server";
-import { MAJOR_EVENT, verifyCalendar, type OfficialCalendar } from "@/lib/desk/official-calendar";
+import { MAJOR_EVENT, officialCalendarPath, verifyCalendar, type OfficialCalendar } from "@/lib/desk/official-calendar";
+import { checkProvenance, publishedAtOf, SEED_DOCS, type SeedDoc } from "./provenance";
 import { authHeaders } from "./mirofish-auth";
 import type { Catalyst, CatalystKind, Seeder, Transport } from "./pipeline";
 import type { LedgerEntry } from "./llm-meter";
 
 export const OFFICIAL_SEED_PAGES: Partial<Record<CatalystKind, string[]>> = {
-  cpi: ["https://www.bls.gov/news.release/cpi.nr0.htm"],
+  cpi: ["https://www.bls.gov/news.release/cpi.nr0.htm", "https://www.clevelandfed.org/indicators-and-data/inflation-nowcasting"],
   ppi: ["https://www.bls.gov/news.release/ppi.nr0.htm"],
   nfp: ["https://www.bls.gov/news.release/empsit.nr0.htm"],
   fomc: ["https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"],
@@ -70,33 +70,75 @@ export function mainText(text: string, c: Catalyst) {
   return (i >= 0 ? lines.slice(i) : lines).join("\n");
 }
 
-/** Official page (direct GET) first; a direct public GET of the official page as fallback. Every source carries fetchedAt. */
-export const firecrawlSeeder: Seeder = async (c) => {
-  const parts: string[] = [];
-  const sources: Array<{ url: string; title: string; fetchedAt: string }> = [];
-  const pages = [...new Set(c.sources.filter((u) => !/\.ics$/.test(u)))];
-  for (const url of pages) {
-    const at = new Date().toISOString();
-    let text = "", title = "", via = "";
-    // official page first (direct public GET); Firecrawl as fallback. A page that does not mention the catalyst
-    // (e.g. a redirect to a homepage) is rejected rather than seeded.
-    const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", accept: "text/html,application/xhtml+xml,*/*;q=0.8", "accept-language": "en-US,en;q=0.9", referer: `${new URL(url).origin}/` }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
-    if (r?.ok && r.url.split("#")[0] === url) { text = htmlText(await r.text()); via = "direct GET"; }
-    if (!relevant(text, c)) { const t = curlGet(url); if (t) { text = htmlText(t); via = "direct GET (curl)"; } }
-    if (!relevant(text, c)) {
-      const fc = await scrapeArticle(url).catch(() => ({ ok: false as const, error: "firecrawl failed" }));
-      if (fc.ok) { text = fc.markdown; title = fc.title; via = "firecrawl"; }
-    }
-    if (text.length < 200 || !relevant(text, c)) continue;
-    sources.push({ url, title: title || url, fetchedAt: at });
-    parts.push(`## Source ${sources.length} (${via}, fetched ${at})\n${url}\n\n${mainText(text, c).slice(0, 2500)}`);
+async function fetchText(url: string): Promise<{ text: string; title: string; via: string }> {
+  const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", accept: "text/html,application/xhtml+xml,*/*;q=0.8", "accept-language": "en-US,en;q=0.9", referer: `${new URL(url).origin}/` }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
+  let raw = r?.ok && r.url.split("#")[0] === url ? await r.text() : "";
+  let via = "direct GET";
+  if (!raw) { raw = curlGet(url) ?? ""; via = "direct GET (curl)"; }
+  if (raw) return { text: htmlText(raw), title: raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? "", via };
+  const fc = await scrapeArticle(url).catch(() => ({ ok: false as const, error: "firecrawl failed" }));
+  return fc.ok ? { text: fc.markdown, title: fc.title, via: "firecrawl" } : { text: "", title: "", via: "none" };
+}
+
+/** Cleveland Fed page: keep only the nowcast tables (navigation dropped); empty when the tables are missing */
+export function nowcastTables(text: string) {
+  const flat = text.replace(/\s+/g, " ");
+  const keep = ["Inflation, month-over-month percent change", "Inflation, year-over-year percent change"].map((h) => {
+    const i = flat.indexOf(h);
+    if (i < 0) return "";
+    const j = flat.indexOf("Note:", i);
+    return flat.slice(i, j > i ? j : i + 400);
+  }).filter(Boolean);
+  const stated = /every business day around 10:00 a\.m\. Eastern/i.test(flat) ? "Cleveland Fed states nowcasts are updated every business day around 10:00 a.m. Eastern. " : "";
+  return keep.length ? `Cleveland Fed inflation nowcast (CPI = Consumer Price Index; model estimate, not an official release). ${stated}${keep.join(" | ")}` : "";
+}
+
+/** the verified official calendar entry for this catalyst, timestamped by the calendar's own fetch time */
+function calendarDoc(c: Catalyst, calPath = officialCalendarPath()): SeedDoc | null {
+  try {
+    const cal = JSON.parse(readFileSync(calPath, "utf8")) as OfficialCalendar;
+    const src = cal.sources.find((x) => x.ok && /bls\.gov/.test(x.url));
+    const ev = cal.events.find((e) => e.when === c.when && kindOf(e.name) === c.kind);
+    if (!src || !ev) return null;
+    return { url: ev.source, title: `BLS release calendar: ${ev.name}`, text: `${ev.name} (${c.kind.toUpperCase()}) is scheduled by the ${ev.agency} official release calendar for ${ev.when} (UTC), 8:30 a.m. Eastern. Source: ${ev.source}. Calendar verified by content at ${src.fetchedAt}.`, publishedAt: src.fetchedAt, publishedBasis: "verified official calendar snapshot (fetch time)", fetchedAt: src.fetchedAt, docType: "schedule" };
+  } catch {
+    return null;
   }
-  const spark = freshSparkCard();
-  const sparkCard = spark?.card ? { event: String(spark.card.event ?? ""), at: spark.at } : null;
-  const head = [`# Research seed: ${c.name}`, c.when ? `Scheduled: ${c.when} (official calendar)` : "", `Built ${new Date().toISOString()}. Official sources only; this is context for a narrative simulation, not market data.`];
-  if (sparkCard && spark?.card) head.push("", `## Spark2 card (${spark.at})`, `Event: ${spark.card.event ?? ""}`, spark.card.why ? `Why: ${spark.card.why}` : "");
-  return { text: [...head.filter(Boolean), "", ...parts].join("\n"), sources, spark: sparkCard };
+}
+
+/**
+ * Catalyst-specific official documents only, each passed through the provenance gate (official host, not a homepage,
+ * catalyst-specific, publication timestamp from the document, published before the sim start and before the event).
+ * Rejected documents are recorded with their reason. No Spark card or news: they are not verified catalyst documents.
+ */
+export const officialSeeder: Seeder = async (c, simStartMs = Date.now()) => {
+  const eventMs = Date.parse(c.when ?? "");
+  const accepted: SeedDoc[] = [];
+  const rejected: Array<{ url: string; reason: string }> = [];
+  const consider = (doc: SeedDoc) => {
+    const v = checkProvenance(doc, c.kind, simStartMs, Number.isFinite(eventMs) ? eventMs : simStartMs);
+    if (v.ok) accepted.push(doc); else rejected.push({ url: doc.url, reason: v.reason });
+  };
+  const cal = calendarDoc(c);
+  if (cal && (SEED_DOCS[c.kind] ?? []).some((d) => d.url === cal.url)) consider(cal);
+  for (const { url, docType } of SEED_DOCS[c.kind] ?? []) {
+    if (/\.ics$/.test(url)) continue;
+    const fetchedAt = new Date().toISOString();
+    const { text, title, via } = await fetchText(url);
+    if (!text) { rejected.push({ url, reason: "fetch_failed" }); continue; }
+    const pub = publishedAtOf(docType, url, text);
+    consider({ url, title: `${title || url} [${via}]`, text: docType === "nowcast" ? nowcastTables(text) : mainText(text, c), publishedAt: pub.at, publishedBasis: pub.basis, fetchedAt, docType });
+  }
+  const head = [`# Research seed: ${c.name}`, c.when ? `Scheduled: ${c.when} (official calendar)` : "", `Seeded ${new Date(simStartMs).toISOString()}. Only official ${c.kind.toUpperCase()}-specific documents published before this time; context for a narrative simulation, not market data.`];
+  const parts = accepted.map((d, i) => `## Source ${i + 1}: ${d.docType} (published ${d.publishedAt}; ${d.publishedBasis})\n${d.url}\n\n${d.text.slice(0, d.docType === "schedule" ? 600 : 2200)}`);
+  return {
+    text: [...head.filter(Boolean), "", ...parts].join("\n"),
+    sources: accepted.map((d) => ({ url: d.url, title: d.title, fetchedAt: d.fetchedAt, publishedAt: d.publishedAt!, publishedBasis: d.publishedBasis, docType: d.docType })),
+    rejected, spark: null,
+  };
 };
+/** @deprecated name kept for callers; seeding is official-documents-only since round 3.3 */
+export const firecrawlSeeder = officialSeeder;
 
 /** Authenticated transport to the private backend. Refuses any non-loopback MiroFish URL. */
 export function mirofishTransport(base = process.env.MIROFISH_URL || "http://127.0.0.1:5001"): Transport {

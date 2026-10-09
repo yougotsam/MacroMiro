@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFile
 import { join } from "node:path";
 import { Archive, incrementalValue, matchOutcomes, type IndexPoint } from "../src/lib/research/alexandria-archive";
 import { ACTIVE_STAGES, JobStore, PROMPT_VERSION, SCENARIOS, drive, estimateCostUsd, extractStructured, type JobSpec, type Scenario } from "../src/lib/research/pipeline";
-import { catalystsFromCalendar, firecrawlSeeder, meterSpent, mirofishTransport } from "../src/lib/research/pipeline.server";
+import { catalystsFromCalendar, officialSeeder, meterSpent, mirofishTransport } from "../src/lib/research/pipeline.server";
 import { officialCalendarPath, type OfficialCalendar } from "../src/lib/desk/official-calendar";
 
 const DIR = process.env.RESEARCH_DIR || "/workspace/data/research";
@@ -29,7 +29,7 @@ const cal = (): OfficialCalendar | null => { try { return JSON.parse(readFileSyn
 
 function deps() {
   return {
-    transport: mirofishTransport(), seeder: firecrawlSeeder, seedDir: join(DIR, "seeds"), pollMs: 5000, meterSpentUsd: meterSpent(join(DIR, "llm-usage.jsonl")),
+    transport: mirofishTransport(), seeder: officialSeeder, seedDir: join(DIR, "seeds"), pollMs: 5000, meterSpentUsd: meterSpent(join(DIR, "llm-usage.jsonl")),
     archiver: async (job: Parameters<Archive["archiveJob"]>[0], md: string) => archive.archiveJob(job, md, extractStructured(md)),
   };
 }
