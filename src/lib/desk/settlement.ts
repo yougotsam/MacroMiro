@@ -2,8 +2,9 @@
  * Settlement probability (priority #1). Martingale baseline: the reference index has ~0 drift
  * over minutes, so P comes from distance-to-strike, time left and short-horizon volatility only.
  *
- * Crypto (KXBTC/ETH/SOL/XRP15M): value = simple average of the 60 one-second CF RTI prints at
- *   t ∈ [close−60s, close−1s], rounded to dp; YES iff value ≥ floor_strike.
+ * Crypto (KXBTC/ETH/SOL/XRP15M): value = average of 60 CF RTI one-second index
+ *   prints in (quarter-close−60s, quarter-close], rounded to the market's precision.
+ *   Model output is a research estimate, NOT an out-of-sample calibrated probability.
  * Gold (KXGOLD15M): value = Pyth 1-minute candle close at close time (price at close), rounded; YES iff ≥ strike.
  */
 import { P_CLAMP } from "./config";
@@ -27,6 +28,13 @@ export type CryptoInput = {
   last: Print;
   /** prints already observed inside the settlement window (keyed by second) */
   windowPrints: Map<number, number>;
+  /**
+   * Kalshi's authoritative final-minute accumulator, when available from the
+   * authenticated CF Benchmarks feed. It can recover from lost LOCAL websocket
+   * frames without fabricating the actual 1-second prints.
+   * count must match expected quarter-minute progress at last.t.
+   */
+  official?: { value: number; count: number; t: number };
   /** per-second log-return std */
   sigma: number;
 };
@@ -39,21 +47,56 @@ export function sumMinCov(n: number, d: number) {
 }
 
 export function cryptoProb(x: CryptoInput): SettleModel {
+  if (!Number.isFinite(x.sigma) || x.sigma <= 0 || !Number.isFinite(x.strike) || x.strike <= 0
+      || !Number.isFinite(x.last.v) || x.last.v <= 0 || !Number.isFinite(x.last.t)) {
+    throw new Error("invalid settlement model input");
+  }
   const closeSec = Math.floor(x.closeMs / 1000);
   const lastSec = Math.floor(x.last.t / 1000);
   let printedSum = 0;
   let printed = 0;
   let future = 0;
   let firstFuture: number | null = null;
-  for (let s = closeSec - 60; s < closeSec; s += 1) {
-    if (s <= lastSec) {
-      // already printed: use the recorded print; a missing second falls back to the latest value we hold
-      const v = x.windowPrints.get(s * 1000);
-      printedSum += v ?? x.last.v;
-      printed += 1;
-    } else {
-      if (firstFuture == null) firstFuture = s;
-      future += 1;
+  const startSec = closeSec - 59;
+  const expectedCount = Math.max(0, Math.min(60, lastSec - startSec + 1));
+  if (x.official && expectedCount === 0) throw new Error("official accumulator outside final minute");
+  if (x.official && expectedCount > 0) {
+    // A valid exchange-calculated partial sum is more authoritative than
+    // locally missing packets. Refuse mismatched timestamps/counts.
+    if (!Number.isFinite(x.official.value) || x.official.value <= 0 ||
+        !Number.isFinite(x.official.t) || Math.floor(x.official.t / 1000) !== lastSec || x.official.count !== expectedCount) {
+      throw new Error("official settlement accumulator mismatch");
+    }
+    printed = expectedCount;
+    printedSum = x.official.value * printed;
+    future = 60 - printed;
+    firstFuture = future > 0 ? closeSec - future + 1 : null;
+    let localSum = 0;
+    let localCount = 0;
+    for (let sec = startSec; sec <= Math.min(closeSec, lastSec); sec += 1) {
+      const v = x.windowPrints.get(sec * 1000);
+      if (v != null) {
+        if (!Number.isFinite(v) || v <= 0) throw new Error("invalid local index print");
+        localSum += v;
+        localCount++;
+      }
+    }
+    // Only compare averages when the complete local sequence exists. Partial
+    // averages need not equal the venue's cumulative final-minute mean.
+    if (localCount === printed && Math.abs(localSum / printed - x.official.value) > 0.02) {
+      throw new Error("official/local settlement accumulator divergence");
+    }
+  } else {
+    for (let sec = startSec; sec <= closeSec; sec += 1) {
+      if (sec <= lastSec) {
+        const v = x.windowPrints.get(sec * 1000);
+        if (v == null || !Number.isFinite(v) || v <= 0) throw new Error(`missing settlement print at ${sec}`);
+        printedSum += v;
+        printed++;
+      } else {
+        if (firstFuture == null) firstFuture = sec;
+        future++;
+      }
     }
   }
   const mean = (printedSum + future * x.last.v) / 60;
@@ -71,6 +114,9 @@ export function cryptoProb(x: CryptoInput): SettleModel {
 export type GoldInput = { closeMs: number; strike: number; dp: number; last: Print; sigma: number };
 
 export function goldProb(x: GoldInput): SettleModel {
+  if (!(x.last.v > 0) || !(x.sigma > 0) || !(x.strike > 0) || !Number.isFinite(x.last.t)) {
+    throw new Error("invalid gold settlement model input");
+  }
   const tau = Math.max(0, (x.closeMs - x.last.t) / 1000);
   const kEff = x.strike - 0.5 * 10 ** -x.dp;
   if (tau <= 0) return { p: x.last.v >= kEff ? 1 : 0, mean: x.last.v, sd: 0, printed: 1, future: 0, why: "close passed" };

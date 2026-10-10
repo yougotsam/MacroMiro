@@ -21,10 +21,18 @@ type Buf = { bySec: Map<number, number>; lastTs: number; lastRecv: number };
 
 export class Feeds {
   private bufs = new Map<string, Buf>();
+  private officialAverages = new Map<string, { value: number; windowSize: number; t: number }>();
+  /** Kalshi-provided final-minute accumulation, NOT our locally invented index value. */
+  lastOfficialAverage(index: string) { return this.officialAverages.get(index) ?? null; }
   private ws: WebSocket | null = null;
   private pending: string[] = [];
   private stopped = false;
   private backoff = 500;
+  private lastMsgAt = 0;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  /** an open socket that stops delivering prints (seen 2026-10-09 18:15Z: "live" for 3 h with no index) is torn down */
+  static readonly STALL_MS = 45_000;
+  stalls = 0;
   status = "init";
   errors = 0;
 
@@ -34,7 +42,8 @@ export class Feeds {
 
   push(index: string, tMs: number, v: number, recv = Date.now()) {
     const b = this.bufs.get(index);
-    if (!b || !(v > 0)) return;
+    if (!b || !Number.isFinite(v) || v <= 0 || !Number.isFinite(tMs) || !Number.isFinite(recv)) return;
+    if (tMs > recv + 2_000 || tMs < recv - 7 * 24 * 3600_000) return;
     const sec = Math.floor(tMs / 1000) * 1000;
     if (!b.bySec.has(sec) && this.record) this.pending.push(JSON.stringify({ i: index, t: sec, v, r: recv }));
     b.bySec.set(sec, v);
@@ -127,10 +136,30 @@ export class Feeds {
   start() {
     this.stopped = false;
     this.open();
+    if (!this.watchdog) this.watchdog = setInterval(() => this.checkStall(), 15_000);
+  }
+
+  /** Read-only market-data reconnect: no orders, no gate change. Returns true when it forced a reconnect. */
+  checkStall(now = Date.now()) {
+    if (this.stopped || this.status !== "live" || !this.lastMsgAt) return false;
+    // Root cause of the Oct 9 18:11Z gap: the socket stayed open ("live") but stopped delivering index values.
+    // Stall = no message at all, OR any crypto index silent for 2x STALL_MS while the socket claims to be live.
+    const silentIndex = RTI.some((id) => { const b = this.bufs.get(id); return !!b && b.lastRecv > 0 && now - b.lastRecv > 2 * Feeds.STALL_MS; });
+    if (now - this.lastMsgAt < Feeds.STALL_MS && !silentIndex) return false;
+    this.stalls += 1;
+    this.status = "stalled";
+    const ws = this.ws;
+    this.ws = null;
+    try { ws?.close(); } catch { /* already gone */ }
+    if (ws) { ws.onclose = null; ws.onmessage = null; }
+    setTimeout(() => this.open(), this.backoff);
+    this.backoff = Math.min(15_000, this.backoff * 2);
+    return true;
   }
 
   stop() {
     this.stopped = true;
+    if (this.watchdog) { clearInterval(this.watchdog); this.watchdog = null; }
     try {
       this.ws?.close();
     } catch {
@@ -146,6 +175,7 @@ export class Feeds {
     ws.onopen = () => {
       this.status = "live";
       this.backoff = 500;
+      this.lastMsgAt = Date.now();
       ws.send(JSON.stringify({ id: 1, cmd: "subscribe", params: { channels: ["cfbenchmarks_value"], index_ids: [...RTI] } }));
       ws.send(JSON.stringify({ id: 2, cmd: "subscribe", params: { channels: ["pyth_value"], underlying_tickers: [GOLD] } }));
     };
@@ -157,10 +187,20 @@ export class Feeds {
         return;
       }
       const recv = Date.now();
+      if (m.type === "cfbenchmarks_value" || m.type === "pyth_value") this.lastMsgAt = recv;
       if (m.type === "cfbenchmarks_value" && m.msg) {
         try {
           const inner = JSON.parse(String(m.msg.data)) as { time: number; id: string; value: string };
           this.push(inner.id, inner.time, Number(inner.value), recv);
+          const avg = m.msg.last_60s_windowed_average_15min as {
+            value?: string; window_size?: number
+          } | undefined;
+          const count = Number(avg?.window_size);
+          const value = Number(avg?.value);
+          if (avg && Number.isInteger(count) && count >= 1 && count <= 60 &&
+              Number.isFinite(value) && value > 0 && Math.abs(inner.time - recv) < 5_000) {
+            this.officialAverages.set(inner.id, { value, windowSize: count, t: inner.time });
+          }
         } catch {
           this.errors += 1;
         }
@@ -179,4 +219,16 @@ export class Feeds {
       this.errors += 1;
     };
   }
+}
+
+/**
+ * Does Kalshi's official 60 s accumulator describe the same second as our latest index print?
+ * Our prints are floored to the whole second; the accumulator carries the raw millisecond time,
+ * so both are compared at second resolution (review B3). The count must equal the seconds of the
+ * window (close − 60 s, close] printed so far.
+ */
+export function officialMatches(official: { t: number; windowSize: number } | null | undefined, lastT: number, closeMs: number): boolean {
+  if (!official || !Number.isFinite(official.t) || !Number.isFinite(lastT)) return false;
+  const expected = Math.floor(lastT / 1000) - Math.floor(closeMs / 1000) + 60;
+  return Math.floor(official.t / 1000) === Math.floor(lastT / 1000) && official.windowSize === expected;
 }

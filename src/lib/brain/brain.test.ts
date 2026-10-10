@@ -122,7 +122,11 @@ describe("brains are words, not orders", () => {
 
   it("Gemini is called from exactly one file and the order rule never names a model", () => {
     const gem = FILES.filter((f) => /generativelanguage\.googleapis\.com|GEMINI_API_KEY/.test(TEXT.get(f) ?? ""));
-    assert.deepEqual(gem.map(rel).sort(), ["lib/brain/brain.server.ts", "lib/brain/model.ts"]);
+    // research/llm-meter.ts only names the host in its cost-meter allowlist/price table; it must never call it
+    assert.deepEqual(gem.map(rel).sort(), ["lib/brain/brain.server.ts", "lib/brain/model.ts", "lib/research/llm-meter.ts"]);
+    const meter = gem.find((f) => rel(f) === "lib/research/llm-meter.ts");
+    assert.ok(meter && (TEXT.get(meter) ?? "").length > 0);
+    assert.doesNotMatch(TEXT.get(meter) ?? "", /\bfetch\(|GEMINI_API_KEY|process\.env/, "llm-meter.ts must not call or authenticate to Gemini");
     for (const f of ORDER_FILES) {
       const t = readFileSync(join(SRC, f), "utf8");
       assert.doesNotMatch(t, /gemini|grok-|api\.x\.ai|chat\/completions|brain\//i, `${f} names a model`);

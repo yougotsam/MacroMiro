@@ -865,7 +865,7 @@ function SparkNote() {
         </button>
       </div>
       {prob != null ? <p className="mt-2 font-display text-2xl italic tabular-nums">{Math.round(prob * 100)}%</p> : null}
-      {prob != null ? <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Spark's read. Not the trade.</p> : null}
+      {prob != null ? <p className="font-mono text-[10px] uppercase tracking-widest text-muted">Source-quoted odds (e.g. FedWatch). Not a Kalshi settlement probability. Not the trade.</p> : null}
       {news ? <p className="mt-2 text-sm leading-6 text-fg">{news}</p> : null}
       <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted">Reads itself every 90 minutes. This does not send the order.</p>
       <p className="mt-2 text-sm leading-5">{line || "No sentence yet. This is the calendar, not the 15-minute call."}</p>
@@ -946,27 +946,12 @@ function PerpsLater() {
         <PerpCockpit
           key={book?.ticker ?? "KXGOLDPERP"}
           ticker={book?.ticker ?? "KXGOLDPERP"}
-          maxLeverage={book && book.lev >= 1 ? book.lev : 15.2}
+          maxLeverage={book && book.lev >= 1 ? book.lev : 1}
           currentPrice={price > 0 ? price : 0}
           balanceUsd={cash}
           dailyPnL={0}
-          onDispatchOrder={(cfg: { side: "bid" | "ask"; leverage: number; clipSizeUsd: number; tpMultiple: number; slPercent: number }) => {
-            setFireNote("Sending the bracket…");
-            void fetch("/api/live/perp-fire", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...cfg,
-                ticker: book?.ticker ?? "KXGOLDPERP",
-                price,
-                bid: book?.bid ?? price,
-                ask: book?.ask ?? price,
-                maxLeverage: book?.lev ?? 15.2,
-              }),
-            })
-              .then((r) => r.json())
-              .then((j: { why?: string; orderId?: string }) => setFireNote(j.orderId ? `${j.why} · ${j.orderId}` : (j.why ?? "no answer")))
-              .catch(() => setFireNote("The fire route did not answer."));
+          onDispatchOrder={() => {
+            setFireNote("Perpetual orders are disabled until their independent margin, fees, bracket safety and risk tests pass.");
           }}
         />
       </div>
