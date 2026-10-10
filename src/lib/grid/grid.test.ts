@@ -62,11 +62,26 @@ describe("Firecrawl client", () => {
     assert.equal(r.credits, 0);
   });
   it("round budget refuses paid calls once reached", async () => {
-    process.env.GRID_ROUND_CREDIT_BUDGET = "1";
+    fcm.openRound("test-round", 1, "test", null);
     await fcm.fc("POST", "scrape", "scrape", {}, { fetchImpl: (async () => new Response(JSON.stringify({ success: true, data: { metadata: { creditsUsed: 1 } } }), { status: 200 })) as unknown as typeof fetch });
     const r = await fcm.fc("POST", "scrape", "scrape", {}, { paid: true, fetchImpl: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch });
     assert.match(r.error, /round credit budget reached/);
-    delete process.env.GRID_ROUND_CREDIT_BUDGET;
+    fcm.closeRound();
+  });
+  it("roundSpent counts only the current round (not the lifetime log)", async () => {
+    fcm.openRound("r-a", 100, "test", 1000);
+    await fcm.fc("POST", "scrape", "scrape", {}, { fetchImpl: (async () => new Response(JSON.stringify({ success: true, data: { metadata: { creditsUsed: 3 } } }), { status: 200 })) as unknown as typeof fetch });
+    assert.equal(fcm.roundSpent(), 3);
+    fcm.openRound("r-b", 100, "test", 990);
+    assert.equal(fcm.roundSpent(), 0);
+    assert.deepEqual(fcm.reconcileRound(985), { round: "r-b", logged: 0, accountDrop: 5, unexplained: 5 });
+    fcm.closeRound();
+  });
+  it("FULL_STANDBY with no open round refuses paid calls before any fetch", async () => {
+    let called = 0;
+    const r = await fcm.fc("POST", "scrape", "scrape", {}, { paid: true, fetchImpl: (async () => { called++; return new Response("{}"); }) as unknown as typeof fetch });
+    assert.match(r.error, /FULL_STANDBY/);
+    assert.equal(called, 0);
   });
   it("never writes the API key to the call log", () => {
     const log = readFileSync(join(ROOT, "research/grid-calls.jsonl"), "utf8");

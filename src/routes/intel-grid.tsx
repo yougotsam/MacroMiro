@@ -5,7 +5,7 @@ import { getGridDashboard } from "@/lib/grid/dashboard-fn";
 export const Route = createFileRoute("/intel-grid")({ component: GridPage });
 
 type Row = Record<string, unknown>;
-type Grid = { generatedAt: string; label: string; monitors: Row[]; pilot: Row | null; lastRefresh: string | null; materialChanges: Row[]; spark: Row[]; alexandria: { providers: Row[] | null; data: Row[] }; mirofish: Row[]; errors: Row[]; stale: Row[]; creditsByCategory: Record<string, number>; budget: Row; medianPublicationToDetectionMin: number | null; features: Row[]; featureEvaluation: string; modelPerformanceEffect: string } | null;
+type Grid = { generatedAt: string; label: string; monitors: Row[]; pilot: Row | null; lastRefresh: string | null; materialChanges: Row[]; spark: Row[]; alexandria: { providers: Row[] | null; data: Row[] }; mirofish: Row[]; errors: Row[]; stale: Row[]; creditsByCategory: Record<string, number>; budget: Row; medianPublicationToDetectionMin: number | null; features: Row[]; featureEvaluation: string; modelPerformanceEffect: string; operatingMode?: { mode: string; approvedJobs: string[]; setAt: string; note?: string }; roundSpent?: number; round?: { id: string; budget: number } | null; remoteMonitorsStatus?: { checkedAt: string; monitors: Row[] } | null; consumedByShadowEval?: string } | null;
 
 function List({ title, rows, keys }: { title: string; rows: Row[]; keys: string[] }) {
   return (
@@ -35,6 +35,14 @@ function GridPage() {
       {!d ? <p className="p-6 text-sm text-muted">No grid dashboard yet (run `bun scripts/grid/dashboard.ts`).</p> : (
         <div className="grid gap-6 p-4 sm:grid-cols-2 sm:p-6">
           <p className="text-xs text-muted sm:col-span-2">{d.label} Generated {d.generatedAt}. Last monitor refresh {d.lastRefresh ?? "–"}. Median publication→detection: {d.medianPublicationToDetectionMin ?? "n/a"} min.</p>
+          <section className="rounded border border-border p-4 sm:col-span-2" aria-label="Operating mode">
+            <p className="font-mono text-xs uppercase tracking-[0.18em] text-subtle">Operating mode</p>
+            <p className="mt-1 font-display text-xl italic">{d.operatingMode?.mode ?? "FULL_STANDBY"}</p>
+            <p className="text-xs text-muted">Approved jobs: {d.operatingMode?.approvedJobs?.length ? d.operatingMode.approvedJobs.join(", ") : "none"}. Set {d.operatingMode?.setAt || "–"}. {d.operatingMode?.note ?? ""}</p>
+            <p className="text-xs text-muted">Active external monitors: {d.remoteMonitorsStatus ? d.remoteMonitorsStatus.monitors.filter((m) => m.status === "active").length : "unknown"} (checked {d.remoteMonitorsStatus?.checkedAt ?? "–"}). Round {d.round?.id ?? "none"}: {d.roundSpent ?? 0}/{d.round?.budget ?? 0} credits. Month: {String(d.budget?.used ?? "–")} logged locally.</p>
+            <p className="text-xs text-muted">Used by shadow evaluation: {d.consumedByShadowEval ?? "none"}</p>
+            <p className="text-xs text-muted">Switch: <code>bun scripts/ops/mode.ts set FULL_STANDBY | MARKET_DATA_ONLY | RESEARCH_PAPER --approve job1,job2</code></p>
+          </section>
           <List title="Monitors" rows={d.monitors} keys={["key", "status", "cron", "estimatedCreditsPerMonth"]} />
           <List title="Credits by category (this round)" rows={Object.entries(d.creditsByCategory).map(([k, v]) => ({ category: k, credits: v }))} keys={["category", "credits"]} />
           <List title="Material changes" rows={d.materialChanges} keys={["title", "sourceUrl", "detectedAt", "summary"]} />

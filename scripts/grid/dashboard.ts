@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { DATA_ROOT } from "../../src/lib/data-root";
 import { readEvidence } from "../../src/lib/grid/evidence";
 import { budgetNow } from "../../src/lib/intel/budget.server";
+import { readMode } from "../../src/lib/ops/operating-mode";
+import { currentRound, roundSpent } from "../../src/lib/grid/fc.server";
 
 const R = `${DATA_ROOT}/research`;
 const j = (f: string) => { try { return JSON.parse(readFileSync(`${R}/${f}`, "utf8")); } catch { return null; } };
@@ -29,6 +31,10 @@ const out = {
   medianPublicationToDetectionMin: latencies.length ? latencies.sort((a, b) => a - b)[Math.floor(latencies.length / 2)] : null,
   features: e2e?.features ?? [], featureEvaluation: "NOT_EVALUATED: no feature has weight until it shows out-of-sample value against the validated Kalshi model",
   modelPerformanceEffect: "none (all research features weight 0)",
+  operatingMode: readMode(), round: currentRound(), roundSpent: roundSpent(),
+  remoteMonitorsStatus: j("remote-monitors.json"),
+  trace: j("grid-trace.json"), roi: j("grid-roi.json"),
+  consumedByShadowEval: "none: no research output is read by the shadow evaluation yet (all feature weights 0)",
 };
 writeFileSync(`${R}/grid-dashboard.json`, JSON.stringify(out, null, 1));
 console.log("wrote grid-dashboard.json:", evidence.length, "evidence items,", out.monitors.length, "monitors");

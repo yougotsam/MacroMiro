@@ -5,6 +5,7 @@ import { armClerks } from "@/lib/intel/run.server";
 import { DATA_ROOT } from "@/lib/data-root";
 import { budgetNow, recordCredits } from "@/lib/intel/budget.server";
 import { SOURCES } from "@/lib/intel/sources";
+import { spendAllowed } from "@/lib/ops/operating-mode";
 
 const API = "https://api.firecrawl.dev/v2";
 const FILE = `${DATA_ROOT}/spark-latest.json`;
@@ -24,6 +25,9 @@ export function runSparkBrief(): Promise<SparkRun> {
 
 async function runSparkOnce(): Promise<SparkRun> {
   if (!firecrawlReady()) return { status: "failed", id: null, creditsUsed: null, card: null, error: "no key" };
+  // Operating-mode gate: the legacy 6 h brief was never approved as recurring spend → off unless RESEARCH_PAPER approves it.
+  const gate = spendAllowed("legacy_spark_brief");
+  if (!gate.ok) return { status: "standby", id: null, creditsUsed: null, card: null, error: gate.reason };
   const now = new Date();
   const started = await fetch(`${API}/agent`, {
     method: "POST",
@@ -99,6 +103,7 @@ const EVERY = (SOURCES.find((x) => x.id === "fc_spark_brief")?.everyMin ?? 360) 
 export function kickSparkIfStale() {
   if (refreshing || Date.now() - lastKick < EVERY) return;
   if (budgetNow().suspendNonessential) return;
+  if (!spendAllowed("legacy_spark_brief").ok) return;
   const row = readSpark();
   const at = Date.parse((row?.at as string | undefined) ?? "");
   if (Number.isFinite(at) && Date.now() - at < EVERY && row?.status === "completed") return;
@@ -109,14 +114,20 @@ export function kickSparkIfStale() {
   });
 }
 
-const clock = globalThis as typeof globalThis & { __sparkClock?: boolean };
+/**
+ * One 30-minute clock per process. The interval calls whatever tick the LATEST module version registered, so a
+ * hot reload (dev server) can never leave an old, ungated closure spending credits. Both callees are gated by the
+ * operating mode (FULL_STANDBY by default).
+ */
+const clock = globalThis as typeof globalThis & { __sparkClock?: boolean; __sparkTick?: () => void };
+clock.__sparkTick = () => {
+  kickSparkIfStale();
+  void armClerks();
+};
 if (!clock.__sparkClock) {
   clock.__sparkClock = true;
-  setInterval(() => {
-    kickSparkIfStale();
-    void armClerks();
-  }, 30 * 60 * 1000);
-  void armClerks();
+  setInterval(() => clock.__sparkTick?.(), 30 * 60 * 1000);
+  clock.__sparkTick();
 }
 
 /** The last Spark card. Older than 7 h (cadence is 6 h) (or never completed) comes back with card null and status "expired". */
