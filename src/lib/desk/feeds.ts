@@ -141,7 +141,11 @@ export class Feeds {
 
   /** Read-only market-data reconnect: no orders, no gate change. Returns true when it forced a reconnect. */
   checkStall(now = Date.now()) {
-    if (this.stopped || this.status !== "live" || !this.lastMsgAt || now - this.lastMsgAt < Feeds.STALL_MS) return false;
+    if (this.stopped || this.status !== "live" || !this.lastMsgAt) return false;
+    // Root cause of the Oct 9 18:11Z gap: the socket stayed open ("live") but stopped delivering index values.
+    // Stall = no message at all, OR any crypto index silent for 2x STALL_MS while the socket claims to be live.
+    const silentIndex = RTI.some((id) => { const b = this.bufs.get(id); return !!b && b.lastRecv > 0 && now - b.lastRecv > 2 * Feeds.STALL_MS; });
+    if (now - this.lastMsgAt < Feeds.STALL_MS && !silentIndex) return false;
     this.stalls += 1;
     this.status = "stalled";
     const ws = this.ws;

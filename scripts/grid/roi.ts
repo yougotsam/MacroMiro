@@ -8,10 +8,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { DATA_ROOT } from "../../src/lib/data-root";
 import { readEvidence } from "../../src/lib/grid/evidence";
+import { dayFiles, readJsonlFiles } from "../../src/lib/paper/files";
 
 const ev = JSON.parse(readFileSync(`${DATA_ROOT}/desk-observe/evaluation-latest.json`, "utf8"));
-const obsDay = (d: string) => { try { return readFileSync(`${DATA_ROOT}/desk-observe/observations-${d}.jsonl`, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { ts: string; close: string; series: string }); } catch { return []; } };
-const obs = [...obsDay("2026-10-08"), ...obsDay("2026-10-09"), ...obsDay("2026-10-10")];
+const obs = readJsonlFiles<{ ts: string; close: string; series: string }>(dayFiles(`${DATA_ROOT}/desk-observe`, "observations-"));
 const closes = [...new Set(obs.map((o) => o.close))].map((c) => Date.parse(c)).sort();
 const CRYPTO_OR_GOLD = /bitcoin|btc|ether|eth|solana|sol|xrp|gold|crypto|exchange/i;
 const evidence = readEvidence();

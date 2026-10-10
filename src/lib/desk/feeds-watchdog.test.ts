@@ -30,6 +30,19 @@ describe("feed stall watchdog (read-only market data)", () => {
     f.stop(); x.status = "live"; x.lastMsgAt = 1;
     expect(f.checkStall(10 ** 9)).toBe(false);
   });
+  it("reconnects when one crypto index goes silent even though other messages keep arriving", () => {
+    const f = new Feeds(false);
+    const x = f as unknown as Internals & { bufs: Map<string, { lastRecv: number }> };
+    x.open = () => {};
+    x.status = "live";
+    x.ws = { close: () => {}, onclose: null, onmessage: null };
+    const now = 5_000_000;
+    x.lastMsgAt = now - 1_000; // gold/other messages still flowing
+    for (const b of x.bufs.values()) b.lastRecv = now - 1_000;
+    x.bufs.get("XRPUSD_RTI")!.lastRecv = now - 2 * Feeds.STALL_MS - 1;
+    expect(f.checkStall(now)).toBe(true);
+    f.stop();
+  });
   it("feeds.ts still never names an order call", async () => {
     const src = readFileSync(new URL("./feeds.ts", import.meta.url), "utf8");
     expect(src).not.toMatch(/placeEventOrder|createOrder|cancelOrder|\/portfolio\/orders/);

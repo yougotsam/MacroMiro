@@ -6,7 +6,7 @@
  * Each: model vs Kalshi mid (Brier, skill, cluster-bootstrap CI) by market and expiry bucket, and simulated net P/L at
  * executable prices after the actual fee and within displayed depth, by strategy × market × bucket, clustered by window.
  */
-import { createReadStream, existsSync, readdirSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { approvalRuleOos, calibrationTables, gateTaker, groupBy, pnlTables, purgedSplit, sniperTaker, type Trade } from "../src/lib/desk/analysis";
 import { eventOf, joinObservations, type LedgerRow, type Obs, type OutcomeRow } from "../src/lib/desk/calibration";
@@ -35,6 +35,7 @@ function wfSection(obs: Obs[], model: string, completedWindows: number) {
   let candidate: string | null = null;
   if (wf.preds.length >= 30 && platt && typeof scores.market_mid === "object" && scores.market_mid) {
     const c = candidateCalibrator(obs, model, { contracts: new Set(wf.preds.map((x) => x.o.ticker)).size, windows: new Set(wf.preds.map((x) => x.o.closeMs)).size, brierModel: platt.brier, brierMarket: (scores.market_mid as { brier: number }).brier });
+    mkdirSync(CANDIDATE_DIR, { recursive: true });
     candidate = `${CANDIDATE_DIR}/calibrator-CANDIDATE-${model.replace(/[^\w.-]+/g, "_")}.json`;
     writeFileSync(candidate, JSON.stringify({ ...c, note: "CANDIDATE ONLY — approvedBy is null; loadCalibrator refuses it. Owner review required." }, null, 2));
   }
