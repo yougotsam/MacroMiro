@@ -72,7 +72,8 @@ export async function orderbook(ticker: string): Promise<Book> {
 export async function exchangeStatus(): Promise<{ tradingActive: boolean; shard2: boolean; raw: unknown }> {
   const d = await pub<{ trading_active?: boolean; exchange_active?: boolean; exchange_index_statuses?: Array<{ exchange_index: number; trading_active: boolean; exchange_active: boolean }> }>(`/exchange/status`);
   const s2 = d.exchange_index_statuses?.find((x) => x.exchange_index === 2);
-  const shard2 = s2 ? s2.trading_active && s2.exchange_active : Boolean(d.trading_active && d.exchange_active);
+  // fail closed: shard 2 (Crypto & Commodities) must be explicitly present and active
+  const shard2 = s2 ? Boolean(s2.trading_active && s2.exchange_active) : false;
   return { tradingActive: Boolean(d.exchange_active) && shard2, shard2, raw: d };
 }
 

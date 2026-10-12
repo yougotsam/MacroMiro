@@ -20,6 +20,11 @@ describe("Kalshi exchange shard status (read-only)", () => {
       expect((await exchangeStatus()).tradingActive).toBe(true);
     });
   });
+  it("shard 2 record absent → not tradable (fail closed)", async () => {
+    await withFetch({ exchange_active: true, trading_active: true }, async () => {
+      expect((await exchangeStatus()).tradingActive).toBe(false);
+    });
+  });
   it("exchange inactive → not tradable", async () => {
     await withFetch({ exchange_active: false, trading_active: false }, async () => {
       expect((await exchangeStatus()).tradingActive).toBe(false);

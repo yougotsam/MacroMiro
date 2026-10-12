@@ -92,10 +92,11 @@ export class Feeds {
       const dir = `${dataDir()}/prints`;
       mkdirSync(dir, { recursive: true });
       appendFileSync(`${dir}/${etDay()}.jsonl`, `${this.pending.join("\n")}\n`);
+      this.pending = []; // clear only after a successful append
     } catch {
-      /* next flush */
+      /* keep the queue for the next flush; cap so a long outage cannot grow memory unbounded */
+      if (this.pending.length > 200_000) this.pending = this.pending.slice(-200_000);
     }
-    this.pending = [];
   }
 
   /** Reload the recorder's own prints (last 2 h) so a restart keeps σ/bars warm — gold has no REST history. */
