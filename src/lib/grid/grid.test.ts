@@ -77,6 +77,14 @@ describe("Firecrawl client", () => {
     assert.deepEqual(fcm.reconcileRound(985), { round: "r-b", logged: 0, accountDrop: 5, unexplained: 5 });
     fcm.closeRound();
   });
+  it("GRID_ROUND_CREDIT_BUDGET without an open round does not authorize paid calls", async () => {
+    process.env.GRID_ROUND_CREDIT_BUDGET = "1000";
+    let called = 0;
+    const r = await fcm.fc("POST", "scrape", "scrape", {}, { paid: true, fetchImpl: (async () => { called++; return new Response("{}"); }) as unknown as typeof fetch });
+    delete process.env.GRID_ROUND_CREDIT_BUDGET;
+    assert.match(r.error, /no open research round/);
+    assert.equal(called, 0);
+  });
   it("FULL_STANDBY with no open round refuses paid calls before any fetch", async () => {
     let called = 0;
     const r = await fcm.fc("POST", "scrape", "scrape", {}, { paid: true, fetchImpl: (async () => { called++; return new Response("{}"); }) as unknown as typeof fetch });

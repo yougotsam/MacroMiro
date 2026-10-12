@@ -35,8 +35,12 @@ export function replay(entries: Entry[]) {
     open.push({ ...e, worst });
     accepted.push(e);
   }
+  const now = Date.now();
+  const openNow = accepted.filter((e) => Date.parse(e.close) > now).reduce((a, e) => a + e.cost + e.fee, 0);
+  const todayRealized = accepted.filter((e) => Date.parse(e.close) <= now && etDay(Date.parse(e.close)) === etDay(now)).reduce((a, e) => a + (e.netUsd ?? 0), 0);
   const done = accepted.filter((e) => e.netUsd != null);
   const reasons: Record<string, number> = {};
   for (const r of rejected) reasons[r.reason] = (reasons[r.reason] ?? 0) + 1;
-  return { accepted: accepted.length, settled: done.length, wins: done.filter((e) => (e.netUsd ?? 0) > 0).length, netUsd: +done.reduce((a, e) => a + (e.netUsd ?? 0), 0).toFixed(2), feesUsd: +done.reduce((a, e) => a + e.fee, 0).toFixed(2), rejected: rejected.length, rejectReasons: reasons };
+  return { accepted: accepted.length, settled: done.length, wins: done.filter((e) => (e.netUsd ?? 0) > 0).length, netUsd: +done.reduce((a, e) => a + (e.netUsd ?? 0), 0).toFixed(2), feesUsd: +done.reduce((a, e) => a + e.fee, 0).toFixed(2), rejected: rejected.length, rejectReasons: reasons,
+    openExposureUsd: +openNow.toFixed(2), todayRealizedUsd: +todayRealized.toFixed(2), dailyLossRemainingUsd: +Math.max(0, todayRealized - LIMITS.dayStop).toFixed(2) };
 }

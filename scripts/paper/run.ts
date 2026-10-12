@@ -72,7 +72,8 @@ function once() {
   const latestTs = new Map<string, string>();
   for (const o of obs) latestTs.set(o.series, o.ts);
   const fresh = (ts: string) => Date.now() - Date.parse(ts) <= 120_000;
-  const ranked = all.filter((c) => latestTs.get(c.series) === c.ts && fresh(c.ts)).sort((a, b) => b.score - a.score);
+  const ranked = all.filter((c) => latestTs.get(c.series) === c.ts && fresh(c.ts)).sort((a, b) => b.score - a.score)
+    .map((c) => ({ ...c, wouldEnter: CONFIGS.filter((cfg) => cfg.select([c]) === c).map((cfg) => cfg.id), reason: c.evPerContract <= 0 ? `rejected: EV ${c.evPerContract.toFixed(3)} ≤ 0 after fees` : c.tteSec < 60 ? "rejected: < 60 s left" : "EV > 0 (paper only)" }));
   let status: Record<string, unknown> = {};
   try { status = JSON.parse(readFileSync(`${OBS}/observe-status.json`, "utf8")); } catch { /* none */ }
   const lastRows = readJsonlFiles<ObsRow & { index?: { age_ms: number | null } }>(dayFiles(OBS, "observations-").slice(-1)).slice(-400);

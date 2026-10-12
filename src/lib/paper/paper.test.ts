@@ -45,6 +45,10 @@ describe("paper candidates", () => {
     expect(candidatesOf({ ...row, exec: null }, null)).toEqual([]);
   });
   it("configs A–E exist", () => expect(CONFIGS.map((c) => c.id)).toEqual(["A_settlement", "B_first_setup", "B7_research", "B9_core", "C_time_ranked", "D_conviction", "E_research"]));
+  it("clamped model probabilities (2%/98%) produce no candidate", () => {
+    expect(candidatesOf({ ...row, p: 0.02 }, null)).toEqual([]);
+    expect(candidatesOf({ ...row, p: 0.98 }, null)).toEqual([]);
+  });
   it("unknown event fee → no candidate (never defaults to multiplier 1)", () => {
     expect(candidatesOf({ ...row, fee_multiplier: null }, null)).toEqual([]);
   });

@@ -99,7 +99,10 @@ export async function fc(method: "GET" | "POST" | "PATCH" | "DELETE", path: stri
   if (!key) return { ok: false, http: 0, json: {}, credits: 0, error: "credential missing: FIRECRAWL_API_KEY" };
   if (opts.paid) {
     // Paid calls need either an approved RESEARCH_PAPER job or an explicitly opened, capped operator round.
-    if (!spendAllowed("grid_calls").ok && !currentRound() && !process.env.GRID_ROUND_CREDIT_BUDGET) return { ok: false, http: 0, json: {}, credits: 0, error: "FULL_STANDBY: no open research round and grid_calls not approved" };
+    // Codex P1: an env budget alone never authorizes spend. A persisted open round (or an approved RESEARCH_PAPER
+    // job WITH an open round, so spend is counted) is required.
+    if (!currentRound()) return { ok: false, http: 0, json: {}, credits: 0, error: "FULL_STANDBY: no open research round (GRID_ROUND_CREDIT_BUDGET alone is not authorization)" };
+    if (!spendAllowed("grid_calls").ok && !currentRound()) return { ok: false, http: 0, json: {}, credits: 0, error: "FULL_STANDBY: no open research round and grid_calls not approved" };
     if (roundSpent() >= roundBudget()) return { ok: false, http: 0, json: {}, credits: 0, error: `round credit budget reached (${roundBudget()})` };
   }
   const f = opts.fetchImpl ?? fetch;

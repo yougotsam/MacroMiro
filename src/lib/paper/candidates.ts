@@ -6,6 +6,7 @@
  */
 import { setupsOf, type IndicatorRow, type Dir } from "@/lib/desk/setups";
 import { entryCost, sizeFor, type Side } from "./pnl";
+import { P_CLAMP } from "@/lib/desk/config";
 
 export type ConfState = "NOT_READY" | "TRUE_ZERO" | "INVALID_DATA" | "VALID_SCORE";
 type Evidence = { score?: number; setup?: string; eligible?: boolean; points?: Record<string, number>; missing?: string[]; tags?: string[] };
@@ -45,6 +46,9 @@ export function candidatesOf(o: ObsRow, ind: IndicatorRow | null, research: { ad
   if (o.p == null || !o.exec || !o.ticker || !o.close || o.tte_s == null) return [];
   // Unknown event fee → no paper entry (never default the multiplier to 1).
   if (o.fee_multiplier == null || !Number.isFinite(o.fee_multiplier) || o.fee_multiplier <= 0) return [];
+  // A probability pinned at the model's clamp (e.g. 2% / 98%) is a floor, not an estimate: EV against a 0.1¢ ask
+  // would be fake. No paper candidate from clamped probabilities.
+  if (o.p <= 1 - P_CLAMP + 1e-9 || o.p >= P_CLAMP - 1e-9) return [];
   const hits = ind ? setupsOf(ind) : [];
   const out: Candidate[] = [];
   for (const side of ["yes", "no"] as Side[]) {
