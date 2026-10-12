@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { settle, entryCost, sizeFor } from "./pnl";
-import { candidatesOf, CONFIGS, type ObsRow } from "./candidates";
+import { candidatesOf, CONFIGS, confState, type ObsRow } from "./candidates";
+import { replay } from "./portfolio";
 import { availableAt, pricedIn, evaluateEvent, type IntelEvent } from "./intel-events";
 import { dayFiles, readJsonlFiles } from "./files";
 
@@ -43,7 +44,29 @@ describe("paper candidates", () => {
     expect(candidatesOf({ ...row, p: null }, null)).toEqual([]);
     expect(candidatesOf({ ...row, exec: null }, null)).toEqual([]);
   });
-  it("configs are paper rules only", () => expect(CONFIGS.map((c) => c.id)).toContain("C_research"));
+  it("configs A–E exist", () => expect(CONFIGS.map((c) => c.id)).toEqual(["A_settlement", "B_first_setup", "B7_research", "B9_core", "C_time_ranked", "D_conviction", "E_research"]));
+  it("unknown event fee → no candidate (never defaults to multiplier 1)", () => {
+    expect(candidatesOf({ ...row, fee_multiplier: null }, null)).toEqual([]);
+  });
+  it("recorded fee multiplier is kept on the candidate and used at settlement", () => {
+    const [yes] = candidatesOf({ ...row, fee_multiplier: 2 }, null);
+    expect(yes.feeMultiplier).toBe(2);
+    expect(settle({ side: "yes", price: 0.5, qty: 5, feeMultiplier: yes.feeMultiplier }, "yes").fee).toBe(yes.fee);
+  });
+  it("missing warm-up is NOT_READY, never a valid 0/13", () => {
+    expect(confState(null)).toBe("NOT_READY");
+    expect(confState({ score: 0, missing: ["60 complete 15m bars", "205 complete 1h bars"] })).toBe("NOT_READY");
+    expect(confState({ score: 0, points: { a: 0 }, missing: [] })).toBe("TRUE_ZERO");
+    expect(confState({ score: 5, points: { a: 2, b: 3 } })).toBe("VALID_SCORE");
+    expect(confState({ score: 5, points: { a: 1 } })).toBe("INVALID_DATA");
+    const [yes] = candidatesOf(row, null);
+    expect(yes.confluenceState).toBe("NOT_READY"); expect(yes.confluence).toBeNull();
+  });
+  it("C picks the highest-ranked candidate at its decision scan, using no later data", () => {
+    const cs = [...candidatesOf({ ...row, tte_s: 800 }, null), ...candidatesOf({ ...row, tte_s: 400, ts: "2026-10-10T12:06:40Z" }, null), ...candidatesOf({ ...row, tte_s: 100, ts: "2026-10-10T12:11:40Z", p: 0.99 }, null)];
+    const pick = CONFIGS.find((c) => c.id === "C_time_ranked")!.select(cs)!;
+    expect(pick.tteSec).toBe(400);
+  });
 });
 
 const ev: IntelEvent = { id: "e", title: "t", url: "https://x", source: "s", assets: ["XRP"], publishedAt: "2026-10-09T06:00:00Z", detectedAt: "2026-10-10T00:15:00Z", direction: null, credits: 0 };
@@ -55,6 +78,21 @@ describe("intelligence-event evaluator", () => {
   it("does not assert 'priced in' without market evidence", () => {
     expect(pricedIn(ev, []).verdict).toBe("unknown");
     expect(evaluateEvent(ev, "2026-10-09T12:00:00Z", []).usableDirection).toBeNull();
+  });
+});
+
+describe("realistic portfolio replay", () => {
+  const e = (ts: string, series: string, side: "yes" | "no", cost: number, net: number, close = "2026-10-10T12:15:00Z") => ({ ts, ticker: `${series}-${ts}`, series, close, side, cost, fee: 0.05, netUsd: net });
+  it("enforces $4 same-direction crypto and $9 total", () => {
+    const r = replay([e("2026-10-10T12:01:00Z", "KXBTC15M", "yes", 2.5, 1), e("2026-10-10T12:02:00Z", "KXETH15M", "yes", 2.5, 1), e("2026-10-10T12:03:00Z", "KXETH15M", "no", 2.5, 1), e("2026-10-10T12:04:00Z", "KXGOLD15M", "yes", 2.5, 1), e("2026-10-10T12:05:00Z", "KXGOLD15M", "no", 2.5, 1)]);
+    expect(r.rejectReasons["over $4 same-direction crypto"]).toBe(1);
+    expect(r.rejectReasons["over $9 total exposure"]).toBe(1);
+    expect(r.accepted).toBe(3);
+  });
+  it("stops for the ET day after −$15 realized", () => {
+    const xs = Array.from({ length: 7 }, (_, i) => e(`2026-10-10T1${i}:00:00Z`, "KXGOLD15M", "yes", 2.9, -2.95, `2026-10-10T1${i}:10:00Z`));
+    const r = replay(xs);
+    expect(r.rejectReasons["daily stop −$15 reached"]).toBe(1);
   });
 });
 

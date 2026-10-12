@@ -9,7 +9,7 @@
  * It cannot place, cancel or amend orders: it never imports oms.ts or the order transport, the process installs a
  * GET-only fetch guard first thing, and observe.test.ts checks both. The websocket only sends subscribe commands.
  */
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { MAX_ORDER_COST_USD, MODEL_REV, MODEL_VERSION, REFERENCE, SERIES, type Series } from "./config";
 import { Evaluator, decisionRowOf, type SeriesEval } from "./evaluator";
 import type { FeeInfo } from "./fees";
@@ -84,7 +84,33 @@ export class Collector {
   constructor(private dir: string, private feeds: Feeds, guard: MoveGuard, private deps: ObserveDeps, private network: () => unknown = () => null) {
     mkdirSync(dir, { recursive: true });
     this.evaluator = new Evaluator(feeds, guard, () => `${dir}/calibrator.json`);
+    this.restoreUnresolved();
     this.status = { pid: process.pid, startedAt: new Date().toISOString(), lastTickAt: null, ticks: 0, rows: 0, errors: 0, lastError: null, uniqueTickers: 0, completeQuoteTickers: 0, outcomes: 0, failedGates: {}, indicators: {}, model: `${MODEL_VERSION}+${MODEL_REV}`, dataDir: dir, network: null, feeds: "init" };
+  }
+
+  /**
+   * Restart-safe outcome recovery: every market seen in the last 3 days of observation files that has no recorded
+   * outcome goes back into the pending set, so resolveOutcomes() still fetches its result after a restart.
+   */
+  restoreUnresolved(now = Date.now()) {
+    let files: string[] = [];
+    try { files = readdirSync(this.dir).filter((f) => /^(observations|outcomes)-.*\.jsonl$/.test(f)).sort(); } catch { return 0; }
+    const done = new Set<string>();
+    for (const f of files.filter((x) => x.startsWith("outcomes-"))) {
+      for (const l of readFileSync(`${this.dir}/${f}`, "utf8").split("\n")) { try { if (l) done.add((JSON.parse(l) as { ticker: string }).ticker); } catch { /* torn row */ } }
+    }
+    let n = 0;
+    for (const f of files.filter((x) => x.startsWith("observations-")).slice(-4)) {
+      for (const l of readFileSync(`${this.dir}/${f}`, "utf8").split("\n")) {
+        const m = l.match(/"ticker":"([^"]+)","series":"([^"]+)","close":"([^"]+)"/);
+        if (!m || done.has(m[1]) || this.seen.has(m[1])) continue;
+        const closeMs = Date.parse(m[3]);
+        if (!Number.isFinite(closeMs) || now - closeMs > 3 * 86_400_000) continue;
+        this.seen.set(m[1], { closeMs, series: m[2], complete: l.includes('"complete":true'), resolved: false, lastTry: 0 });
+        n += 1;
+      }
+    }
+    return n;
   }
 
   private file(kind: string, now: number) {
@@ -217,10 +243,18 @@ export class Collector {
           const delta = tape.deltaByMinute();
           const [m1, m15, h1] = await Promise.all([this.deps.candles(product, 1), this.deps.candles(product, 15), this.deps.candles(product, 60)]);
           const v1 = validateBars(m1, 1, now).bars.map((b) => (delta.has(b.t) ? { ...b, delta: delta.get(b.t) } : b));
-          const v15 = validateBars(m15, 15, now).bars;
+          // signed flow on 15m bars only when all 15 minutes of that bar are covered by the tape (continuity)
+          const v15 = validateBars(m15, 15, now).bars.map((b) => {
+            let sum = 0;
+            for (let k = 0; k < 15; k++) { const d = delta.get(b.t + k * 60_000); if (d == null) return b; sum += d; }
+            return { ...b, delta: sum };
+          });
           const v60 = validateBars(h1, 60, now).bars;
           this.bars.set(product, { m1: v1, m15: v15, h1: v60, at: now });
           report = indicatorReport(v1, { volumeSource: `coinbase:${product}`, tradeSide: true });
+          // structure for the named setups comes from the 15-minute bars (the sniper's timeframe), not 1-minute noise
+          const r15 = indicatorReport(v15, { volumeSource: `coinbase:${product}`, tradeSide: true });
+          report = { ...report, bos_mss: r15.bos_mss, fvg: r15.fvg, liquidity_sweep: r15.liquidity_sweep };
           sniper = { long: evaluateSniper(v15, v60, "long", true), short: evaluateSniper(v15, v60, "short", true), note: "macro point assumed clear for research scoring only" };
           source = `coinbase:${product} 1m/15m/60m + public trades (${tape.size} on tape)`;
         } else {

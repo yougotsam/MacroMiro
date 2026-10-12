@@ -23,9 +23,15 @@ export function marketStructure(b: Candle[], wing = 3): { trend: "up" | "down" |
   const [h1, h2] = highs.slice(-2);
   const [l1, l2] = lows.slice(-2);
   const trend = h2.price > h1.price && l2.price > l1.price ? "up" : h2.price < h1.price && l2.price < l1.price ? "down" : "range";
-  const c = b.at(-1)!.c;
-  const brokeUp = c > h2.price;
-  const brokeDown = c < l2.price;
+  const last = b.at(-1)!, c = last.c;
+  // Confirmation needs displacement: close ≥ 0.15·ATR beyond the swing AND a body ≥ 1.2× the median body of the
+  // previous 20 bars (a one-tick poke is not a BOS/MSS).
+  const a = atr(b);
+  const bodies = b.slice(-21, -1).map((x) => Math.abs(x.c - x.o)).sort((p, q) => p - q);
+  const medBody = bodies.length ? bodies[Math.floor(bodies.length / 2)] : 0;
+  const displaced = a != null && a > 0 && Math.abs(last.c - last.o) >= 1.2 * medBody;
+  const brokeUp = displaced && c > h2.price + 0.15 * (a as number);
+  const brokeDown = displaced && c < l2.price - 0.15 * (a as number);
   return {
     trend,
     bos: trend === "up" && brokeUp ? "long" : trend === "down" && brokeDown ? "short" : null,
@@ -177,10 +183,17 @@ export function indicatorReport(bars: Candle[], opts: { volumeSource: string | n
   r.candle_patterns = bars.length >= 2 ? ok(candlePatterns(bars)) : no("needs 2 bars");
   const rv = vol ? rvol(bars) : null;
   r.rvol = !vol ? no(opts.volumeSource ? "bars missing volume" : "no traded-volume source for this market") : rv == null ? no(need(21, "RVOL") ?? "zero base volume") : ok(rv);
-  const withDelta = bars.filter((x) => x.delta != null);
+  // CVD only over the trailing CONTIGUOUS run of bars that carry signed flow (no stitching across gaps).
+  const step = bars.length > 1 ? bars[bars.length - 1].t - bars[bars.length - 2].t : 60_000;
+  const withDelta: Candle[] = [];
+  for (let i = bars.length - 1; i >= 0; i--) {
+    const x = bars[i];
+    if (x.delta == null || (withDelta.length && withDelta[0].t - x.t !== step)) break;
+    withDelta.unshift(x);
+  }
   r.cvd = !opts.tradeSide ? no("no signed (aggressor-side) trade feed for this market") : withDelta.length < 5 ? no(`signed-trade coverage ${withDelta.length} bars (<5 contiguous)`) : ok(cvd(withDelta.slice(-Math.min(withDelta.length, 15))));
   const vp = vol ? volumeProfile(bars.slice(-120)) : null;
-  r.volume_profile = vp ? ok(vp) : no(opts.volumeSource ? "bars missing volume" : "no traded-volume source for this market");
+  r.volume_profile = vp ? ok({ ...vp, approximate: "aggregate bar volume spread evenly across each bar's range; not a true intrabar profile" }) : no(opts.volumeSource ? "bars missing volume" : "no traded-volume source for this market");
   return r;
 }
 

@@ -10,6 +10,7 @@ import { DATA_ROOT } from "../../src/lib/data-root";
 import { dayFiles, ensureDir, readJsonlFiles } from "../../src/lib/paper/files";
 import { candidatesOf, CONFIGS, WEIGHTS, type Candidate, type ObsRow } from "../../src/lib/paper/candidates";
 import { settle } from "../../src/lib/paper/pnl";
+import { replay, LIMITS } from "../../src/lib/paper/portfolio";
 import { eventsFor, evaluateEvent, type IntelEvent, type QuotePoint } from "../../src/lib/paper/intel-events";
 import type { IndicatorRow } from "../../src/lib/desk/setups";
 import { readMode } from "../../src/lib/ops/operating-mode";
@@ -42,15 +43,14 @@ function once() {
   const all: Candidate[] = [];
   for (const o of obs) all.push(...candidatesOf(o, indAt(o.series, o.ts), researchFor(o)));
 
+  const byTicker = new Map<string, Candidate[]>();
+  for (const c of all) byTicker.set(c.ticker, [...(byTicker.get(c.ticker) ?? []), c]);
   const results = CONFIGS.map((cfg) => {
     const taken = new Map<string, Candidate>();
-    for (const c of all) {
-      if (taken.has(c.ticker) || !cfg.enter(c)) continue;
-      taken.set(c.ticker, c);
-    }
+    for (const [t, cs] of byTicker) { const pick = cfg.select(cs); if (pick) taken.set(t, pick); }
     const trades = [...taken.values()].map((c) => {
       const o = outcomes.get(c.ticker);
-      const s = o ? settle({ side: c.side, price: c.entryPrice, qty: c.qty, feeMultiplier: 1 }, o.result as "yes" | "no") : null;
+      const s = o ? settle({ side: c.side, price: c.entryPrice, qty: c.qty, feeMultiplier: c.feeMultiplier }, o.result as "yes" | "no") : null;
       return { ...c, outcome: o?.result ?? null, settleValue: o?.value ?? null, ...(s ? { payout: s.payout, cost: s.cost, feeUsd: s.fee, netUsd: s.net, won: s.won } : { netUsd: null }) };
     });
     const done = trades.filter((t) => t.netUsd != null);
@@ -60,7 +60,10 @@ function once() {
     const w = [...win.values()], n = w.length, mean = n ? w.reduce((a, b) => a + b, 0) / n : 0;
     const se = n > 1 ? Math.sqrt(w.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) / n) : null;
     const total = done.reduce((a, t) => a + (t.netUsd as number), 0);
-    return { id: cfg.id, label: cfg.label, entries: trades.length, settled: done.length, open: trades.length - done.length, windows: n, wins: done.filter((t) => t.won).length,
+    const portfolio = replay(trades.map((t) => ({ ts: t.ts, ticker: t.ticker, series: t.series, close: t.close, side: t.side, cost: +(t.qty * t.entryPrice).toFixed(4), fee: t.fee, netUsd: t.netUsd })));
+    const avg = (f: (t: (typeof done)[number]) => number) => (done.length ? +(done.reduce((a, t) => a + f(t), 0) / done.length).toFixed(4) : null);
+    const why = { avgEntryPrice: avg((t) => t.entryPrice), avgModelP: avg((t) => t.modelProbExperimental), realizedWinRate: avg((t) => (t.won ? 1 : 0)), avgEvClaimedUsd: avg((t) => t.evUsd), avgNetUsd: avg((t) => t.netUsd as number), cheapSideShare: avg((t) => (t.entryPrice < 0.25 ? 1 : 0)) };
+    return { id: cfg.id, label: cfg.label, portfolio, why, entries: trades.length, settled: done.length, open: trades.length - done.length, windows: n, wins: done.filter((t) => t.won).length,
       netUsd: +total.toFixed(2), feesUsd: +done.reduce((a, t) => a + (t.feeUsd ?? 0), 0).toFixed(2), perWindowMeanUsd: +mean.toFixed(3), perWindowSeUsd: se == null ? null : +se.toFixed(3),
       ci95Usd: se == null ? null : [+(total - 1.96 * se * n).toFixed(2), +(total + 1.96 * se * n).toFixed(2)], recent: trades.slice(-40) };
   });
@@ -81,7 +84,9 @@ function once() {
     mode: readMode(), collector: { pid: status.pid ?? null, lastTickAt: status.lastTickAt ?? null, rows: status.rows ?? null, errors: status.errors ?? null, lastError: status.lastError ?? null },
     feed, weights: WEIGHTS, scansWithModelAndQuotes: obs.length, candidates: all.length, ranked,
     configs: results,
-    research: { events: events.map((e) => evaluateEvent(e, new Date().toISOString(), quotes)), changedDecisions: results.find((r) => r.id === "C_research")!.entries - results.find((r) => r.id === "B_setups")!.entries },
+    limits: LIMITS, confluenceDiag: (() => { try { return JSON.parse(readFileSync(`${OUT}/confluence-diag.json`, "utf8")); } catch { return null; } })(),
+    rejectedExample: all.find((c) => latestTs.get(c.series) === c.ts && c.evPerContract <= 0) ?? all.findLast((c) => c.evPerContract <= 0) ?? null,
+    research: { events: events.map((e) => evaluateEvent(e, new Date().toISOString(), quotes)), changedDecisions: (() => { const c = results.find((r) => r.id === "C_time_ranked")!, e = results.find((r) => r.id === "E_research")!; return e.recent.filter((x, i) => c.recent[i]?.ticker !== x.ticker || c.recent[i]?.side !== x.side).length; })() },
   };
   writeFileSync(`${OUT}/paper-latest.json.tmp`, JSON.stringify(out));
   writeFileSync(`${OUT}/paper-latest.json`, JSON.stringify(out));
