@@ -243,7 +243,11 @@ export function evaluateSniper(b15:Candle[],b1h:Candle[],dir:Direction,macroClea
   if(range>0&&wick>2*Math.abs(last.c-last.o)&&wick>.3*range){pts.trigger=1;tags.push("rejection_candle");}
   const score=Object.values(pts).reduce((a,b)=>a+b,0);
   const families=Object.values(pts).filter(x=>x>0).length;
-  const setup=swept?"SWEEP_REVERSAL":isTrend?"TREND_PULLBACK":"NONE";
+  // TREND_PULLBACK needs an actual pullback, not only aligned EMAs: within the last 6 bars price traded back to
+  // (or through) EMA14, and the latest close is back on the trend side of EMA14.
+  const recent=b15.slice(-6);
+  const pulled=isLong?Math.min(...recent.map(x=>x.l))<=ema14&&last.c>ema14:Math.max(...recent.map(x=>x.h))>=ema14&&last.c<ema14;
+  const setup=swept?"SWEEP_REVERSAL":isTrend&&pulled?"TREND_PULLBACK":"NONE";
   return {direction:dir,setup,score,families,points:pts,tags,missing,
     eligible:setup!=="NONE"&&score>=9&&families>=4&&pts.liquidity>0 &&
       !missing.includes("wrong premium/discount location") &&
