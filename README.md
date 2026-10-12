@@ -4,8 +4,8 @@
 `src/lib/desk/config.ts` is `false`, so the production OMS refuses all live submissions.
 
 **Single authoritative trading strategy:** [docs/STRATEGY.md](docs/STRATEGY.md).
-**Repair, test limitations, release criteria:** [docs/AURIX_RELEASE_REPORT.md](docs/AURIX_RELEASE_REPORT.md).
-**Integration map:** [docs/AURIX_COMPONENT_MAP.md](docs/AURIX_COMPONENT_MAP.md).
+**Repair, test limitations, release criteria:** [docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md](docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md).
+**Integration map:** [docs/archive/AURIX_COMPONENT_MAP-2026-10-09.md](docs/archive/AURIX_COMPONENT_MAP-2026-10-09.md).
 
 ## Live decision flow
 `desk/feeds.ts` → `desk/engine.ts` → `desk/settlement.ts` →

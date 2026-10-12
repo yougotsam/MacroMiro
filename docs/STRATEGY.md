@@ -4,7 +4,7 @@ STATUS: RESEARCH / SHADOW. **CALIBRATED_MODEL_APPROVED=false** blocks all live o
 Code truth: `src/lib/desk/engine.ts` (research decision engine), `gate.ts` (quote evaluation),
 `oms.ts` (sole signed order writer), `risk.ts` (mandatory permission), `config.ts`.
 The prior handoff references `src/lib/scan/edge.ts`, a file that does not exist in this ZIP; this retired reference must NOT guide execution.
-The original handoff/main-branch and $15 loss rules are retired; see docs/archive.
+The original handoff/main-branch notes are archived in docs/archive. Current loss limits (including the approved −$15 Kalshi daily stop) live in docs/operations/RISK_MANDATES.md. Canonical product spec: docs/product/PRD.md.
 
 ## ONE STRATEGY, TWO PRODUCT ENGINES
 AURIX-X trades only when: valid setup AND independent evidence AND calibrated outcome model AND executable after-cost positive edge AND final risk approval.
@@ -102,4 +102,4 @@ Desk: market structure / regime / feature definitions. Quillgate: code and tests
 - ADDED: `sniper.ts` parameterized feature/evidence diagnostics, read-only `intelligence.ts` bridge to Spark/MiroFish/Alexandria/Firecrawl-backed artifacts.
 - NOT AVAILABLE from the supplied source data: true exchange market order flow, 205 confirmed 1h OHLCV bars, CVD, traded-volume VWAP/POC, calibrated historical event probabilities, full broker-perp margin safety, production keys and live exchange validation.
 - Correct behavior while unavailable: NO LIVE TRADE; preserve missing-data reasons and continue data collection.
-- `docs/AURIX_RELEASE_REPORT.md` is authoritative for testing/provisional fixes.
+- `docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md` is authoritative for testing/provisional fixes.
