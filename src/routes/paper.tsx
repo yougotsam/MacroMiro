@@ -40,7 +40,7 @@ function Table({ rows }: { rows: C[] }) {
 
 function PaperPage() {
   const [d, setD] = useState<Paper>(null);
-  const [cfg, setCfg] = useState("B_setups");
+  const [cfg, setCfg] = useState("C_time_ranked");
   const load = useCallback(() => void getPaper().then((t) => setD(JSON.parse(t) as Paper)), []);
   useEffect(() => { load(); const i = setInterval(load, 30_000); return () => clearInterval(i); }, [load]);
   const sel = d?.configs.find((c) => c.id === cfg);
@@ -87,7 +87,7 @@ function PaperPage() {
           </section>
           <section aria-label="Research" className="rounded border border-border p-4">
             <h2 className="mb-2 text-lg">Research relevance</h2>
-            <p className="text-xs text-neutral-300">Decisions changed by research (C vs B): {d.research.changedDecisions}.</p>
+            <p className="text-xs text-neutral-300">Decisions changed by pre-entry research (E vs C): {d.research.changedDecisions}.</p>
             {d.research.events.map((e, i) => <p key={i} className="border-t border-border py-1 font-mono text-xs">{JSON.stringify(e)}</p>)}
           </section>
         </div>
