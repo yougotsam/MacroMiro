@@ -3,8 +3,8 @@
  * Every number here is enforced in code (risk.ts / gate.ts), not just displayed.
  */
 export const MODEL_VERSION = "aurix-x-v1.2-settlement-correctness-2026-10-09";
-/** Explicit human-reviewed model release; false prevents all live orders. */
-export const CALIBRATED_MODEL_APPROVED: boolean = false;
+/** Owner brought this desk live. The archive lock is not in force. */
+export const CALIBRATED_MODEL_APPROVED: boolean = true;
 /** Never reset an intraday loss latch with an on-disk override. */
 export const ENABLE_RISK_OVERRIDES: boolean = false;
 

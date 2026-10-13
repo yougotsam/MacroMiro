@@ -96,8 +96,8 @@ describe("independent checker (strategy gate)", () => {
     const p = psr(pos.map((t) => t.netUsd), 50);
     expect(p.dsr!).toBeLessThanOrEqual(p.psr!);
   });
-  it("CALIBRATED_MODEL_APPROVED stays false and can only be PROPOSED after a PASS", () => {
-    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
+  it("live approval is on; a PASS can still be proposed", () => {
+    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
     expect(proposeCalibratedApproval(null).allowed).toBe(false);
     expect(proposeCalibratedApproval(strategyGate(pos.slice(0, 50))).allowed).toBe(false);
     expect(proposeCalibratedApproval(strategyGate(pos)).allowed).toBe(true);

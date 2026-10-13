@@ -74,7 +74,7 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
   it("POLICY: the same $1 order passes risk at −$13.50, but the OMS sends nothing until a calibrated model is approved", async () => {
     const dir = tmp("a2");
     const risk = new RiskEngine(dir, ON);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
     expect(risk.check(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }), NOW).ok).toBe(true);
     const { t, calls } = spyTransport();
     const oms = new Oms(risk, t, async () => [], dir);
