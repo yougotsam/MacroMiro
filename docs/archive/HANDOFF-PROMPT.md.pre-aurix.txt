@@ -1,3 +1,5 @@
+RETIRED 2026-10-09. HISTORICAL ONLY. DO NOT EXECUTE THESE RULES.
+
 You are picking up the MacroMiro Kalshi desk on `main` of https://github.com/yougotsam/MacroMiro.git. Read `HANDOFF.md`, `docs/STRATEGY.md`, and `src/lib/scan/edge.ts` before changing a rule. `edge.ts` wins if a skill disagrees.
 
 This is a 15-minute binary desk for KXBTC15M, KXETH15M, KXSOL15M, and KXGOLD15M. Do not move it to perpetuals.

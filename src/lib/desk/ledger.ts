@@ -17,7 +17,16 @@ export type Decision = {
   feature_shift: number | null;
   p: number | null;
   quotes: Record<string, number | null> | null;
+  /** displayed top-of-book sizes behind the YES bid and the NO bid */
+  depth?: { yes_bid_size: number | null; no_bid_size: number | null } | null;
   fee_type: string | null;
+  /** event-specific quadratic fee multiplier actually used */
+  fee_multiplier?: number | null;
+  /** the trade the gate would have made while a release/safety gate blocked it (never sent) */
+  shadow_best?: { side: string; mode: string; price: number; count: number; fee: number; edge: number; edge_base: number } | null;
+  approval?: { ok: boolean; why: string; p_cal: number | null; ev_per_contract: number | null; cushion: number } | null;
+  timing?: { policy: string; bucket: string | null } | null;
+  confluence?: { long: { score: number; setup: string; eligible: boolean }; short: { score: number; setup: string; eligible: boolean } } | null;
   best: { side: string; mode: string; price: number; count: number; fee: number; edge: number; edge_base: number } | null;
   action: "BUY" | "NO_TRADE" | "REFUSED" | "CANCEL";
   failed_gate: string | null;

@@ -1,6 +1,7 @@
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { pushInbox, type InboxEvent } from "@/lib/printgate/inbox.server";
 import { DATA_ROOT } from "@/lib/data-root";
+import { spendAllowed } from "@/lib/ops/operating-mode";
 
 const API = "https://api.firecrawl.dev/v2";
 const KEY_FILES = ["/workspace/.grok/secrets/fc"];
@@ -43,6 +44,8 @@ async function scrape(url: string): Promise<{ ok: true; markdown: string } | { o
   const hit = pageCache.get(url);
   if (hit && Date.now() - hit.at < 10 * 60_000) return { ok: true, markdown: hit.markdown };
   if (!firecrawlReady()) return { ok: false, error: "no key" };
+  const gate = spendAllowed("radar_official_scrape");
+  if (!gate.ok) return { ok: false, error: gate.reason };
   const res = await fetch(`${API}/scrape`, {
     method: "POST",
     signal: AbortSignal.timeout(20000),
@@ -84,6 +87,8 @@ export async function pullOfficial(): Promise<{ live: boolean; events: InboxEven
 
 export async function startAgent(body: unknown) {
   if (!firecrawlReady()) return { ok: false as const, id: null, error: "no key" };
+  const gate = spendAllowed("intel_clerks");
+  if (!gate.ok) return { ok: false as const, id: null, error: gate.reason };
   const res = await fetch(`${API}/agent`, {
     method: "POST",
     signal: AbortSignal.timeout(15000),
@@ -122,6 +127,8 @@ export async function ensureMonitor() {
     const checks = json.checks || json.data || [];
     return { id: saved.id, status: res.ok ? "polling" : "error", checks: Array.isArray(checks) ? checks.length : 0, error: res.ok ? "" : json.error || `http ${res.status}` };
   }
+  const gate = spendAllowed("calendar_monitors");
+  if (!gate.ok) return { id: null, status: "standby", checks: 0, error: gate.reason };
   const res = await fetch(`${API}/monitor`, {
     method: "POST",
     signal: AbortSignal.timeout(20000),
@@ -150,6 +157,8 @@ export async function cancelAgent(id: string) {
 
 export async function searchWeb(query: string) {
   if (!firecrawlReady()) return { ok: false as const, error: "no key", data: [] as unknown[] };
+  const gate = spendAllowed("news_search");
+  if (!gate.ok) return { ok: false as const, error: gate.reason, data: [] as unknown[] };
   const res = await fetch(`${API}/search`, {
     method: "POST",
     signal: AbortSignal.timeout(15000),
@@ -163,6 +172,8 @@ export async function searchWeb(query: string) {
 /** Firecrawl news search (last day by default). Titles and links only; nothing here can trade. */
 export async function searchNews(query: string, limit = 5, tbs = "qdr:d") {
   if (!firecrawlReady()) return { ok: false as const, error: "no key", items: [] as { title: string; url: string; date: string }[] };
+  const gate = spendAllowed("mirofish_seeding");
+  if (!gate.ok) return { ok: false as const, error: gate.reason, items: [] as { title: string; url: string; date: string }[] };
   const res = await fetch(`${API}/search`, {
     method: "POST",
     signal: AbortSignal.timeout(20000),
@@ -182,6 +193,8 @@ export async function scrapeArticle(url: string): Promise<{ ok: true; markdown: 
   const hit = pageCache.get(`article:${url}`);
   if (hit && Date.now() - hit.at < 10 * 60_000) return { ok: true, markdown: hit.markdown, title: "" };
   if (!firecrawlReady()) return { ok: false, error: "no key" };
+  const gate = spendAllowed("mirofish_seeding");
+  if (!gate.ok) return { ok: false, error: gate.reason };
   let res: Response;
   try {
     res = await fetch(`${API}/scrape`, {

@@ -10,6 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as IntelGridRouteImport } from './routes/intel-grid'
+import { Route as PaperRouteImport } from './routes/paper'
+import { Route as ResearchRouteImport } from './routes/research'
 import { Route as TapRouteImport } from './routes/tap'
 import { Route as ApiFirecrawlInboxRouteImport } from './routes/api/firecrawl/inbox'
 import { Route as ApiFirecrawlIntelRouteImport } from './routes/api/firecrawl/intel'
@@ -41,6 +44,21 @@ import { Route as ApiLiveSwarmStreamRouteImport } from './routes/api/live/swarm/
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IntelGridRoute = IntelGridRouteImport.update({
+  id: '/intel-grid',
+  path: '/intel-grid',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaperRoute = PaperRouteImport.update({
+  id: '/paper',
+  path: '/paper',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResearchRoute = ResearchRouteImport.update({
+  id: '/research',
+  path: '/research',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TapRoute = TapRouteImport.update({
@@ -181,6 +199,9 @@ const ApiLiveSwarmStreamRoute = ApiLiveSwarmStreamRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/intel-grid': typeof IntelGridRoute
+  '/paper': typeof PaperRoute
+  '/research': typeof ResearchRoute
   '/tap': typeof TapRoute
   '/api/firecrawl/inbox': typeof ApiFirecrawlInboxRoute
   '/api/firecrawl/intel': typeof ApiFirecrawlIntelRoute
@@ -211,6 +232,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/intel-grid': typeof IntelGridRoute
+  '/paper': typeof PaperRoute
+  '/research': typeof ResearchRoute
   '/tap': typeof TapRoute
   '/api/firecrawl/inbox': typeof ApiFirecrawlInboxRoute
   '/api/firecrawl/intel': typeof ApiFirecrawlIntelRoute
@@ -242,6 +266,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/intel-grid': typeof IntelGridRoute
+  '/paper': typeof PaperRoute
+  '/research': typeof ResearchRoute
   '/tap': typeof TapRoute
   '/api/firecrawl/inbox': typeof ApiFirecrawlInboxRoute
   '/api/firecrawl/intel': typeof ApiFirecrawlIntelRoute
@@ -274,6 +301,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/intel-grid'
+    | '/paper'
+    | '/research'
     | '/tap'
     | '/api/firecrawl/inbox'
     | '/api/firecrawl/intel'
@@ -304,6 +334,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/intel-grid'
+    | '/paper'
+    | '/research'
     | '/tap'
     | '/api/firecrawl/inbox'
     | '/api/firecrawl/intel'
@@ -334,6 +367,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/intel-grid'
+    | '/paper'
+    | '/research'
     | '/tap'
     | '/api/firecrawl/inbox'
     | '/api/firecrawl/intel'
@@ -365,6 +401,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  IntelGridRoute: typeof IntelGridRoute
+  PaperRoute: typeof PaperRoute
+  ResearchRoute: typeof ResearchRoute
   TapRoute: typeof TapRoute
   ApiFirecrawlInboxRoute: typeof ApiFirecrawlInboxRoute
   ApiFirecrawlIntelRoute: typeof ApiFirecrawlIntelRoute
@@ -399,6 +438,27 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/intel-grid': {
+      id: '/intel-grid'
+      path: '/intel-grid'
+      fullPath: '/intel-grid'
+      preLoaderRoute: typeof IntelGridRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/paper': {
+      id: '/paper'
+      path: '/paper'
+      fullPath: '/paper'
+      preLoaderRoute: typeof PaperRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/research': {
+      id: '/research'
+      path: '/research'
+      fullPath: '/research'
+      preLoaderRoute: typeof ResearchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tap': {
@@ -609,6 +669,9 @@ const ApiLiveSwarmRouteWithChildren = ApiLiveSwarmRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  IntelGridRoute: IntelGridRoute,
+  PaperRoute: PaperRoute,
+  ResearchRoute: ResearchRoute,
   TapRoute: TapRoute,
   ApiFirecrawlInboxRoute: ApiFirecrawlInboxRoute,
   ApiFirecrawlIntelRoute: ApiFirecrawlIntelRoute,

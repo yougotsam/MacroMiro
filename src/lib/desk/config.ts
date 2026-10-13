@@ -2,7 +2,11 @@
  * MacroMiro desk engine v1 — one place for every live limit.
  * Every number here is enforced in code (risk.ts / gate.ts), not just displayed.
  */
-export const MODEL_VERSION = "desk-v1.0-settle-martingale-2026-10-08";
+export const MODEL_VERSION = "aurix-x-v1.2-settlement-correctness-2026-10-09";
+/** Explicit human-reviewed model release; false prevents all live orders. */
+export const CALIBRATED_MODEL_APPROVED: boolean = false;
+/** Never reset an intraday loss latch with an on-disk override. */
+export const ENABLE_RISK_OVERRIDES: boolean = false;
 
 export const SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXGOLD15M"] as const;
 export type Series = (typeof SERIES)[number];
@@ -19,9 +23,57 @@ export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string
 };
 
 // ── Risk (hard) ──────────────────────────────────────────────────────────────
-export const DAILY_STOP_USD = -15; // ET day; realized + fees + worst case of open positions and resting orders
-export const MAX_ORDER_COST_USD = 3; // count × price + fee
-export const MAX_OPEN_WORST_USD = 12; // all open positions + resting orders, worst case
+/**
+ * Approved research risk settings (Sameer, 2026-10-09, PR #2 round 3). One typed object, enforced in risk.ts
+ * on the final OMS choke point. Changing a number is a reviewed code release; there is no on-disk override.
+ *  - mode "usd": the USD numbers apply as written.
+ *  - mode "pct_of_account": each limit = pct × account value (Kalshi balance + portfolio value), but never looser
+ *    than `ceilingUsd` (the ceilings default to the approved USD numbers, so % mode can only tighten until a
+ *    reviewed release raises a ceiling). Unknown account value in % mode refuses every order (fail closed).
+ * Day stop: realized + fees + worst case of open positions, resting orders and ambiguous sends (ET day).
+ */
+export type LimitSet = { dayStop: number; total: number; perTicker: number; correlated: number; perOrder: number };
+export type RiskLimits = { mode: "usd" | "pct_of_account"; usd: LimitSet; pct: LimitSet; ceilingUsd: LimitSet };
+const APPROVED_USD: LimitSet = { dayStop: -15, total: 9, perTicker: 3, correlated: 4, perOrder: 3 };
+export const RISK_LIMITS: RiskLimits = Object.freeze({
+  mode: "usd",
+  usd: Object.freeze({ ...APPROVED_USD }),
+  // placeholders for later scaling — owner to set; inactive while mode = "usd"
+  pct: Object.freeze({ dayStop: -0.15, total: 0.09, perTicker: 0.03, correlated: 0.04, perOrder: 0.03 }),
+  ceilingUsd: Object.freeze({ ...APPROVED_USD }),
+}) as RiskLimits;
+
+export type ResolvedLimits = ({ ok: true } & LimitSet) | { ok: false; why: string };
+/** Pure: the USD limits in force for an account value (null = unknown). */
+export function resolveRiskLimits(l: RiskLimits, accountValueUsd: number | null | undefined): ResolvedLimits {
+  const vals = (x: LimitSet) => [x.dayStop, x.total, x.perTicker, x.correlated, x.perOrder];
+  const sane = (x: LimitSet) => vals(x).every(Number.isFinite) && x.dayStop < 0 && x.total > 0 && x.perTicker > 0 && x.correlated > 0 && x.perOrder > 0;
+  if (!sane(l.usd) || !sane(l.ceilingUsd)) return { ok: false, why: "risk limits misconfigured" };
+  if (l.mode === "usd") return { ok: true, ...l.usd };
+  if (l.mode !== "pct_of_account") return { ok: false, why: "risk limit mode unknown" };
+  if (!sane(l.pct) || vals(l.pct).some((x) => Math.abs(x) > 1)) return { ok: false, why: "risk % limits misconfigured" };
+  if (accountValueUsd == null || !Number.isFinite(accountValueUsd) || accountValueUsd <= 0) return { ok: false, why: "account value unknown (% limits)" };
+  const a = accountValueUsd;
+  const r4 = (x: number) => Math.round(x * 10_000) / 10_000;
+  return {
+    ok: true,
+    dayStop: r4(Math.max(l.pct.dayStop * a, l.ceilingUsd.dayStop)), // less negative = tighter
+    total: r4(Math.min(l.pct.total * a, l.ceilingUsd.total)),
+    perTicker: r4(Math.min(l.pct.perTicker * a, l.ceilingUsd.perTicker)),
+    correlated: r4(Math.min(l.pct.correlated * a, l.ceilingUsd.correlated)),
+    perOrder: r4(Math.min(l.pct.perOrder * a, l.ceilingUsd.perOrder)),
+  };
+}
+export const DAILY_STOP_USD = RISK_LIMITS.usd.dayStop; // −15 (approved 2026-10-09; was −5)
+export const MAX_ORDER_COST_USD = RISK_LIMITS.usd.perOrder; // count × price + fee
+export const MAX_OPEN_WORST_USD = RISK_LIMITS.usd.total; // all open positions + resting orders + ambiguous sends, worst case
+/** Worst case allowed on ONE ticker: open + resting + ambiguous sends + the new order. */
+export const MAX_TICKER_WORST_USD = RISK_LIMITS.usd.perTicker;
+/**
+ * Worst case allowed in ONE correlated group: same direction across all crypto series (BTC/ETH/SOL/XRP), any open
+ * window; gold is its own group (exposure.ts). Approved $4.
+ */
+export const MAX_CORRELATED_WORST_USD = RISK_LIMITS.usd.correlated;
 export const MAX_ORDERS_PER_TICKER_WINDOW = 3;
 export const MAX_ORDERS_PER_TICK = 1;
 export const LOSS_STREAK_PAUSE = 3; // consecutive losing settlements…
@@ -34,7 +86,7 @@ export const PRICE_MAX = 0.93;
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;
 export const BASE_MIN_EDGE = 0.01; // the settlement model alone (no features) must show this much on the chosen side/price
-export const FEATURE_MAX_SHIFT = 0.04;
+export const FEATURE_MAX_SHIFT = 0; // no probability reweighting without held-out calibration
 export const P_CLAMP = 0.98; // never claim more certainty than this
 export const MIN_SECONDS_LEFT = 3;
 
@@ -67,3 +119,18 @@ export const LAST_MINUTE_MIN_PRICE = 0.05; // never buy under 5¢ in the last mi
 export const TICK_MS = 1_000;
 export const SNAPSHOT_EVERY_MS = 2_000; // account snapshot cadence (refreshed immediately after any send)
 export const GUARD_EVERY_MS = 250; // fast-move guard reads the websocket prints, no REST
+
+// ── Approval policy (round 3, Sameer 2026-10-09) ───────────────────────────────
+/**
+ * Approval needs a CALIBRATED settlement probability (an operator-approved calibrator file bound to this model version)
+ * and a positive conservative EV at the executable Kalshi price after fees and this cushion. The 13-point confluence
+ * score is kept as a ranker/context only. Rollback flag: false = the exact pre-round-3 gate path.
+ */
+export const APPROVAL_POLICY_ENFORCED: boolean = true;
+/** Uncertainty cushion on the calibrated side probability (placeholder until calibration evidence sets it; owner decision). */
+export const APPROVAL_CUSHION = 0.03;
+export function calibratorPath() {
+  return `${dataDir()}/calibrator.json`;
+}
+/** Which time-to-expiry policy is active ("current" reproduces the pre-round-3 timing exactly). */
+export const TIMING_POLICY: "current" | "final10_proposal" = "current";

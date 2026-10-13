@@ -18,7 +18,10 @@
     "check:auth": "node scripts/check-auth-invariant.mjs",
     "test": "bun test",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "desk:evaluate": "bun scripts/desk-evaluate.ts",
+    "paper": "bun scripts/paper/run.ts",
+    "paper:loop": "bun scripts/paper/run.ts --loop 60"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

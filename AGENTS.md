@@ -349,3 +349,13 @@ auth/db: OFF by default — sign-in, @/lib/db or migrations ONLY on an accounts 
 never:   build an app for a greeting/number/question; invent imagine_* calls;
          ask the user to run commands; delete or abandon /workspace/startup.sh
 ```
+
+## Sniper Desk V1 (paper only)
+- Strategy: Kalshi 15-minute BTC/ETH/SOL/XRP/gold settlement model, 13-pt sniper confluence (Coinbase 15m/1h), 8 named setups, and an EV after Kalshi fees at the executable ask. The probability stays EXPERIMENTAL until an owner-approved calibrator exists.
+- Commands: `npm run dev` (UI at /paper), `npm run paper` / `npm run paper:loop`, `bun scripts/paper/confluence-diag.ts`, `bun scripts/paper/recover-outcomes.ts`, `bun scripts/ops/no-orders-check.ts`, `bun scripts/ops/mode.ts status`. Collector: `scripts/desk-observe.ts`, which is GET-only. Run one instance only.
+- Risk (approved): −$15 daily stop, $9 total, $3 per ticker, $4 same-direction correlated crypto. Never change these, `CALIBRATED_MODEL_APPROVED`, or the switch files. Never run `/workspace/startup.sh`. Paid Firecrawl needs an open operator round (`scripts/ops/round.ts`).
+- Guide: docs/LAUNCH_GUIDE.md.
+
+## MacroMiro canonical docs
+For the trading desk, read `AGENTS.project.md` → `docs/product/PRD.md` first. `docs/archive/` is historical only.
+Loop engineering (STATE.md memory, blind checker, risk watchdog, AI maker A/B): `docs/operations/LOOP_ENGINEERING.md`. Loop memory lives in `/workspace/data/loop/STATE.md`; read it at the start of desk work.

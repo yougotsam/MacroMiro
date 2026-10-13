@@ -1,0 +1,170 @@
+# AURIX-X — Release Report / Honest Verification Status
+
+Date: October 9, 2026
+Input: uploaded `MacroMiro-desk-brain-mirofish.zip`; source branch `desk-brain-mirofish`.
+Output: modified complete repository ZIP intended for a NEW review branch. NOT pushed to GitHub.
+**Release verdict: NOT READY FOR LIVE AUTONOMOUS TRADING.**
+
+## What was actually changed
+- `src/lib/desk/settlement.ts`: quarter-hour CF Benchmark averaging window fixed
+  to `(close−60 seconds, close]`; missing locally observed prints fail unless an authenticated, count/time-matched Kalshi official final-minute accumulator supplies the authoritative aggregate; no index values are fabricated.
+- `src/lib/desk/feeds.ts`: index freshness validation; captures official Kalshi final-minute
+  60-second accumulator to cross-check locally reconstructed ticks.
+- `src/lib/desk/engine.ts`: validates shard 2, official market price grid,
+  quote/index freshness and accumulator, true event-specific fees, and explicit
+  data/strategy-readiness diagnostics. Probabilities remain UNCALIBRATED, therefore no live order.
+- `src/lib/desk/kalshi-read.ts`: market/event fee override lookup, market-specific legal
+  price increments, missing shard detection, and fail-closed parsing of critical
+  financial exposure fields.
+- `src/lib/desk/gate.ts`: NaN/missing prices and forecast validation, maker bids on market tick grid.
+- `src/lib/desk/risk.ts`: validate numeric sizes and current account snapshot, stop-latch corruption
+  cannot silently reset, disk overrides disabled.
+- `src/lib/desk/oms.ts`: all live order submissions blocked pending reviewed model;
+  ambiguous sends stay unresolved/risk reserved instead of auto-`not_found`;
+  corrupt journal fails closed.
+- `src/lib/desk/config.ts`: model version/release gate; research bounds ($3/order,
+  $9 aggregate risk, -$5 day worst). Heuristic +4 percentage-point feature adjustment disabled.
+- NEW `src/lib/desk/sniper.ts`: parameterized technical research features (Fibonacci pockets, candidate order blocks, RSI divergence, VWAP, CVD, EMA, MACD, Bollinger, ATR, ADX) and 13-point
+  grouped evidence with multi-timeframe readiness checks. NOT falsely treated as a calibrated
+  settlement probability. Missing true market data => ineligible.
+- NEW `src/lib/desk/intelligence.ts`: read-only Spark/MiroFish/Firecrawl seed/Alexandria
+  status and explicit-time news veto. No LLM narrative is converted into pYES.
+- `src/components/envelope.tsx`: perps cockpit no longer submits orders to retired fire route
+  or displays an invented 15.2× default leverage.
+- Replaced old contradictory `docs/STRATEGY.md`, `HANDOFF.md`, `HANDOFF-PROMPT.md`,
+  `README.md`, and `AGENTS.project.md`. Original content retained in clearly marked
+  `docs/archive/*` historical files.
+- Retired legacy 767-line test suite archived with evidence; new
+  `src/lib/desk/desk.test.ts` plus `aurix.test.ts` cover current rules. They must be
+  run under Bun after dependency installation; no claim of a full green suite.
+
+## Three verification passes
+1. SOURCE / MECHANICS: verified Kalshi docs for official 15m averaging,
+   market-specific `price_ranges`, and event-level fee overrides. Compared
+   these against actual TS implementation.
+2. EXECUTION / SCOPE: inspected actual order-post references in TS/TSX; only
+   `src/lib/desk/oms.ts` uses signed desk order transport. Perps `perp-fire` is
+   HTTP 410 in the input ZIP. No independent deployed-server security probe made.
+3. OFFLINE CODE / TESTS: TypeScript AST/parser pass and real Node runtime
+   smoke exercise using transpiled source modules (settlement tick boundary,
+   missing-tick refusal or verified official-aggregate recovery, market grids, invalid forecasts, sniper insufficient
+   data, bad risk snapshot, and corrupted risk latch).
+
+## Tests NOT run / cannot be claimed
+- `bun test`: Bun unavailable in this environment.
+- `npm run typecheck`, `npm run lint`, build: project dependencies could not be
+  installed offline. No CI service linked.
+- Authenticated Kalshi WebSocket/REST/Pyth, trade/fee/settlement historical
+  reconciliation, execution/fill integration: no API credentials or live runtime.
+- Backtest on 328 reported unique contracts: user-provided history contains
+  missing settlement reference fields and is NOT validated as a training dataset.
+- MiroFish backend, Firecrawl API, Spark/Alexandria keys, clocks, task scheduling:
+  source integration visible, live correctness not verifiable from repository ZIP.
+- 200 real/forced OMS HTTP timeout & partial-fill tests with current deployment
+  and order journal concurrency: not yet executed.
+
+## Critical remaining engineering for the complete strategy
+**P0 — production containment / CI:**
+- Run dependency installation, `bun test`, `npm run typecheck`, `npm run lint`,
+  `npm run check:auth`, plus HTTP-route and source-to-Kalshi demo integration
+  tests. Diagnose and fix actual failures rather than bypassing them.
+- Verify trade history ownership and revoke unknown trade-writing credentials.
+- Authoritative OMS reconciliation across restarts/concurrent workers; 200 forced
+  ambiguous timeout/partial fill trials without duplicate exposure.
+- Verify shard 2 funded balance with actual Kalshi account. Never auto-transfer funds.
+- Confirm each product's live event rules, source authorization and
+  event fee overrides, time-to-expiry, quote precision and perps permission.
+
+**P1 — feature data and real predictive validation:**
+- Persistent 15m and 1h spot/futures OHLCV covering at least the required EMA200
+  warm-up and confirmed pivots; real matched-volume, CVD/aggressor data and market depth.
+- Full non-repainting BOS/MSS/liquidity sweep/FVG/OB/Golden Pocket detector coupled
+  to structurally valid strategy-entry candidate state, not simplistic indicator voting.
+- Calibrated contract-level model trained on unique outcomes with purged temporal
+  holdout; compare to Kalshi bid/ask probability and a simple strike-distance/
+  time-to-expiry/volatility benchmark; calculate *actual after-cost edge*.
+- Treat MiroFish forecasts and Spark/Alexandria event claims as contextual until
+  empirical incremental after-cost value is demonstrated.
+- Separate independently built Kalshi perpetual exchange/margin/leverage/funding,
+  liquidation and bracket-emergency execution; disabled until then.
+
+## Safe handoff to GitHub agent
+1. Create `fix/aurix-x-2026-10-09` from `desk-brain-mirofish`.
+2. Apply the complete modified repository tree as a CHANGESET; do not wipe git history
+   or overwrite runtime secrets/data. Review changed `src/`, `docs/`, and tests.
+3. Run project dependency install and exact scripts; repair **all** reported failures.
+4. Prove P0 execution/credential/risk/OMS safety and P1 probability dataset and model.
+5. Merge only after PR review. Keep `CALIBRATED_MODEL_APPROVED = false` unless a
+   separately reviewed, out-of-sample positive after-cost calibration release exists.
+   Do NOT flip it just because a unit test passes or to make the dashboard say BUY.
+
+## Verified docs (sources reviewed 2026-10-09)
+- https://docs.kalshi.com/websockets/cfbenchmarks-value
+- https://docs.kalshi.com/api-reference/events/get-event
+- https://docs.kalshi.com/api-reference/orders/create-order-v2
+- https://docs.kalshi.com/llms.txt
+
+## fix/aurix-x follow-up (2026-10-09, applied on the box from desk-brain-mirofish @ 07277d9)
+Run with Bun 1.4.2 and installed dependencies. Live orders stay off: `CALIBRATED_MODEL_APPROVED = false`, switch files untouched, engine not started.
+- Results: `bun test` 411 pass / 0 fail (34 files); `tsc --noEmit` clean; `eslint .` 0 errors / 60 warnings; `npm run check:auth` OK.
+  Production `vite build` fails, and it fails the same way on the base branch: `src/routes/index.tsx` imports `@/lib/envelope/kill.server` into client code. This is outside this patch and was not changed.
+- Fixed in this branch:
+  - Brain safety test: `engine.ts` no longer imports the MiroFish/Spark/Firecrawl bridge. The macro veto lives in `macro-calendar.ts`, which reads only the calendar.
+  - Review B1: pending order risk counts only sends that are still ambiguous (intent/unknown). Before, every acknowledged order from every past day was counted. The real journal held $141.16 of that.
+  - Review B2: NO ("ask") orders are now read as NO in the resting-order guard, and unreadable orders are pulled.
+  - Review B3: the official 60 s accumulator is matched to the print at second resolution.
+  - Three lint errors that already existed.
+- Tests: the 767-line legacy suite is back as `desk-v1-regression.test.ts`. 42 checks run unchanged. The 13 that encoded the old numbers (−$15, $12, overrides, live POST) now assert the stricter rules and are labelled "POLICY (aurix-x)".
+- P1 market data: `market-data.ts` pulls public Coinbase 15m/1h OHLCV and signed trades, and adds non-repainting validation, gap reporting, an EMA200 warm-up check and a bar store. Gold is unsupported. These are research inputs only and are not wired into the engine.
+- P1 probability validation: `calibration.ts` and `scripts/desk-validate.ts` do a ledger/outcome join and a purged temporal split. They compute Brier and log loss against the Kalshi mid and the base rate, fit a train-only recalibration, and replay taker trades after costs. The verdict is advisory only.
+  - On the desk's 2026-10-08 ledger (235 contracts, 97 in test): model Brier 0.1119 vs market mid 0.1085. Taker replay lost 32 trades, −$3.46 (mean −$0.108 ± $0.061 SE).
+  - The model does NOT beat the market, and profitability is NOT shown.
+- Still open: the non-repainting BOS/MSS/FVG/OB detector, the 200 forced OMS timeout trials, authenticated Kalshi demo/integration tests, the per-underlying correlated risk budget, the cushion, the max-time-left entry rule, the per-ticker $ cap, the day-stop double count, review B4 (the shadow ledger drops the would-be trade) and review B5 (throws inside loops).
+
+## Round 2 (PR #2 review follow-up) — still do-not-merge, live lock ON
+
+- Codex findings (7) fixed in `ea16c78` with regression tests: settlement accumulator by second; event fee multiplier from public `/series` in replay; per-model-version validation; macro calendar fails CLOSED (missing/malformed/stale >7d/undated major event); window-clustered SE; executable depth (fill ≤ displayed size at the ask, unknown depth = skipped); replay uses live gate bands incl. last-minute minimum.
+- Build: `kill.server` moved behind `createServerFn` (`src/lib/envelope/begun.ts`), `ca7f823`; vite build passes, kill switch absent from static client output.
+- Day-stop double count (settled tickers excluded from open), B4 shadow-ledger of would-be trades, B5 corrupt journal rows skipped+counted and sending refused, correlated (window × direction) exposure tracked and checked. Correlated cap = $9 (= aggregate cap; no approved number changed) — accounting only until a tighter cap is chosen.
+- OMS harness (`src/lib/desk/oms-harness.test.ts`): 200 seeded scenarios, mocked Kalshi only, global fetch throws (0 network calls). 600 submits / 600 posts / 405 exchange orders: 0 duplicate posts, 0 posts without intent, 0 unreserved exposure, 0 snapshot mismatches, 0 created-but-unreconciled, 0 rejected-still-reserved, 0 next-day carry-over mismatches. 145 sends that never reached the exchange remain reserved (fail closed, by design; needs an operator-reviewed release rule). Mutation checks: re-sending on timeout → 354 duplicate posts flagged; reverting B1 → 192 next-day mismatches flagged.
+- Validation rerun (genuine fees: 237 events, all multiplier 1): desk-v1.0…+guard-1 test Brier 0.11618 (recal 0.11556) vs market mid 0.11296; 92 test contracts / 19 windows. Executable replay: 0 trades — historical ledger has no recorded depth (329 rows skipped). Sensitivity assuming depth 1: 22 trades / 11 windows, −$2.42, mean −$0.110, clustered SE $0.069. Verdict: not review-worthy. No profitability claim.
+
+## Round 3 — still do-not-merge, live lock ON (`CALIBRATED_MODEL_APPROVED = false`, switch files untouched)
+
+Change cards: `docs/AURIX_ROUND3_CHANGE_CARDS.md`.
+- Risk (`0f2f931`): owner-approved research limits (day −$15, total $9, per ticker $3, same-direction crypto $4, per order $3) in
+  `RISK_LIMITS`; optional %-of-account mode capped by USD ceilings; unknown account value / missing exposure maps → refuse.
+- Recovery (`681de5a`): signed READ-ONLY Kalshi client with a path allow-list (balance, orders, fills, positions, settlements,
+  market); ambiguous sends classified found / evidence_incomplete / market_open / proven_absent / ambiguous; release only via an
+  operator approval (name, reason, evidence ≤ 15 min old) in an append-only queue. No timeout release. `scripts/desk-recover.ts`.
+- Approval/timing/indicators/research (`c10e182`): see cards 2–4. Indicators: BOS/MSS, sweeps, FVG, order blocks, Fibonacci,
+  EMA 7/14/50/200, VWAP, RSI, Stoch RSI, MACD, ATR, Bollinger, candle patterns, RVOL, CVD (gap-aware trade tape), volume profile,
+  each reported available/unavailable with reason (gold: no volume source → volume features unavailable).
+- Collector (`4b2e7d4`): `scripts/desk-observe.ts`, separate process, GET-only fetch guard installed first, no OMS/engine/risk in
+  its import graph (test), WS sends only subscribe. Records quotes, depth, thresholds, index + official average, fees, outcomes,
+  every rejected candidate with its gate, and per-minute indicators.
+- Analysis (`2cdd527`): `scripts/desk-analyze.ts` — model vs Kalshi mid by market and expiry bucket (cluster-bootstrap CI),
+  executable P/L by strategy × market × bucket with SE clustered by close window.
+  Historical (desk-v1.0+guard-1, OOS 329 obs / 92 contracts / 19 windows): Brier 0.1162 vs mid 0.1130, skill −0.029
+  [−0.068, +0.005]. Executable trades 0 (no depth recorded). Hypothetical depth-1: gate −$2.42 / 22 trades (mean −$0.110,
+  SE $0.069); approval rule OOS −$2.52 / 21 trades (mean −$0.120, SE $0.081). No profitability claim.
+
+## Round 3.1 + 3.2 — still do-not-merge, live lock ON (`CALIBRATED_MODEL_APPROVED = false`, `MIROFISH_FEATURES_APPROVED = false`)
+
+Change cards 5–6 in `docs/AURIX_ROUND3_CHANGE_CARDS.md`; install findings in `docs/MIROFISH_VERIFICATION.md`.
+- Calendar (`d61d2e3`): official BLS ics + BEA ics + Fed FOMC page, refreshed every 6 h (`scripts/desk-calendar-refresh.ts`,
+  GET-only). Verified by content: all required sources fetched, ≤ 7 d old, every event sourced, ≥ 1 real major event within 45 d.
+  Unverified → the trading gate fails closed; the collector never reads it. Live: verified, 6 upcoming majors, next CPI 2026-10-14 08:30 ET.
+- Validation (`fbacf29`): walk-forward by close window (min 20 train windows, step 5, 30-min purge), executable YES and NO after
+  fees, never auto-approves (candidate files have `approvedBy: null` and are refused by the loader). Historical OOS (365 rows,
+  5 folds): Brier mid 0.1114, model 0.1147 (skill −0.030 [−0.064, +0.003]), Platt-recalibrated 0.1146 (−0.029 [−0.055, −0.002]),
+  threshold+vol 0.1172, threshold+time 0.1218, coin 0.25. Executable trades 0 (no depth recorded historically).
+  Milestone is non-circular: 200 completed independent windows with 0 approved trades, then evaluate.
+- Named shadow setups (8) vs settlement-only: all < 30 contracts → insufficient. Timing buckets measured, not activated.
+- Research pipeline (`ff6f2f2`, `b380af1`, `5af6829`): Firecrawl/official page → Spark card → MiroFish graph → OASIS sim →
+  report → Alexandria → `/research` dashboard (scenarios and calibrated probabilities in separate panels). Real runs (CPI 2026-10-14):
+  `rj-mv0y26fq-156cd2` baseline (graph mirofish_21950b20b1724e7e, sim sim_8213826f62a5, report report_8ee84b659189, 3 rounds,
+  2 actions, $0.1715 — seeded with the BLS homepage, flagged) and `rj-mv0yehbx-c3446f` bearish (graph mirofish_a3a4bac329164e7a,
+  sim sim_f73efb2d9a04, report report_5a1ac0209f57, 5 rounds, 6 actions, $0.1808). Total metered spend $0.352 (cap $0.90).
+  Both sims are tiny (2–5 agents); they are narrative context, not order flow. MiroFish-enhanced vs settlement-only: not evaluable
+  (0 matched out-of-sample runs).

@@ -4,6 +4,8 @@ import { hostile, orderTrace, shadowUse } from "@/lib/intel/guard";
 import { applyFinding, emptyRecord, type CatalystRecord } from "@/lib/intel/record";
 import { workflowBody, type WorkflowName } from "@/lib/intel/workflows";
 import { DATA_ROOT } from "@/lib/data-root";
+import { budgetNow, recordCredits } from "@/lib/intel/budget.server";
+import { spendAllowed } from "@/lib/ops/operating-mode";
 
 const NAMES: WorkflowName[] = ["verify", "hunter", "contradict", "analogue", "contract"];
 const DIR = `${DATA_ROOT}/intel`;
@@ -92,6 +94,7 @@ function save(name: WorkflowName, file: IntelFile) {
     SHADOW,
     `${JSON.stringify({ at: new Date().toISOString(), workflow: name, job: file.record.sparkJobIds[0] ?? null, credits: file.record.creditsUsed, headline: file.record.headline, delta: file.record.experimentalProbabilityDelta, apply: file.shadow.apply, reason: file.shadow.reason, trade: false })}\n`,
   );
+  if (file.record.phase === "done") recordCredits(`fc_clerks:${name}`, file.record.creditsUsed, new Date(), file.record.sparkJobIds[0]);
 }
 
 function creditsOf(status: number | null, trace: number | null) {
@@ -220,6 +223,9 @@ function fold(name: WorkflowName, file: IntelFile, job: { status: string; data: 
 }
 
 export async function armClerks() {
+  // Clerks were never approved as recurring spend: they only run in RESEARCH_PAPER with intel_clerks approved.
+  // (Collecting results of already-started jobs is a free GET and still happens via refreshInvestigation.)
+  if (!spendAllowed("intel_clerks").ok) return;
   const names = ["hunter", "verify", "contradict", "analogue"] as const;
   for (const name of names) {
     let run = readRun(name);
@@ -230,6 +236,8 @@ export async function armClerks() {
     }
     const age = Date.now() - Date.parse(run.record.discoveredAt);
     if (run.record.sparkJobIds.length > 0 && Number.isFinite(age) && age < 6 * 60 * 60 * 1000 && run.record.phase !== "failed") continue;
+    // Nonessential: suspended while the monthly Firecrawl credit ceiling is hit (FIRECRAWL_MONTHLY_CREDIT_CEILING).
+    if (budgetNow().suspendNonessential) return;
     await beginInvestigation(name);
     await new Promise((r) => setTimeout(r, 35_000));
   }

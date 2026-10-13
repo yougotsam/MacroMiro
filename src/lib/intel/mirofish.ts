@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { authHeaders } from "@/lib/research/mirofish-auth";
 
 /**
  * Client for the real MiroFish Flask API (port 5001).
@@ -314,7 +315,7 @@ async function call(path: string, init: RequestInit & { timeoutMs: number }): Pr
   try {
     res = await fetch(`${base()}${path}`, {
       ...init,
-      headers: { "Accept-Language": "en", ...(init.headers ?? {}) },
+      headers: { "Accept-Language": "en", ...authHeaders(), ...(init.headers ?? {}) },
       signal: AbortSignal.timeout(init.timeoutMs),
     });
   } catch (e) {

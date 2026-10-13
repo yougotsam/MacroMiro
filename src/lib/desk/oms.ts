@@ -8,16 +8,17 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { KALSHI_HOST, kalshiDelete, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
 import { eventCancelPath } from "@/lib/scan/kalshi-order-status";
-import { ORDER_SHARD, TICKER_RE, dataDir } from "./config";
+import { CALIBRATED_MODEL_APPROVED, ORDER_SHARD, TICKER_RE, dataDir } from "./config";
 import { ordersByClientIds, type KOrder } from "./kalshi-read";
 import type { AccountSnapshot, OrderIntent, RiskEngine } from "./risk";
+import type { Evidence, RecoveryQueue } from "./recovery";
 
 export const ORDER_PATH = "/trade-api/v2/portfolio/events/orders";
 
 export type JournalRow = {
   ts: string;
   cid: string;
-  stage: "intent" | "sent" | "unknown" | "found" | "not_found" | "rejected" | "refused" | "cancel";
+  stage: "intent" | "sent" | "unknown" | "found" | "not_found" | "rejected" | "refused" | "cancel" | "released";
   ticker: string;
   side?: string;
   mode?: string;
@@ -73,31 +74,74 @@ export function orderBody(intent: OrderIntent, cid: string) {
   } as Record<string, unknown>;
 }
 
+export type Canceller = (path: string) => Promise<{ status: number }>;
+export type OmsTestHooks = {
+  /**
+   * Test harness only: stands in for CALIBRATED_MODEL_APPROVED so mocked-exchange scenarios can drive the send
+   * path. Refused at construction unless BOTH the transport and the canceller are mocks — the real signed
+   * Kalshi transport is always gated by the config constant.
+   */
+  releaseGateForMockOnly?: () => boolean;
+  canceller?: Canceller;
+  reconcileWaitMs?: number;
+};
+
 export class Oms {
   private file: string;
+  private gate: () => boolean;
+  private del: Canceller | undefined;
+  private waitMs: number;
   constructor(
     private risk: RiskEngine,
     private transport: Transport = kalshiOrderPost,
     private lookup: Lookup = ordersByClientIds,
     dir = dataDir(),
+    hooks: OmsTestHooks = {},
   ) {
     mkdirSync(dir, { recursive: true });
     this.file = `${dir}/oms-journal.jsonl`;
+    if (hooks.releaseGateForMockOnly && (transport === kalshiOrderPost || !hooks.canceller || hooks.canceller === kalshiDelete)) {
+      throw new Error("release-gate override is only allowed with a mock transport and a mock canceller");
+    }
+    this.gate = hooks.releaseGateForMockOnly ?? (() => CALIBRATED_MODEL_APPROVED);
+    this.del = hooks.canceller;
+    this.waitMs = hooks.reconcileWaitMs ?? 700;
   }
 
+  /** Rows that could not be read on the last journal pass (bad JSON, missing fields, unknown risk). */
+  corruptRows = 0;
+
+  /**
+   * Readable journal rows. A corrupt row never throws into the engine loop (review B5): it is skipped and
+   * counted, and `submit` refuses every new order while any corrupt row exists (fail closed). Cancels and
+   * reconciliation of the readable rows keep working.
+   */
   journal(): JournalRow[] {
-    if (!existsSync(this.file)) return [];
-    return readFileSync(this.file, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
-        try {
-          return JSON.parse(l) as JournalRow;
-        } catch {
-          return null;
+    if (!existsSync(this.file)) {
+      this.corruptRows = 0;
+      return [];
+    }
+    let bad = 0;
+    const rows: JournalRow[] = [];
+    for (const l of readFileSync(this.file, "utf8").split("\n")) {
+      if (!l.trim()) continue;
+      try {
+        const r = JSON.parse(l) as JournalRow;
+        if (!r || typeof r !== "object" || typeof r.cid !== "string" || typeof r.stage !== "string" || typeof r.ticker !== "string") {
+          bad += 1;
+          continue;
         }
-      })
-      .filter((x): x is JournalRow => Boolean(x));
+        if (r.stage === "intent" && !(Number.isFinite(r.worst) && (r.worst as number) > 0)) {
+          bad += 1; // an intent whose risk is unknown cannot be reserved correctly
+          continue;
+        }
+        rows.push(r);
+      } catch {
+        bad += 1;
+      }
+    }
+    this.corruptRows = bad;
+    return rows;
   }
 
   private write(row: Omit<JournalRow, "ts">) {
@@ -117,10 +161,10 @@ export class Oms {
   }
 
   /**
-   * Every send from the last 30 min that might be live (not rejected / not_found). The snapshot counts its worst
-   * case only while Kalshi does not list the client_order_id yet; once listed, Kalshi's own resting/fill numbers count.
+   * Every send whose outcome is still ambiguous (last journal stage intent/unknown), at any age. The snapshot counts its
+   * worst case only while Kalshi does not list the client_order_id; once acknowledged, Kalshi's own numbers count.
    */
-  pendingIntents(now = Date.now()): Array<{ cid: string; ticker: string; worst: number }> {
+  pendingIntents(_now = Date.now()): Array<{ cid: string; ticker: string; worst: number }> {
     const last = new Map<string, JournalRow>();
     const intent = new Map<string, JournalRow>();
     for (const r of this.journal()) {
@@ -130,8 +174,11 @@ export class Oms {
     const out: Array<{ cid: string; ticker: string; worst: number }> = [];
     for (const [cid, i] of intent) {
       const st = last.get(cid)?.stage;
-      if (st === "rejected" || st === "not_found") continue;
-      if (now - Date.parse(i.ts) > 30 * 60_000) continue;
+      // Only a send whose outcome is still ambiguous (no order id ever seen) is pending risk.
+      // Once Kalshi acknowledged it (sent/found) or it was cancelled, Kalshi's own resting/position/fill
+      // records carry its exposure; counting it here as well would add it forever, across ET days (review B1).
+      if (st !== "intent" && st !== "unknown") continue;
+      // A network-ambiguous order never ages out of risk simply because the clock advanced.
       out.push({ cid, ticker: i.ticker, worst: i.worst ?? 0 });
     }
     return out;
@@ -158,6 +205,9 @@ export class Oms {
 
   /** The single choke point. */
   async submit(intent: OrderIntent, snapshot: AccountSnapshot | null): Promise<{ ok: boolean; why: string; cid?: string; orderId?: string; status?: string; fill?: number }> {
+    this.journal();
+    if (this.corruptRows > 0) return { ok: false, why: `OMS journal has ${this.corruptRows} unreadable row(s): sending disabled until reconciled` };
+    if (!this.gate()) return { ok: false, why: "model not independently calibrated / production release disabled" };
     if (!TICKER_RE.test(intent.ticker)) return { ok: false, why: "ticker" };
     // limit orders only: an explicit price strictly inside (0,1) and a whole contract count, every time
     if (!(intent.price > 0 && intent.price < 1) || !Number.isInteger(intent.count) || intent.count < 1) return { ok: false, why: "limit price / whole count required" };
@@ -193,7 +243,7 @@ export class Oms {
   }
 
   /** Look an order up by client_order_id (never re-sends). */
-  async reconcileOne(cid: string, ticker: string, tries = 3, waitMs = 700): Promise<KOrder | null> {
+  async reconcileOne(cid: string, ticker: string, tries = 3, waitMs = this.waitMs): Promise<KOrder | null> {
     for (let i = 0; i < tries; i += 1) {
       try {
         const hit = (await this.lookup([cid])).find((o) => o.client_order_id === cid);
@@ -209,8 +259,8 @@ export class Oms {
     return null;
   }
 
-  /** On boot and every tick: settle every intent/unknown row against Kalshi. Older than 2 min and still absent → not_found. */
-  async reconcilePending(now = Date.now()) {
+  /** On boot and every tick: look every intent/unknown row up on Kalshi by client_order_id. Absent rows stay pending (never auto not_found). */
+  async reconcilePending(_now = Date.now()) {
     const last = new Map<string, JournalRow>();
     for (const r of this.journal()) last.set(r.cid, r);
     const open = [...last.values()].filter((r) => r.stage === "intent" || r.stage === "unknown");
@@ -224,14 +274,61 @@ export class Oms {
     for (const r of open) {
       const h = hits.find((o) => o.client_order_id === r.cid);
       if (h) this.write({ cid: r.cid, stage: "found", ticker: r.ticker, orderId: h.order_id, status: h.status, fill: Number(h.fill_count_fp ?? 0) });
-      else if (now - Date.parse(r.ts) > 120_000) this.write({ cid: r.cid, stage: "not_found", ticker: r.ticker });
+      // Not observed is NOT authoritative proof an order was never filled.
+      // Preserve pending risk until fill/order/account history conclusively reconciles it.
     }
     return open.length;
   }
 
+  /** Order ids of desk orders on a ticker the journal knows (sent/found/cancel rows): used to explain fills. */
+  knownOrderIds(ticker: string): Set<string> {
+    const out = new Set<string>();
+    for (const r of this.journal()) if (r.ticker === ticker && r.orderId) out.add(r.orderId);
+    return out;
+  }
+
+  /** Is this cid still an ambiguous send (last stage intent/unknown)? */
+  isAmbiguous(cid: string) {
+    return this.pendingIntents().some((p) => p.cid === cid);
+  }
+
+  /** A read-only recovery scan found the order on Kalshi under our client_order_id: record it (exchange record = proof). */
+  recordFound(e: Evidence) {
+    if (e.classification !== "found" || !e.order || !this.isAmbiguous(e.cid)) return false;
+    this.write({ cid: e.cid, stage: "found", ticker: e.ticker, orderId: e.order.order_id, status: e.order.status, fill: Number(e.order.fill_count_fp ?? 0), note: "read-only recovery scan" });
+    return true;
+  }
+
+  /**
+   * Release an ambiguous send's reserved risk ONLY with an operator approval bound to the latest read-only evidence.
+   * Never time-based. Writes the approval id into the journal and the audit queue.
+   */
+  releaseApproved(cid: string, queue: RecoveryQueue, now = Date.now()): { ok: boolean; why: string } {
+    if (!this.isAmbiguous(cid)) return { ok: false, why: "not an ambiguous send" };
+    const a = queue.approvalFor(cid);
+    if (!a) return { ok: false, why: "no operator approval for the latest evidence" };
+    const ticker = this.pendingIntents().find((p) => p.cid === cid)!.ticker;
+    this.write({ cid, stage: "released", ticker, note: `operator ${a.by} approval ${a.approvalId} (${a.classification}): ${a.reason.slice(0, 120)}` });
+    queue.markReleased(cid, a.approvalId, now);
+    return { ok: true, why: `released by approval ${a.approvalId}` };
+  }
+
   async cancel(orderId: string, ticker: string, cid: string, why: string) {
-    const r = await kalshiDelete(eventCancelPath(orderId, ticker));
+    // the real path is always the signed event-order DELETE; only a constructor-validated mock replaces it
+    const r = this.del ? await this.del(eventCancelPath(orderId, ticker)) : await kalshiDelete(eventCancelPath(orderId, ticker));
     this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${r.status}` });
     return r.status;
   }
 }
+
+/**
+ * Journal-only OMS for the read-only recovery tool: transport, lookup and canceller all throw, and the risk engine
+ * has every switch off, so it can record evidence-backed "found" rows and operator-approved releases but never send.
+ */
+export function recoveryOms(risk: RiskEngine, dir: string): Oms {
+  const never = async (): Promise<never> => {
+    throw new Error("recovery OMS never sends, looks up or cancels");
+  };
+  return new Oms(risk, never, never, dir, { canceller: never });
+}
+

@@ -60,7 +60,7 @@ type KalshiMarket = {
   volume_fp?: string;
 };
 
-let caches: Record<string, { at: number; data: UpDownRound }> = {};
+const caches: Record<string, { at: number; data: UpDownRound }> = {};
 
 function num(v: unknown) {
   const n = typeof v === "number" ? v : Number(v);
