@@ -6,3 +6,6 @@
 - Box limitation: the box pauses when idle (clock froze during waits), so long collectors need an always-on worker (see the report's hosting comparison). Buy nothing without owner approval.
 - Kalshi perps maintenance: Thursdays 3–5 AM ET. Funding prints at 04:00/12:00/20:00 UTC.
 - Incident: set mode FULL_STANDBY, stop the loops, keep all data, write a note in `docs/operations/incidents/`.
+- Perps collector (read-only WS): `nohup bun scripts/perps/collect.ts > $DATA_ROOT/perps/collector.log 2>&1 &`. Health: `$DATA_ROOT/perps/collector-status.json` (msgs, gaps, resyncs, reconnects, book ages). It stops when the box pauses; move it to an always-on worker once one is approved.
+- Perps sim: `bun scripts/perps/sim.ts 21` (labelled CAUSAL REPLAY). Report/sizing/reconciliation demo: `bun scripts/perps/report.ts`. Intel trace: `bun scripts/perps/intel-trace.ts`. Pair scan: `bun scripts/kalshi-pair-scan.ts`.
+- Demo: perps exist on demo (`external-api.demo.kalshi.co/trade-api/v2/margin`, public market data answers). Demo orders need a demo account plus demo API keys (owner step); production keys don't work there.

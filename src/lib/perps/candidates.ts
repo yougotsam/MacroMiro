@@ -21,7 +21,8 @@ export type PerpsCandidate = {
   gates: Record<string, { pass: boolean; why: string }>; decision: "NO_TRADE" | "RESEARCH_CANDIDATE"; reason: string;
 };
 
-/** Drop impossible bars (zero/negative prices, or a high/low more than 20% from the median close). */
+/** Drop impossible bars (data_ready tolerates at most 2% dropped, else NOT ready).
+ * Drop impossible bars (zero/negative prices, or a high/low more than 20% from the median close). */
 export function cleanBars(b: Candle[]): { bars: Candle[]; dropped: number } {
   const cs = b.map((x) => x.c).filter((x) => x > 0).sort((p, q) => p - q);
   const med = cs.length ? cs[Math.floor(cs.length / 2)] : 0;
@@ -70,7 +71,7 @@ export function buildPerpsCandidate(input: {
   const sideDepth = (long ? book.bids : book.asks).slice(0, 5).reduce((s, x) => s + x[1], 0);
   const stopSideDepth = (long ? book.bids : book.asks).filter((x) => (long ? x[0] >= (stop ?? 0) : x[0] <= (stop ?? Infinity))).reduce((s, x) => s + x[1], 0);
   const gates = {
-    data_ready: { pass: ready && c15.dropped + c1h.dropped === 0, why: (ready ? "60×15m + 205×1h bars" : e.missing.join("; ")) + (c15.dropped + c1h.dropped ? `; dropped ${c15.dropped + c1h.dropped} impossible bars` : "") },
+    data_ready: { pass: ready && c15.dropped + c1h.dropped <= Math.max(1, Math.floor(0.02 * (input.b15.length + input.b1h.length))), why: (ready ? "60×15m + 205×1h bars" : e.missing.join("; ")) + (c15.dropped + c1h.dropped ? `; dropped ${c15.dropped + c1h.dropped} impossible bars` : "") },
     setup: { pass: e.setup !== "NONE", why: e.setup },
     confluence_9: { pass: e.eligible, why: `${e.score}/13${e.eligible ? " eligible" : ""}` },
     funding: { pass: long ? input.fundingRate8h <= p.maxFundingAgainst : input.fundingRate8h >= -p.maxFundingAgainst, why: `rate ${input.fundingRate8h} per 8h (${long ? "longs pay if +" : "shorts pay if −"})` },

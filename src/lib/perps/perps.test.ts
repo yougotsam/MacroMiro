@@ -52,9 +52,9 @@ describe("perps candidates", () => {
     expect(c.costs.lossCostUsd).toBeGreaterThan(c.costs.winCostUsd);
     expect(c.costs.winCostUsd).toBeCloseTo(c.notionalUsd * 0.0004, 4);
   });
-  it("impossible bars are dropped and flag data_ready", () => {
-    const b = bars(80, 900_000); b[10] = { ...b[10], l: 0.01 };
-    expect(cleanBars(b).dropped).toBe(1);
+  it("impossible bars are dropped; more than 2% dropped fails data_ready", () => {
+    const b = bars(80, 900_000); for (let k = 10; k < 20; k++) b[k] = { ...b[k], l: 0.01 };
+    expect(cleanBars(b).dropped).toBe(10);
     expect(buildPerpsCandidate({ ...base, b15: b, dir: "long" }).gates.data_ready.pass).toBe(false);
   });
 });

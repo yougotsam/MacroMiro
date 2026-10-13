@@ -20,7 +20,7 @@ There is one versioned candidate schema per venue (`perps-candidate/v1` in `src/
 - Kalshi YES+NO pair scanner: buy both sides only when total cost + fees < $1 (read-only first).
 - A fixed-question AI layer (typed take/skip/size questions; Grok structured output now, Jev optional). The AI never places orders.
 - Brier scorecard per setup. Purged/embargoed walk-forward and deflated Sharpe before any promotion.
-- Quarter-Kelly sizing under hard caps. Kill switch, with every risk rejection logged with its rule.
+- Sizing for perps follows the AGGRESSIVE_EXPERIMENTAL v1 profile (risk at invalidation 10–25% under venue/margin/correlation caps). The prior conservative perps profile was REJECTED BY OWNER and SUPERSEDED. Kill switch, with every risk rejection logged with its rule.
 - Partial take-profit, breakeven and trailing exits (native Kalshi perps triggers).
 
 ## Modes
@@ -28,7 +28,7 @@ FULL_STANDBY (no paid research; collectors labelled separately) · OBSERVE (read
 
 ## Phases and acceptance
 - **2A (this PR):** a read-only perps adapter (metadata, books, trades, candles, mark/reference, funding, status, fees, price bands) and the perps candidate engine. One real trace. The order adapter is LOCKED OFF. **Done 2026-10-12** (see STRATEGY_REGISTRY).
-- **2B:** paper maker/taker simulator (queue position, no-fill, partial fills, funding). A persistent perps collector on an always-on worker. Restart-safe reconciliation design. Pair scanner. Brier scorecard.
+- **2B (2026-10-13, built):** WS perps collector (`scripts/perps/collect.ts`), locked perps OMS (`src/lib/perps/oms.ts`), causal-replay simulator sharing signal/sizing/management code (`sim.ts`), AGGRESSIVE_EXPERIMENTAL v1 profile (`mandate.ts`, `margin.ts`), intel fusion with experimental weight (`intel.ts`), read-only pair scanner. Result: no config shows edge yet. Still open: an always-on worker, demo keys for order tests, a Brier scorecard.
 - **2C:** owner-approved perps mandate, demo-order/kill-switch tests, then a request for LIMITED_LIVE.
 
 ## Hard boundaries

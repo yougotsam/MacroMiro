@@ -2,21 +2,38 @@
 ## Kalshi 15m YES/NO: APPROVED by owner (enforced in `src/lib/desk/config.ts` + `risk.ts`)
 Daily stop −$15 · max open risk $9 · max $3 per order · max $4 per ticker · correlated-exposure cap · price band · snapshot stale after 20 s · max 3 orders per ticker window, 1 per tick. Live sending also needs `CALIBRATED_MODEL_APPROVED=true` (currently **false**) plus the operator mode.
 
-## Kalshi perps: PROPOSED, NOT APPROVED (orders locked: `PERPS_ORDERS_LOCKED=true`)
-| Rule | Proposed value |
+## Kalshi perps CONSERVATIVE v1 (2026-10-12): REJECTED BY OWNER, SUPERSEDED
+Kept only as a record. The $100 equity/notional caps, 3× leverage, $1 per trade, −$5/day, −$15/week, 2 positions,
+maker-only entries and news/funding blackouts are **not** in force. Code: `CONSERVATIVE_V1_REJECTED` in `src/lib/perps/mandate.ts`.
+
+## Kalshi perps AGGRESSIVE_EXPERIMENTAL v1: `aggressive-experimental/v1` (PROPOSED; paper/demo only; live needs explicit owner approval)
+Code: `src/lib/perps/mandate.ts` (sizing), `margin.ts` (margin/liquidation math), `manage.ts` (exits), `oms.ts` (locked order manager).
+| Rule | Value |
 |---|---|
-| Account equity cap | $100 max in the margin account (owner deposits; the bot never transfers) |
-| Markets | BTC, ETH, GOLD first; others only after 2B paper evidence |
-| Max leverage used | 3× effective (notional ≤ 3 × equity), even though the venue allows up to ~15× |
-| Risk per trade | ≤ $1 at the stop (stop always resting as a native trigger, reduce_only) |
-| Max notional per position | $100 |
-| Max open positions | 2, at most 1 per correlated group (crypto majors count as one group) |
-| Daily stop | −$5 realized + unrealized, then flatten and halt until the next UTC day |
-| Weekly stop | −$15, then halt until the owner re-approves |
-| Entries | post_only maker only. Taker only for stop/exit. |
-| Funding | skip when expected funding against us over the hold > 0.05% |
-| Depth | top-of-book size ≥ 3× our size |
-| Liquidation distance | stop must sit at ≤ 50% of the distance to the liquidation price |
-| Time | no new entries 30 min before/after maintenance or funding prints, or tier-1 macro events |
-| Kill switch | `cancelAll` + flatten via reduce_only. Triggered by the operator switch, a stale feed (> 10 s), or a reconcile mismatch. |
-| Activation | separate written owner approval + safety checklist PASS on the perps path |
+| Leverage | dynamic, up to the venue's per-asset max *open* leverage = `leverage_estimates[notional]` ÷ `initial_margin_multiplier` (GOLD ≈ 11.7×, BTC ≈ 4.9×, ETH ≈ 3.8×, SOL/XRP lower) |
+| Risk at invalidation | configs 10 / 15 / 20 / 25% of dedicated equity, costs included (fees both legs + slippage + adverse funding) |
+| Deployment caps (modelled) | all initial margin ≤ 90% of equity; one market ≤ 75%; one correlation group (crypto majors / metals / index) ≤ 85% |
+| Liquidation | stop must sit ≤ 80% of the way to the modelled liquidation price (equity = maintenance × `liquidation_margin_ratio_threshold`). Loss CAN exceed margin on gaps: Kalshi says liquidation "can't guarantee your balance won't go negative" |
+| Drawdown | warnings at 20/35/50% from peak. Automatic halt only at an operator-selected limit (`operatorDrawdownLimitPct`; nothing silent) |
+| Event trades | allowed if after-cost payoff stays positive |
+| Funding | cost/benefit in P&L (venue historical rates) and a crowding feature. Not a blackout |
+| Entry type | maker or taker chosen on total execution quality (fees + spread + miss risk) |
+| Exits | native bracket (stop_loss_price + take_profit_price), partial bracket at 1R (`count`, `client_trigger_id`), break-even after partial, native trailing (`kind=trailing`, `trail_amount`), thesis-invalidation exit, max hold. Always reduce-only; never reverse |
+| Mechanical protections (kept) | authenticated kill = cancel-all + reduce-only IOC flatten; journal-before-send; idempotent `mm-perps-` client IDs; duplicate refusal; reconcile on uncertainty (never resend); unknown-order and unmanaged-position detection block new entries; restart recovery from exchange positions |
+
+### What the numbers look like (real venue specs, 2026-10-13; long at last price; from `scripts/perps/report.ts`)
+In practice, for tight scalp stops, the **single-market margin cap binds before the risk %**, so 10% and 25% give the same size. The risk % only binds on wider stops.
+| Equity | Market | Stop | Risk cfg | Contracts | Notional | Leverage | Initial margin | $ risk at stop | Liq. distance | Binding |
+|---|---|---|---|---|---|---|---|---|---|---|
+| $250 | GOLD | 0.21% (median scalp) | any | 524 | $2,199 | 8.8× | $187 | $4.93 (2.0%) | 5.2% | single-market margin |
+| $250 | GOLD | 2% (wide) | 15% | 443 | $1,859 | 7.4× | $158 | $37.42 (15.0%) | 7.4% | risk |
+| $250 | GOLD | 2% (wide) | 25% | 524 | $2,199 | 8.8× | $187 | $44.26 (17.7%) | 5.2% | single-market margin |
+| $250 | BTC | 0.31% | any | 109 | $912 | 3.65× | $186 | $4.08 (1.6%) | 13.9% | single-market margin |
+| $250 | BTC | 2% | any | 109 | $912 | 3.65× | $186 | $19.52 (7.8%) | 13.9% | single-market margin |
+| $500 | GOLD | 0.21% | any | 1,050 | $4,406 | 8.8× | $375 | $9.77 (2.0%) | 5.1% | single-market margin |
+| $500 | GOLD | 2% | 15% | 887 | $3,722 | 7.4× | $317 | $74.92 (15.0%) | 7.4% | risk |
+| $500 | BTC | 0.31% | any | 219 | $1,833 | 3.7× | $374 | $8.20 (1.6%) | 13.7% | single-market margin |
+| $500 | BTC | 2% | any | 219 | $1,833 | 3.7× | $374 | $39.23 (7.9%) | 13.7% | single-market margin |
+| $1,000 | GOLD | 0.21% | any | 2,100 | $8,812 | 8.8× | $750 | $19.54 (2.0%) | 5.1% | single-market margin |
+| $1,000 | GOLD | 2% | 15% | 1,775 | $7,448 | 7.4× | $634 | $149.93 (15.0%) | 7.4% | risk |
+| $1,000 | BTC | 0.31% | any | 439 | $3,674 | 3.7× | $749 | $16.44 (1.6%) | 13.7% | single-market margin |

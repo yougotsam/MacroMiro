@@ -17,3 +17,7 @@ Unrelated NFC/transit features remain unless explicitly authorized for removal.
 
 ## Canonical docs (read first, 2026-10-12)
 docs/product/PRD.md · docs/architecture/SYSTEM_MAP.md · docs/strategies/STRATEGY_REGISTRY.md · docs/venues/VENUE_MATRIX.md · docs/operations/RISK_MANDATES.md · docs/operations/RUNBOOK.md · docs/decisions/ADR-001-OPPORTUNITY-HUNTER.md. Anything in docs/archive/ is historical and must not guide execution.
+
+## Perps (2026-10-13)
+Risk profile: AGGRESSIVE_EXPERIMENTAL v1 (proposed, paper/demo). The conservative perps profile is REJECTED BY OWNER, SUPERSEDED. The −$15 daily stop applies to Kalshi 15m only.
+Perps orders stay LOCKED (`PERPS_ORDERS_LOCKED`, `lockedTransport`). Collector: `bun scripts/perps/collect.ts` (read-only WS). Sim: `bun scripts/perps/sim.ts 21`. Report: `bun scripts/perps/report.ts`.
