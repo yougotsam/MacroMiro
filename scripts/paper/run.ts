@@ -14,6 +14,8 @@ import { replay, LIMITS } from "../../src/lib/paper/portfolio";
 import { eventsFor, evaluateEvent, type IntelEvent, type QuotePoint } from "../../src/lib/paper/intel-events";
 import type { IndicatorRow } from "../../src/lib/desk/setups";
 import { readMode } from "../../src/lib/ops/operating-mode";
+import { watchdogFresh } from "../../src/lib/loop/watchdog";
+import { P as LOOP } from "../../src/lib/loop/paths";
 
 const OBS = `${DATA_ROOT}/desk-observe`;
 const OUT = ensureDir(`${DATA_ROOT}/paper`);
@@ -40,6 +42,10 @@ function once() {
     return { adj: (side: "yes" | "no") => dirEv.reduce((a, e) => a + ((e.direction === "up") === (side === "yes") ? 0.02 : -0.02), 0), note: ev.length ? `${ev.length} event(s) detected before this scan: ${ev.map((e) => e.id).join(", ")}` : "no timely research event" };
   };
 
+  // our-side bid per ticker over time, for flattening open paper positions when the −$15 day stop hits
+  const bids = new Map<string, { ms: number; yes: number | null; no: number | null }[]>();
+  for (const o of obs) if (o.ticker && o.exec) { const a = bids.get(o.ticker) ?? []; a.push({ ms: Date.parse(o.ts), yes: o.exec.yes_bid, no: o.exec.no_bid }); bids.set(o.ticker, a); }
+  const mark = (ticker: string, side: "yes" | "no", ms: number) => { const a = bids.get(ticker); if (!a) return null; let lo = 0, hi = a.length - 1, best: number | null = null; while (lo <= hi) { const m = (lo + hi) >> 1; if (a[m].ms <= ms) { best = side === "yes" ? a[m].yes : a[m].no; lo = m + 1; } else hi = m - 1; } return best; };
   const all: Candidate[] = [];
   for (const o of obs) all.push(...candidatesOf(o, indAt(o.series, o.ts), researchFor(o)));
 
@@ -60,7 +66,7 @@ function once() {
     const w = [...win.values()], n = w.length, mean = n ? w.reduce((a, b) => a + b, 0) / n : 0;
     const se = n > 1 ? Math.sqrt(w.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) / n) : null;
     const total = done.reduce((a, t) => a + (t.netUsd as number), 0);
-    const portfolio = replay(trades.map((t) => ({ ts: t.ts, ticker: t.ticker, series: t.series, close: t.close, side: t.side, cost: +(t.qty * t.entryPrice).toFixed(4), fee: t.fee, netUsd: t.netUsd })));
+    const portfolio = replay(trades.map((t) => ({ ts: t.ts, ticker: t.ticker, series: t.series, close: t.close, side: t.side, cost: +(t.qty * t.entryPrice).toFixed(4), fee: t.fee, netUsd: t.netUsd, qty: t.qty })), mark);
     const avg = (f: (t: (typeof done)[number]) => number) => (done.length ? +(done.reduce((a, t) => a + f(t), 0) / done.length).toFixed(4) : null);
     const why = { avgEntryPrice: avg((t) => t.entryPrice), avgModelP: avg((t) => t.modelProbExperimental), realizedWinRate: avg((t) => (t.won ? 1 : 0)), avgEvClaimedUsd: avg((t) => t.evUsd), avgNetUsd: avg((t) => t.netUsd as number), cheapSideShare: avg((t) => (t.entryPrice < 0.25 ? 1 : 0)) };
     return { id: cfg.id, label: cfg.label, portfolio, why, entries: trades.length, settled: done.length, open: trades.length - done.length, windows: n, wins: done.filter((t) => t.won).length,
@@ -72,8 +78,12 @@ function once() {
   const latestTs = new Map<string, string>();
   for (const o of obs) latestTs.set(o.series, o.ts);
   const fresh = (ts: string) => Date.now() - Date.parse(ts) <= 120_000;
+  // fail closed: a stale risk-watchdog heartbeat, or a paper kill for today, refuses every NEW paper entry
+  const wd = watchdogFresh();
+  const kill = (() => { try { const k = JSON.parse(readFileSync(LOOP.paperKill(), "utf8")); return k.day === new Date(Date.now() - 4 * 3_600_000).toISOString().slice(0, 10) ? k : null; } catch { return null; } })();
+  const blockNew = !wd.ok ? `rejected: ${wd.why} (fail-closed)` : kill ? `rejected: paper kill (${kill.reason})` : null;
   const ranked = all.filter((c) => latestTs.get(c.series) === c.ts && fresh(c.ts)).sort((a, b) => b.score - a.score)
-    .map((c) => ({ ...c, wouldEnter: CONFIGS.filter((cfg) => cfg.select([c]) === c).map((cfg) => cfg.id), reason: c.evPerContract <= 0 ? `rejected: EV ${c.evPerContract.toFixed(3)} ≤ 0 after fees` : c.tteSec < 60 ? "rejected: < 60 s left" : "EV > 0 (paper only)" }));
+    .map((c) => ({ ...c, wouldEnter: blockNew ? [] : CONFIGS.filter((cfg) => cfg.select([c]) === c).map((cfg) => cfg.id), reason: blockNew ? blockNew : c.evPerContract <= 0 ? `rejected: EV ${c.evPerContract.toFixed(3)} ≤ 0 after fees` : c.tteSec < 60 ? "rejected: < 60 s left" : "EV > 0 (paper only)" }));
   let status: Record<string, unknown> = {};
   try { status = JSON.parse(readFileSync(`${OBS}/observe-status.json`, "utf8")); } catch { /* none */ }
   const lastRows = readJsonlFiles<ObsRow & { index?: { age_ms: number | null } }>(dayFiles(OBS, "observations-").slice(-1)).slice(-400);
@@ -83,7 +93,7 @@ function once() {
     generatedAt: new Date().toISOString(),
     label: "PAPER ONLY. Real orders are disabled (CALIBRATED_MODEL_APPROVED=false). Scores and probabilities are EXPERIMENTAL unless marked CALIBRATED.",
     mode: readMode(), collector: { pid: status.pid ?? null, lastTickAt: status.lastTickAt ?? null, rows: status.rows ?? null, errors: status.errors ?? null, lastError: status.lastError ?? null },
-    feed, weights: WEIGHTS, scansWithModelAndQuotes: obs.length, candidates: all.length, ranked,
+    watchdog: { ...wd, paperKill: kill }, feed, weights: WEIGHTS, scansWithModelAndQuotes: obs.length, candidates: all.length, ranked,
     configs: results,
     limits: LIMITS, confluenceDiag: (() => { try { return JSON.parse(readFileSync(`${OUT}/confluence-diag.json`, "utf8")); } catch { return null; } })(),
     rejectedExample: all.find((c) => latestTs.get(c.series) === c.ts && c.evPerContract <= 0) ?? all.findLast((c) => c.evPerContract <= 0) ?? null,

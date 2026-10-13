@@ -358,3 +358,4 @@ never:   build an app for a greeting/number/question; invent imagine_* calls;
 
 ## MacroMiro canonical docs
 For the trading desk, read `AGENTS.project.md` → `docs/product/PRD.md` first. `docs/archive/` is historical only.
+Loop engineering (STATE.md memory, blind checker, risk watchdog, AI maker A/B): `docs/operations/LOOP_ENGINEERING.md`. Loop memory lives in `/workspace/data/loop/STATE.md`; read it at the start of desk work.

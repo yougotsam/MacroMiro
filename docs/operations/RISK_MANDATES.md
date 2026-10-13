@@ -37,3 +37,10 @@ In practice, for tight scalp stops, the **single-market margin cap binds before 
 | $1,000 | GOLD | 0.21% | any | 2,100 | $8,812 | 8.8× | $750 | $19.54 (2.0%) | 5.1% | single-market margin |
 | $1,000 | GOLD | 2% | 15% | 1,775 | $7,448 | 7.4× | $634 | $149.93 (15.0%) | 7.4% | risk |
 | $1,000 | BTC | 0.31% | any | 439 | $3,674 | 3.7× | $749 | $16.44 (1.6%) | 13.7% | single-market margin |
+
+## Hard drawdown + watchdog (2026-10-13) — PENDING OWNER DECISION
+- A separate risk watchdog process (`scripts/loop/watchdog.ts`) polls every 60 s. Paper only.
+- Perps hard drawdown limit: **50% (paper default, = top existing warning). PENDING OWNER DECISION.** On breach: cancel-all + reduce-only flatten via `PerpsOms.killAndFlatten` (paper exchange) and a SEV1 incident.
+- Kalshi 15m −$15 day stop now also FLATTENS open paper positions (at our-side bid − 1¢), not just blocks new entries.
+- Fail-closed: if the watchdog heartbeat is older than 3 minutes, every engine refuses NEW entries (exits allowed).
+- CALIBRATED_MODEL_APPROVED can only be *proposed* after the blind strategy gate returns PASS (≥ 200 OOS trades, mean > 0 after costs, Newey–West t > 2, DD ≤ 50%, Sharpe floor).

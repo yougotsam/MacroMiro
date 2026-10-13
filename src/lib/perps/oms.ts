@@ -15,6 +15,7 @@
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { nativeTriggerRequests, type ManagePlan } from "./manage";
+import { watchdogFresh } from "@/lib/loop/watchdog";
 
 export { PERPS_ORDERS_LOCKED, PerpsOrdersLocked } from "./order-adapter";
 import { PERPS_ORDERS_LOCKED, PerpsOrdersLocked } from "./order-adapter";
@@ -69,7 +70,7 @@ export function toCreateReq(i: Intent): CreateReq {
 export class PerpsOms {
   rows: JournalRow[] = [];
   blocked: string | null = null;
-  constructor(private t: PerpsTransport, private journalPath: string | null = null, private allowSend = !PERPS_ORDERS_LOCKED) {
+  constructor(private t: PerpsTransport, private journalPath: string | null = null, private allowSend = !PERPS_ORDERS_LOCKED, private watchdog: () => { ok: boolean; why: string } = () => watchdogFresh()) {
     if (journalPath && existsSync(journalPath)) {
       try { this.rows = readFileSync(journalPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); }
       catch { this.blocked = "corrupt journal: sending disabled"; }
@@ -84,6 +85,7 @@ export class PerpsOms {
     if (this.blocked) return { cid, status: `BLOCKED: ${this.blocked}` };
     if (this.stateOf(cid)) return { cid, status: `DUPLICATE (${this.stateOf(cid)}): not re-sent` };
     const pos = Number(positions.find((p) => p.market_ticker === i.ticker)?.position ?? 0);
+    if (i.kind === "entry") { const wd = this.watchdog(); if (!wd.ok) return { cid, status: `REFUSED: ${wd.why} (fail-closed, entries only)` }; }
     if (i.kind === "entry" && pos !== 0 && (pos > 0) !== (i.dir === "long")) return { cid, status: "REFUSED: would reverse an open position" };
     if (i.kind !== "entry" && i.qty > Math.abs(pos)) i = { ...i, qty: Math.abs(pos) };
     const req = toCreateReq(i);

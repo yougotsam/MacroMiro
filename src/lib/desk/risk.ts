@@ -29,6 +29,7 @@ import {
 import { correlationKey } from "./exposure";
 import { etDay } from "./time";
 import { activeOverride, applyOverride, loadOverrides } from "./override";
+import { watchdogFresh } from "@/lib/loop/watchdog";
 
 export type Settled = { ticker: string; pnl: number; settledMs: number };
 
@@ -118,7 +119,7 @@ export class RiskEngine {
   private dir: string;
   private tickCount = new Map<number, number>();
   private announced = new Set<string>();
-  constructor(dir = dataDir(), private sw = switches, private limits: RiskLimits = RISK_LIMITS) {
+  constructor(dir = dataDir(), private sw = switches, private limits: RiskLimits = RISK_LIMITS, private watchdog: () => { ok: boolean; why: string } = () => watchdogFresh()) {
     mkdirSync(dir, { recursive: true });
     this.dir = dir;
     this.file = `${dir}/risk-state.json`;
@@ -188,6 +189,8 @@ export class RiskEngine {
     if (!this.sw.live()) return no("switch kalshi_live off");
     if (!this.sw.begin()) return no("switch kalshi_begin off");
     if (!this.sw.arm()) return no("ARM off");
+    // fail closed: the separate risk watchdog (scripts/loop/watchdog.ts) must be alive for any NEW order
+    const wd = this.watchdog(); if (!wd.ok) return no(`${wd.why}: new entries refused`);
     if (!s) return no("no account snapshot");
     if (!Number.isFinite(s.fetchedAt) || s.fetchedAt > now + 500 ||
         now - s.fetchedAt > SNAPSHOT_MAX_AGE_MS) return no("account snapshot stale");

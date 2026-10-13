@@ -21,7 +21,11 @@ import type { Candle } from "@/lib/desk/sniper";
 import type { PerpMarket } from "./kalshi-perps-read";
 
 export type SimData = { market: PerpMarket; m1: Candle[]; h1: Candle[]; spreadHalf: number; funding: { tMs: number; rate: number }[]; maker: number; taker: number; spec: MarginSpec; group: string };
-export type SimCfg = { name: string; riskPct: number; entry: "maker" | "taker"; gate: "strict9" | "aggr7"; makerWaitBars: number; slipTicks: number; partialFrac: number; fullFillTicks: number; maxHoldMin: number; startEquity: number; macroClear?: (tMs: number) => boolean };
+export type SimCfg = { name: string; riskPct: number; entry: "maker" | "taker"; gate: "strict9" | "aggr7"; makerWaitBars: number; slipTicks: number; partialFrac: number; fullFillTicks: number; maxHoldMin: number; startEquity: number; macroClear?: (tMs: number) => boolean; select?: SelectHook };
+/** Pluggable maker hook (src/lib/loop/maker.ts): sees the qualifying code candidates at a closed 15m bar and returns the
+ * chosen direction, or null to skip. Undefined hook = the code engine (highest score). Must be sync and causal. */
+export type SelectCtx = { ticker: string; decideMs: number; b15: Candle[]; quals: { dir: "long" | "short"; setup: string; score: number; entry: number; stop: number; winNet: number; lossNet: number }[] };
+export type SelectHook = (ctx: SelectCtx) => "long" | "short" | null;
 export type SimTrade = { t: number; dir: string; setup: string; score: number; entry: number; stop: number; qty: number; notional: number; lev: number; filledFrac: number; exits: string; gross: number; fees: number; funding: number; net: number; holdMin: number; equityAfter: number };
 export type SimResult = { cfg: string; market: string; signals: number; makerMisses: number; trades: SimTrade[]; netUsd: number; endEquity: number; maxDdPct: number; winRate: number | null; avgWin: number | null; avgLoss: number | null; exposurePct: number; avgLev: number | null; liquidations: number; label: "CAUSAL_REPLAY_1M_CANDLES" };
 
@@ -50,10 +54,16 @@ export function simulate(d: SimData, cfg: SimCfg): SimResult {
     const bb = Math.floor((close - half) / tick + 1e-9) * tick, ba = Math.ceil((close + half) / tick - 1e-9) * tick; // on-tick prices
     const book = { bids: [[bb, 1e9]] as [number, number][], asks: [[ba, 1e9]] as [number, number][], bestBid: +bb.toFixed(6), bestAsk: +ba.toFixed(6) };
     let best: ReturnType<typeof buildPerpsCandidate> | null = null;
+    const quals: ReturnType<typeof buildPerpsCandidate>[] = [];
     for (const dir of ["long", "short"] as const) {
       const c = buildPerpsCandidate({ market: { ...d.market, tick }, book, b15, b1h, dir, makerRate: d.maker, takerRate: d.taker, fundingRate8h: 0, nextFundingMs: decideMs, observedMs: decideMs, params: { riskUsd: 1e9, maxNotionalUsd: 1e12, macroClear: cfg.macroClear?.(decideMs) ?? false } });
       const ok = c.gates.data_ready.pass && c.gates.setup.pass && (cfg.gate === "strict9" ? c.gates.confluence_9.pass : c.score >= 7) && c.stop != null;
+      if (ok) quals.push(c);
       if (ok && (!best || c.score > best.score)) best = c;
+    }
+    if (best && cfg.select) {
+      const pick = cfg.select({ ticker: d.market.ticker, decideMs, b15, quals: quals.map((q) => ({ dir: q.dir, setup: q.setup, score: q.score, entry: q.entry!, stop: q.stop!, winNet: q.payoff.winUsdNet, lossNet: q.payoff.lossUsdNet })) });
+      best = pick ? quals.find((q) => q.dir === pick) ?? null : null;
     }
     if (!best) continue;
     signals++;

@@ -18,6 +18,7 @@ Status key: REUSE = works as is · ADAPT = needs a venue adapter · LOCKED = pre
 | Paper / selection | `src/lib/paper/*`, `scripts/paper/run.ts` | REUSE | A–E configs, realistic portfolio replay. |
 | Ops | `src/lib/ops/operating-mode.ts`, `scripts/ops/*` | REUSE | Mode file. Firecrawl gated. `no-orders-check.ts`. |
 | Research | `src/lib/grid/*`, `intel/*`, `research/*`, MiroFish, Spark 2, Alexandria | RESEARCH | Weight 0 in decisions. Paid calls need an open round. |
+| Loop engineering | `src/lib/loop/*`, `scripts/loop/*` | NEW (paper) | STATE.md + lessons, blind strategy checker, risk watchdog (own process, heartbeat, fail-closed), AI maker A/B. See `docs/operations/LOOP_ENGINEERING.md`. |
 | UI | `src/routes/paper.tsx`, `intel-grid.tsx`, `research.tsx` | REUSE | /paper is the operator page. A perps panel is planned for 2B. |
 
 Data flow (perps, 2A): `perpsReader()` → candles (venue 1m→15m, 1h) + book + funding → `buildPerpsCandidate()` → `scripts/perps/trace.ts` → `/workspace/data/perps/trace-*.json`.

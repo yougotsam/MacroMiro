@@ -112,7 +112,8 @@ describe("brains are words, not orders", () => {
 
   it("only Ask routes import the brain caller, and those never touch orders", () => {
     const users = FILES.filter((f) => f !== BRAIN_SERVER && importsOf(f).includes(BRAIN_SERVER));
-    assert.deepEqual(users.map(rel).sort(), ["routes/api/live/ask.ts"]);
+    // lib/loop/maker.ts: the PAPER AI maker (A/B replay only). Its closure must also never reach an order/edge sink.
+    assert.deepEqual(users.map(rel).sort(), ["lib/loop/maker.ts", "routes/api/live/ask.ts"]);
     for (const f of users) {
       for (const dep of closure(f)) {
         assert.doesNotMatch(TEXT.get(dep) ?? "", SINK, `${rel(f)} reaches ${rel(dep)} which calls an order/edge function`);
