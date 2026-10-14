@@ -26,7 +26,7 @@ const snap = (extra: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
 
 describe("AURIX-X risk and emergency stops", () => {
   it("refuses any unapproved model at the final OMS choke point", async () => {
-    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
     let sends = 0;
     const risk = new RiskEngine(folder(), permit);
     const oms = new Oms(risk, async () => {

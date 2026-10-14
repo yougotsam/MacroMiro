@@ -293,7 +293,7 @@ describe("probability validation (report-only)", () => {
     expect(verdict({ ...good, afterCostTaker: { model: { trades: 300, windows: 80, meanPerTrade: 0.05, clusteredSe: 0.01 } } }).worthHumanReview).toBe(true);
     expect(verdict({ ...good, afterCostTaker: { model: { trades: 300, windows: 80, meanPerTrade: 0.05, clusteredSe: 0.03 } } }).worthHumanReview).toBe(false);
     expect(verdict({ ...good, afterCostTaker: { model: { trades: 300, windows: 10, meanPerTrade: 0.05, clusteredSe: 0.01 } } }).worthHumanReview).toBe(false);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
   });
 });
 
@@ -337,7 +337,7 @@ describe("round 3 risk limits: −$15 day, $9 total, $3 per ticker, $4 same-dire
     expect(RISK_LIMITS.usd).toEqual({ dayStop: -15, total: 9, perTicker: 3, correlated: 4, perOrder: 3 });
     expect([DAILY_STOP_USD, MAX_OPEN_WORST_USD, MAX_TICKER_WORST_USD, MAX_CORRELATED_WORST_USD]).toEqual([-15, 9, 3, 4]);
     expect(ENABLE_RISK_OVERRIDES).toBe(false);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
     expect(Object.isFrozen(RISK_LIMITS)).toBe(true);
   });
 

@@ -1,5 +1,6 @@
-# AURIX-X / MACROMIRO — CANONICAL TRADING RULEBOOK v1.1
+# AURIX-X / MACROMIRO — 15-minute rulebook v1.1
 Date: 2026-10-09 | Scope: Kalshi 15m BTC/ETH/SOL/XRP/gold outcomes, separate perps
+SUPERSEDED as the product spec by `docs/product/PRD.md` (2026-10-14). This file stays as the 15-minute rulebook only. If it disagrees with the PRD, the system map, the strategy registry, the venue matrix, or the risk mandate, those win.
 STATUS: RESEARCH / SHADOW. **CALIBRATED_MODEL_APPROVED=false** blocks all live orders.
 Code truth: `src/lib/desk/engine.ts` (research decision engine), `gate.ts` (quote evaluation),
 `oms.ts` (sole signed order writer), `risk.ts` (mandatory permission), `config.ts`.

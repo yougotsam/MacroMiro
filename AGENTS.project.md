@@ -15,8 +15,9 @@ CALIBRATED_MODEL_APPROVED is false.
 No fabricated tests, fill prices, profitability claims, or source certainty.
 Unrelated NFC/transit features remain unless explicitly authorized for removal.
 
-## Canonical docs (read first, 2026-10-12)
-docs/product/PRD.md · docs/architecture/SYSTEM_MAP.md · docs/strategies/STRATEGY_REGISTRY.md · docs/venues/VENUE_MATRIX.md · docs/operations/RISK_MANDATES.md · docs/operations/RUNBOOK.md · docs/decisions/ADR-001-OPPORTUNITY-HUNTER.md. Anything in docs/archive/ is historical and must not guide execution.
+## How to work (2026-10-14)
+`main` is the only line. Branch from the latest `origin/main`. Pull requests target `main`, never `desk-brain-mirofish`. Do not keep committing on `fix/aurix-x`. One writer at a time. PR #2 is already contained in `main`; do not merge it.
+Superseded: `docs/archive/**` and any note that says the day stop is −$5 or that `src/lib/scan/edge.ts` is the order brain. Those files stay on disk. They do not win over the six docs above.
 
 ## Perps (2026-10-13)
 Risk profile: AGGRESSIVE_EXPERIMENTAL v1 (proposed, paper/demo). The conservative perps profile is REJECTED BY OWNER, SUPERSEDED. The −$15 daily stop applies to Kalshi 15m only.

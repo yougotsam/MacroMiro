@@ -47,7 +47,7 @@ function ensureDir() {
 
 export function readKill(): KillState {
   try {
-    if (!existsSync(FILE)) return { ...DEFAULT };
+    if (!existsSync(FILE)) return { ...DEFAULT, liveEnabled: liveFlagOn() };
     const raw = JSON.parse(readFileSync(FILE, "utf8")) as KillState;
     const day = todayEt();
     if (raw.dailyLossDate !== day) {

@@ -1,5 +1,5 @@
 /** Prints why real orders cannot be sent right now. Read-only.   bun scripts/ops/no-orders-check.ts */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { CALIBRATED_MODEL_APPROVED } from "../../src/lib/desk/config";
 import { switchState } from "../../src/lib/desk/risk";
@@ -10,7 +10,21 @@ try {
   const last = readFileSync("/workspace/data/desk-observe/observe.log", "utf8").trim().split("\n").reverse().find((l) => l.includes('"net"'));
   if (last) collector = JSON.parse(last.slice(last.indexOf("{")));
 } catch { /* none */ }
-const procs = execSync("ps -eo args", { encoding: "utf8" }).split("\n");
+function processArgs(): string[] {
+  try {
+    return execSync("ps -eo args", { encoding: "utf8" }).split("\n");
+  } catch {
+    const out: string[] = [];
+    for (const name of readdirSync("/proc")) {
+      if (!/^\d+$/.test(name)) continue;
+      try {
+        out.push(readFileSync(`/proc/${name}/cmdline`, "utf8").replaceAll("\0", " "));
+      } catch { /* process exited */ }
+    }
+    return out;
+  }
+}
+const procs = processArgs();
 const engine = procs.filter((p) => /startup\.sh|desk-run|desk-engine|scripts\/desk\.ts/.test(p));
 const sw = switchState();
 const out = {
