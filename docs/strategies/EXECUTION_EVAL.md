@@ -26,7 +26,10 @@ Kalshi's perp quote is dollars per contract. P&L is `qty × price change`. Do no
 
 ## What is still missing
 
-A live top-of-book snapshot is in `src/lib/perps/fixtures/book-sample-2026-10-15.json` (captured 2026-10-15T01:42:23Z, read-only GET). It is one moment, not a history.
+The collector now appends every `orderbook_snapshot`, `orderbook_delta`, `seq_gap` and `reconnect` to `book.jsonl` under the data directory (not git). `replayBooks()` rebuilds the book in a fresh process. A gap or reconnect marks the book stale. A stale or crossed book is not executable.
+
+A 12-second read on 2026-10-15 08:35 UTC stored 12 snapshots and 0 deltas (no trades in that window). Replayed bests matched the live status file: BTC 8.067 / 8.085, gold 4.13 / 4.1383. The exchange reported `trading_active: false` (Thursday maintenance). That sample is displayed liquidity, not a fill.
+
 
 At that print, KXBTCPERP was 8.1783 / 8.1786. A taker buy of 1,000 contracts could lift the displayed asks (vwap about 8.1786). Funding was +0.000220 per 8h, next at 04:00 UTC. The sniper candidate was NO_TRADE: there were no 15-minute bars on that call, so score 0, size 0, win probability UNKNOWN. The book being able to fill is not a setup.
 

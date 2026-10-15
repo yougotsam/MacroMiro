@@ -4,16 +4,17 @@
  * evidence quality. Research intel enters only as an EXPERIMENTAL additive term with its own trace.
  */
 export type RankInput = {
-  ticker: string; dir: "long" | "short"; decision: string; winNetUsd: number; lossNetUsd: number; riskUsd: number;
+  ticker: string; dir: "long" | "short"; decision: string; winNetUsd: number | null; lossNetUsd: number | null; riskUsd: number;
   measuredHitRate: number | null; evidenceN: number; spreadPct: number | null; depthMultiple: number; stopAtrMultiple: number | null;
   intelScore?: number; intelWeight?: number;
 };
 export function rankScore(x: RankInput) {
   const p = x.measuredHitRate;
-  const exp = p == null || x.riskUsd <= 0 ? 0 : (p * x.winNetUsd + (1 - p) * x.lossNetUsd) / x.riskUsd;
+  const priced = x.winNetUsd != null && x.lossNetUsd != null;
+  const exp = p == null || !priced || x.riskUsd <= 0 ? 0 : (p * x.winNetUsd! + (1 - p) * x.lossNetUsd!) / x.riskUsd;
   const liq = Math.min(1, x.depthMultiple / 10) - Math.min(1, (x.spreadPct ?? 1) / 0.2);
   const inval = x.stopAtrMultiple == null ? 0 : x.stopAtrMultiple >= 0.75 && x.stopAtrMultiple <= 2.5 ? 0.3 : -0.3;
-  const reward = x.lossNetUsd < 0 ? Math.min(3, x.winNetUsd / -x.lossNetUsd) / 3 : 0;
+  const reward = priced && x.lossNetUsd! < 0 ? Math.min(3, x.winNetUsd! / -x.lossNetUsd!) / 3 : 0;
   const evidence = Math.min(1, x.evidenceN / 200);
   const intel = (x.intelScore ?? 0) * (x.intelWeight ?? 0);
   const score = +(2 * exp * evidence + 0.5 * liq + inval + 0.5 * reward + intel).toFixed(4);

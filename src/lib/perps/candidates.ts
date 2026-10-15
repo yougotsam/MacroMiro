@@ -6,7 +6,7 @@
 import { atr, confirmedSwings, evaluateSniper, type Candle } from "@/lib/desk/sniper";
 import type { Book, PerpMarket } from "./kalshi-perps-read";
 
-export const PERPS_CANDIDATE_SCHEMA = "perps-candidate/v1";
+export const PERPS_CANDIDATE_SCHEMA = "perps-candidate/v2";
 export type PerpsParams = { riskUsd: number; maxNotionalUsd: number; holdHours: number; maxFundingAgainst: number; minDepthMultiple: number; macroClear: boolean };
 export const DEFAULT_PARAMS: PerpsParams = { riskUsd: 1, maxNotionalUsd: 100, holdHours: 1, maxFundingAgainst: 0.0005, minDepthMultiple: 3, macroClear: false };
 
@@ -20,8 +20,10 @@ export type PerpsCandidate = {
   fees: { makerRate: number; takerRate: number };
   funding: { known: boolean; rate8h: number | null; nextFundingAt: string; costPctOverHold: number | null };
   costs: { winCostUsd: number | null; lossCostUsd: number | null };
-  payoff: { winUsdNet: number; lossUsdNet: number; breakEvenWinRate: number | null; winProbability: null; winProbabilityState: "UNKNOWN" };
+  payoff: { winUsdNet: number | null; lossUsdNet: number | null; breakEvenWinRate: number | null; winProbability: null; winProbabilityState: "UNKNOWN" };
   gates: Record<string, { pass: boolean; why: string }>; decision: "NO_TRADE" | "RESEARCH_CANDIDATE"; reason: string;
+  /** caller = the trace passed receipt and decision times. construction_clock = those times were missing, so they are "now", not the request start. */
+  timeSource: "caller" | "construction_clock";
 };
 
 /** Drop impossible bars (data_ready tolerates at most 2% dropped, else NOT ready).
@@ -72,9 +74,9 @@ export function buildPerpsCandidate(input: {
   const winCost = fundingKnown ? notional * (input.makerRate * 2) + notional * fundingPct! : null;
   const lossGross = r ? qty * r : 0;
   const lossCost = fundingKnown ? notional * (input.makerRate + input.takerRate) + qty * m.tick + notional * fundingPct! : null;
-  const winNet = fundingKnown ? +(winGross - winCost!).toFixed(4) : 0;
-  const lossNet = fundingKnown ? +(-(lossGross + lossCost!)).toFixed(4) : 0;
-  const be = fundingKnown && winNet > 0 ? +(-lossNet / (winNet - lossNet)).toFixed(4) : null;
+  const winNet = fundingKnown ? +(winGross - winCost!).toFixed(4) : null;
+  const lossNet = fundingKnown ? +(-(lossGross + lossCost!)).toFixed(4) : null;
+  const be = fundingKnown && winNet != null && lossNet != null && winNet > 0 ? +(-lossNet / (winNet - lossNet)).toFixed(4) : null;
   const stopSideDepth = (long ? book.bids : book.asks).filter((x) => (long ? x[0] >= (stop ?? 0) : x[0] <= (stop ?? Infinity))).reduce((s, x) => s + x[1], 0);
   const synthetic = bookKind === "synthetic_candle";
   const gates = {
@@ -84,12 +86,13 @@ export function buildPerpsCandidate(input: {
     funding: { pass: fundingKnown && (long ? rate! <= p.maxFundingAgainst : rate! >= -p.maxFundingAgainst), why: fundingKnown ? `rate ${rate} per 8h (${long ? "longs pay if +" : "shorts pay if −"})` : "funding unknown at decision time (not treated as zero)" },
     depth: { pass: !synthetic && qty > 0 && stopSideDepth >= p.minDepthMultiple * qty, why: synthetic ? "synthetic candle book is not executable depth" : `${stopSideDepth} contracts between entry and stop on our side vs need ${p.minDepthMultiple}×${qty}` },
     size: { pass: qty >= 1, why: qty >= 1 ? `${qty} contracts (risk cap ${qtyRisk}, notional cap $${p.maxNotionalUsd})` : `stop distance ${r?.toFixed(4)} > risk $${p.riskUsd} per contract` },
-    after_cost_positive_payoff: { pass: fundingKnown && winNet > 0, why: fundingKnown ? `win ${winNet} / loss ${lossNet}` : "payoff not estimated; funding missing" },
+    after_cost_positive_payoff: { pass: fundingKnown && winNet != null && winNet > 0, why: fundingKnown ? `win ${winNet} / loss ${lossNet}` : "payoff not estimated; funding missing" },
   };
   const failed = Object.entries(gates).filter(([, g]) => !g.pass).map(([k]) => k);
   const eventAt = new Date(input.observedMs).toISOString();
-  const receivedAt = new Date(input.receivedMs ?? input.observedMs).toISOString();
-  const decidedAt = new Date(input.decisionMs ?? input.observedMs).toISOString();
+  const stamped = input.receivedMs != null && input.decisionMs != null;
+  const receivedAt = new Date(stamped ? input.receivedMs! : Date.now()).toISOString();
+  const decidedAt = new Date(stamped ? input.decisionMs! : Date.now()).toISOString();
   return {
     schema: PERPS_CANDIDATE_SCHEMA, ticker: m.ticker, dir, observedAt: eventAt, receivedAt, decidedAt,
     bookKind, executionClass: synthetic ? "candle_proxy_not_a_fill" : "venue_book",
@@ -103,5 +106,6 @@ export function buildPerpsCandidate(input: {
     payoff: { winUsdNet: winNet, lossUsdNet: lossNet, breakEvenWinRate: be, winProbability: null, winProbabilityState: "UNKNOWN" },
     gates, decision: failed.length ? "NO_TRADE" : "RESEARCH_CANDIDATE",
     reason: failed.length ? `failed: ${failed.join(", ")}` : "all research gates pass (paper only; live orders locked; win probability UNKNOWN — break-even is not a win rate)",
+    timeSource: stamped ? "caller" : "construction_clock",
   };
 }

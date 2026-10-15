@@ -25,7 +25,7 @@ export type SimData = { market: PerpMarket; m1: Candle[]; h1: Candle[]; spreadHa
 export type SimCfg = { name: string; riskPct: number; entry: "maker" | "taker"; gate: "strict9" | "aggr7"; makerWaitBars: number; slipTicks: number; partialFrac: number; fullFillTicks: number; maxHoldMin: number; startEquity: number; macroClear?: (tMs: number) => boolean; select?: SelectHook };
 /** Pluggable maker hook (src/lib/loop/maker.ts): sees the qualifying code candidates at a closed 15m bar and returns the
  * chosen direction, or null to skip. Undefined hook = the code engine (highest score). Must be sync and causal. */
-export type SelectCtx = { ticker: string; decideMs: number; b15: Candle[]; quals: { dir: "long" | "short"; setup: string; score: number; entry: number; stop: number; winNet: number; lossNet: number }[] };
+export type SelectCtx = { ticker: string; decideMs: number; b15: Candle[]; quals: { dir: "long" | "short"; setup: string; score: number; entry: number; stop: number; winNet: number | null; lossNet: number | null }[] };
 export type SelectHook = (ctx: SelectCtx) => "long" | "short" | null;
 export type SimTrade = { t: number; dir: string; setup: string; score: number; entry: number; stop: number; qty: number; notional: number; lev: number; filledFrac: number; exits: string; gross: number; fees: number; funding: number; fundingRateAtDecision: number | null; net: number; holdMin: number; equityAfter: number; executionClass: "candle_proxy_not_a_fill" };
 export type SimResult = { cfg: string; market: string; signals: number; makerMisses: number; trades: SimTrade[]; netUsd: number; endEquity: number; maxDdPct: number; winRate: number | null; avgWin: number | null; avgLoss: number | null; exposurePct: number; avgLev: number | null; liquidations: number; incomplete15m: number; label: "CANDLE_ONLY_NOT_EXECUTABLE" };
@@ -37,7 +37,27 @@ export function fundingAsOf(funding: { tMs: number; rate: number }[], decideMs: 
   return best ? { rate8h: best.rate, asOfMs: best.tMs } : { rate8h: null, asOfMs: null };
 }
 
-/** Kalshi crypto/metals funding clocks: 04:00, 12:00, 20:00 UTC. */
+/** 04:00, 12:00, 20:00 UTC. That is 12:00 AM, 8:00 AM and 4:00 PM ET while the US is on daylight time. Help center uses one clock for crypto and metals. A ticker's own next_funding_time still wins when the venue sends it. */
+export function fundingClocksInHold(fromMs: number, holdMs: number): number[] {
+  const end = fromMs + holdMs;
+  const out: number[] = [];
+  const d = new Date(fromMs);
+  for (let add = 0; add < 4; add++) {
+    const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + add);
+    for (const h of [4, 12, 20]) {
+      const t = midnight + h * 3_600_000;
+      if (t > fromMs && t <= end) out.push(t);
+    }
+  }
+  return out;
+}
+
+/** Bars that touch, walking backward only while each step is exactly 15 minutes. A hole stops the walk. */
+export function contiguousLookback<T extends { t: number }>(bars: T[], j: number, max: number): T[] {
+  let start = j;
+  while (start > 0 && bars[start].t - bars[start - 1].t === 900_000) start--;
+  return bars.slice(Math.max(start, j - (max - 1)), j + 1);
+}
 export function nextKalshiFundingMs(decideMs: number): number {
   const d = new Date(decideMs);
   for (let add = 0; add < 3; add++) {
@@ -64,14 +84,22 @@ export function to15Report(m1: Candle[], upToMs: number): { bars: Candle[]; inco
   }
   const bars: Candle[] = [];
   const incomplete: { t: number; minutes: number; reason: string }[] = [];
-  for (const [t, slot] of [...g.entries()].sort((a, b) => a[0] - b[0])) {
-    const expected = Array.from({ length: 15 }, (_, i) => t + i * 60_000);
-    if (expected.some((ts) => !slot.has(ts))) {
-      incomplete.push({ t, minutes: slot.size, reason: `incomplete 15m bar: ${slot.size}/15 aligned minutes` });
-      continue;
+  const seen = [...g.keys()].sort((a, b) => a - b);
+  if (seen.length) {
+    for (let t = seen[0]; t <= seen[seen.length - 1]; t += 900_000) {
+      const slot = g.get(t);
+      if (!slot) {
+        incomplete.push({ t, minutes: 0, reason: "incomplete 15m bar: 0/15 aligned minutes" });
+        continue;
+      }
+      const expected = Array.from({ length: 15 }, (_, i) => t + i * 60_000);
+      if (expected.some((ts) => !slot.has(ts))) {
+        incomplete.push({ t, minutes: slot.size, reason: `incomplete 15m bar: ${slot.size}/15 aligned minutes` });
+        continue;
+      }
+      const ks = expected.map((ts) => slot.get(ts)!);
+      bars.push({ t, o: ks[0].o, h: Math.max(...ks.map((k) => k.h)), l: Math.min(...ks.map((k) => k.l)), c: ks.at(-1)!.c, v: ks.reduce((s, k) => s + (k.v ?? 0), 0) });
     }
-    const ks = expected.map((ts) => slot.get(ts)!);
-    bars.push({ t, o: ks[0].o, h: Math.max(...ks.map((k) => k.h)), l: Math.min(...ks.map((k) => k.l)), c: ks.at(-1)!.c, v: ks.reduce((s, k) => s + (k.v ?? 0), 0) });
   }
   return { bars, incomplete };
 }
@@ -92,7 +120,10 @@ export function simulate(d: SimData, cfg: SimCfg): SimResult {
   for (let j = 60; j < all15.length; j++) {
     const decideMs = all15[j].t + 900_000; // 15m bar closed
     if (decideMs < busyUntil) continue;
-    const b15 = all15.slice(Math.max(0, j - 119), j + 1);
+    let start = j;
+    while (start > 0 && all15[start].t - all15[start - 1].t === 900_000) start--;
+    if (j - start < 60) continue;
+    const b15 = contiguousLookback(all15, j, 120);
     const b1h = d.h1.filter((h) => h.t + 3_600_000 <= decideMs).slice(-230);
     const close = b15.at(-1)!.c;
     const half = Math.max(tick / 2, d.spreadHalf);
@@ -128,7 +159,8 @@ export function simulate(d: SimData, cfg: SimCfg): SimResult {
     }
     const r0 = Math.abs(best.entry! - best.stop!);
     const stop = long ? entry - r0 : entry + r0;
-    const fundAhead = known.rate8h == null ? 0 : (long ? 1 : -1) * known.rate8h * (cfg.maxHoldMin / 60 / 8);
+    const clocks = fundingClocksInHold(decideMs, cfg.maxHoldMin * 60_000);
+    const fundAhead = known.rate8h == null ? 0 : (long ? 1 : -1) * known.rate8h * clocks.length;
     const sz = sizePosition({ profile: prof, equityUsd: equity, spec: d.spec, ticker: d.market.ticker, group: d.group, dir: best.dir, entry, stop, feeRateIn: cfg.entry === "maker" ? d.maker : d.taker, feeRateOut: d.taker, slipPerContract: slip, fundingPctOverHold: fundAhead });
     const qty = Math.floor(sz.qty * frac);
     if (qty < 1) continue;

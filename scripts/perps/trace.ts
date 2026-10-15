@@ -23,13 +23,15 @@ async function pagedCandles(t: string, period: 1 | 60, spanS: number) {
 const [status, fees, enabled] = await Promise.all([R.exchangeStatus(), R.feeTiers(), R.enabled()]);
 const report: Record<string, unknown> = { at: new Date().toISOString(), enabled, exchangeStatus: status, ordersPath: "LOCKED OFF (src/lib/perps/order-adapter.ts)", markets: {} };
 for (const t of tickers) {
-  const observed = Date.now();
+  const requestedAt = Date.now();
   const [market, book, funding] = await Promise.all([R.market(t), R.book(t, 50), R.fundingEstimate(t)]);
+  const receivedMs = Date.now();
   const m1 = await pagedCandles(t, 1, 16 * 3600);
-  const h1 = (await pagedCandles(t, 60, 230 * 3600)).filter((k) => k.t + 3_600_000 <= observed);
-  const b15 = to15(m1, observed);
-  const cands = (["long", "short"] as const).map((dir) => buildPerpsCandidate({ market, book, b15, b1h: h1, dir, makerRate: fees.maker_fee_rates[t], takerRate: fees.taker_fee_rates[t], fundingRate8h: funding.rate, nextFundingMs: funding.nextMs, observedMs: observed }));
-  (report.markets as Record<string, unknown>)[t] = { market, bars: { m1: m1.length, b15: b15.length, h1: h1.length }, band: priceBand(book, market.tick), funding, topOfBook: { bids: book.bids.slice(0, 3), asks: book.asks.slice(0, 3) }, candidates: cands };
+  const h1 = (await pagedCandles(t, 60, 230 * 3600)).filter((k) => k.t + 3_600_000 <= receivedMs);
+  const b15pack = to15(m1, receivedMs);
+  const decisionMs = Date.now();
+  const cands = (["long", "short"] as const).map((dir) => buildPerpsCandidate({ market, book, b15: b15pack, b1h: h1, dir, makerRate: fees.maker_fee_rates[t], takerRate: fees.taker_fee_rates[t], fundingRate8h: funding.rate, nextFundingMs: funding.nextMs, observedMs: market.markTsMs ?? requestedAt, receivedMs, decisionMs, bookKind: "venue" }));
+  (report.markets as Record<string, unknown>)[t] = { market, bars: { m1: m1.length, b15: b15pack.length, h1: h1.length }, band: priceBand(book, market.tick), funding, topOfBook: { bids: book.bids.slice(0, 3), asks: book.asks.slice(0, 3) }, candidates: cands };
 }
 const dir = `${DATA_ROOT}/perps`; mkdirSync(dir, { recursive: true });
 const f = `${dir}/trace-${Date.now()}.json`; writeFileSync(f, JSON.stringify(report, null, 1));

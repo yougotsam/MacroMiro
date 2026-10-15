@@ -21,16 +21,17 @@ export type ExecutionView = {
   sameBarStopAndTarget: "AMBIGUOUS_ON_OHLC";
 };
 
-function walk(levels: [number, number][], qty: number): { fill: number; vwap: number | null; left: number } {
-  let need = qty, cost = 0, got = 0;
+function walk(levels: [number, number][], qty: number): { fill: number; vwap: number | null; left: number; worst: number | null } {
+  let need = qty, cost = 0, got = 0, worst: number | null = null;
   for (const [px, sz] of levels) {
     if (!(sz > 0) || need <= 0) continue;
     const take = Math.min(need, sz);
     cost += take * px;
     got += take;
     need -= take;
+    worst = px;
   }
-  return { fill: got, vwap: got > 0 ? cost / got : null, left: qty - got };
+  return { fill: got, vwap: got > 0 ? cost / got : null, left: qty - got, worst };
 }
 
 /** Maker joins our side. Taker lifts the other side, only up to displayed size. */
@@ -52,7 +53,7 @@ export function evaluateExecution(book: Book, dir: "long" | "short", qty: number
   const w = walk(levels, qty);
   return {
     executable: w.fill > 0, reason: w.left > 0 ? `partial: ${w.fill} of ${qty} shown on the book` : `taker can lift ${w.fill} at displayed size`,
-    mode, limitPrice: w.vwap, displayedQtyAtLimit: null, takerFillQty: w.fill, takerUnfilled: w.left, takerVwap: w.vwap == null ? null : +w.vwap.toFixed(6),
+    mode, limitPrice: w.worst, displayedQtyAtLimit: null, takerFillQty: w.fill, takerUnfilled: w.left, takerVwap: w.vwap == null ? null : +w.vwap.toFixed(6),
     spread, queuePosition: "UNKNOWN", sameBarStopAndTarget: "AMBIGUOUS_ON_OHLC",
   };
 }

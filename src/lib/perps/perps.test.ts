@@ -4,7 +4,10 @@ import { parseBook, parseMarket, perpsReader, priceBand, type Book } from "./kal
 import { buildPerpsCandidate, cleanBars } from "./candidates";
 import { evaluateExecution } from "./execution";
 import { brier, edgeReport } from "./prob-edge";
-import { fundingAsOf, nextKalshiFundingMs, to15Report } from "./sim";
+import { fundingAsOf, fundingClocksInHold, nextKalshiFundingMs, to15Report, contiguousLookback } from "./sim";
+import { replayBooks } from "./book-replay";
+import { pickCurrentReplay, emptyTradeReport } from "./replay-report";
+import { researchTrace } from "./research-features";
 import { perpsOrders, PerpsOrdersLocked, PERPS_ORDERS_LOCKED } from "./order-adapter";
 import type { Candle } from "@/lib/desk/sniper";
 
@@ -62,19 +65,33 @@ describe("perps candidates", () => {
   });
   it("unknown funding is not zero and a synthetic book cannot pass depth", () => {
     const wallBefore = Date.now();
-    const c = buildPerpsCandidate({ ...base, dir: "long", fundingRate8h: null, observedMs: 1_700_000_000_000, decisionMs: 1_700_000_000_000, bookKind: "synthetic_candle" });
+    const c = buildPerpsCandidate({ ...base, dir: "long", fundingRate8h: null, observedMs: 1_700_000_000_000, receivedMs: 1_700_000_000_000, decisionMs: 1_700_000_000_000, bookKind: "synthetic_candle" });
     expect(c.gates.funding.pass).toBe(false);
     expect(c.gates.depth.pass).toBe(false);
     expect(c.funding.known).toBe(false);
     expect(c.payoff.winProbabilityState).toBe("UNKNOWN");
+    expect(c.payoff.winUsdNet).toBeNull();
+    expect(c.payoff.lossUsdNet).toBeNull();
     expect(c.payoff.breakEvenWinRate).toBeNull();
+    expect(c.schema).toBe("perps-candidate/v2");
+    expect(c.timeSource).toBe("caller");
     expect(c.decidedAt).toBe(new Date(1_700_000_000_000).toISOString());
     expect(Date.parse(c.decidedAt)).toBeLessThan(wallBefore);
     expect(c.executionClass).toBe("candle_proxy_not_a_fill");
   });
-  it("venue price is dollars per contract: 1 contract moving 0.01 is $0.01, not contract_size times that", () => {
-    const c = buildPerpsCandidate({ ...base, dir: "short", fundingRate8h: 0, params: { riskUsd: 1, maxNotionalUsd: 100, holdHours: 1, maxFundingAgainst: 0.0005, minDepthMultiple: 3, macroClear: false } });
-    if (c.qtyContracts >= 1 && c.entry != null && c.stop != null) expect(c.riskUsd).toBeCloseTo(c.qtyContracts * Math.abs(c.entry - c.stop), 3);
+  it("a missing decision time is the construction clock, not the request start", () => {
+    const old = Date.now() - 86_400_000;
+    const c = buildPerpsCandidate({ ...base, dir: "long", observedMs: old });
+    expect(c.timeSource).toBe("construction_clock");
+    expect(Date.parse(c.decidedAt)).toBeGreaterThan(old + 60_000);
+  });
+  it("venue price is dollars per contract and the assertion cannot skip a zero size", () => {
+    const flat = (n: number, step: number): Candle[] => Array.from({ length: n }, (_, i) => ({ t: i * step, o: 8.35, h: 8.351, l: 8.349, c: 8.35, v: 10 }));
+    const c = buildPerpsCandidate({ ...base, b15: flat(80, 900_000), b1h: flat(220, 3_600_000), dir: "long", fundingRate8h: 0, params: { riskUsd: 5, maxNotionalUsd: 100, holdHours: 1, maxFundingAgainst: 0.0005, minDepthMultiple: 3, macroClear: false } });
+    expect(c.qtyContracts).toBeGreaterThanOrEqual(1);
+    expect(c.entry).not.toBeNull();
+    expect(c.stop).not.toBeNull();
+    expect(c.riskUsd).toBeCloseTo(c.qtyContracts * Math.abs(c.entry! - c.stop!), 3);
   });
 });
 
@@ -84,6 +101,17 @@ describe("execution and bars", () => {
     expect(v.executable).toBe(true);
     expect(v.takerFillQty).toBe(500);
     expect(v.queuePosition).toBe("UNKNOWN");
+    const over = evaluateExecution(book, "long", 20_000, "taker");
+    const shown = book.asks.reduce((s, x) => s + x[1], 0);
+    expect(shown).toBe(7194);
+    expect(over.takerFillQty).toBe(shown);
+    expect(over.takerUnfilled).toBe(20_000 - shown);
+    expect(over.limitPrice).toBe(book.asks[book.asks.length - 1][0]);
+    expect(over.takerVwap).toBeLessThan(over.limitPrice!);
+    const two = evaluateExecution({ bids: [[1, 10]], asks: [[1, 10], [2, 10]], bestBid: 1, bestAsk: 1 }, "long", 20, "taker");
+    expect(two.takerFillQty).toBe(20);
+    expect(two.takerVwap).toBeCloseTo(1.5, 6);
+    expect(two.limitPrice).toBe(2);
     expect(evaluateExecution(book, "long", 10, "taker", "synthetic_candle").executable).toBe(false);
   });
   it("a 10-minute bucket is incomplete; 15 aligned minutes become one bar", () => {
@@ -97,22 +125,57 @@ describe("execution and bars", () => {
     expect(built.bars).toHaveLength(1);
     expect(built.bars[0].h).toBe(2);
     expect(built.bars[0].l).toBe(0.5);
+    const hole = [...ten.map((k) => ({ ...k, t: bucket + k.t - bucket })), ...Array.from({ length: 15 }, (_, i) => ({ t: bucket + 2 * 900_000 + i * 60_000, o: 1, h: 1, l: 1, c: 1, v: 1 }))];
+    const gapped = to15Report(hole, bucket + 3 * 900_000);
+    expect(gapped.incomplete.some((x) => x.minutes === 0 && /0\/15/.test(x.reason))).toBe(true);
+    expect(gapped.bars).toHaveLength(1);
+    const look = contiguousLookback([{ t: 0 }, { t: 900_000 }, { t: 2_700_000 }], 2, 120);
+    expect(look.map((x) => x.t)).toEqual([2_700_000]);
   });
   it("funding as-of ignores a later print", () => {
     const rows = [{ tMs: 100, rate: 0.01 }, { tMs: 500, rate: 0.9 }];
     expect(fundingAsOf(rows, 200).rate8h).toBe(0.01);
     expect(fundingAsOf(rows, 50).rate8h).toBeNull();
     expect(nextKalshiFundingMs(Date.parse("2026-10-15T03:00:00Z"))).toBe(Date.parse("2026-10-15T04:00:00Z"));
+    const holdStart = Date.parse("2026-10-15T03:30:00Z");
+    expect(fundingClocksInHold(holdStart, 30 * 60_000)).toEqual([Date.parse("2026-10-15T04:00:00Z")]);
+    expect(fundingClocksInHold(Date.parse("2026-10-15T04:05:00Z"), 3 * 3_600_000)).toEqual([]);
   });
-  it("the 2026-10-15 BTC snapshot can lift 1000 and is still not a sniper trade", () => {
+  it("the BTC snapshot is rebuilt by the selector, and a taker larger than the book is partial", () => {
     const raw = JSON.parse(readFileSync(new URL("./fixtures/book-sample-2026-10-15.json", import.meta.url), "utf8"));
     const btc = raw.markets.KXBTCPERP;
-    const book: Book = { bids: btc.bids, asks: btc.asks, bestBid: btc.bestBid, bestAsk: btc.bestAsk };
-    const v = evaluateExecution(book, "long", 1000, "taker");
-    expect(v.takerFillQty).toBe(1000);
-    expect(v.takerUnfilled).toBe(0);
-    expect(btc.candidates[0].decision).toBe("NO_TRADE");
-    expect(btc.candidates[0].winP).toBe("UNKNOWN");
+    const snap: Book = { bids: btc.bids, asks: btc.asks, bestBid: btc.bestBid, bestAsk: btc.bestAsk };
+    const shown = snap.asks.reduce((s, x) => s + x[1], 0);
+    const v = evaluateExecution(snap, "long", shown + 500, "taker");
+    expect(v.takerFillQty).toBe(shown);
+    expect(v.takerUnfilled).toBe(500);
+    const c = buildPerpsCandidate({ market, book: snap, b15: [], b1h: [], dir: "long", makerRate: 0.0002, takerRate: 0.0012, fundingRate8h: btc.funding8h, nextFundingMs: Date.parse(btc.nextFunding), observedMs: Date.parse(raw.capturedAt), receivedMs: Date.parse(raw.capturedAt), decisionMs: Date.parse(raw.capturedAt) });
+    expect(c.decision).toBe("NO_TRADE");
+    expect(c.payoff.winProbabilityState).toBe("UNKNOWN");
+    expect(c.schema).toBe("perps-candidate/v2");
+  });
+  it("book events replay, a gap invalidates the book, and legacy sims are quarantined", () => {
+    const events = [
+      { kind: "orderbook_snapshot" as const, market_ticker: "KXBTCPERP", sid: 1, seq: 1, venueTs: 1, rx: 2, bid: [["8.1", "10"]], ask: [["8.2", "4"]] },
+      { kind: "orderbook_delta" as const, market_ticker: "KXBTCPERP", sid: 1, seq: 2, venueTs: 3, rx: 4, price: "8.2", delta: "6", side: "ask" as const },
+      { kind: "seq_gap" as const, sid: 1, seq: 9, venueTs: null, rx: 5 },
+      { kind: "orderbook_delta" as const, market_ticker: "KXBTCPERP", sid: 1, seq: 10, venueTs: 6, rx: 7, price: "8.2", delta: "-100", side: "ask" as const },
+    ];
+    const mid = replayBooks(events.slice(0, 2));
+    expect(mid.books.KXBTCPERP.askDepth).toBe(10);
+    expect(mid.books.KXBTCPERP.executable).toBe(true);
+    const after = replayBooks(events);
+    expect(after.gaps).toBe(1);
+    expect(after.books.KXBTCPERP.stale).toBe(true);
+    expect(after.books.KXBTCPERP.executable).toBe(false);
+    expect(after.books.KXBTCPERP.askDepth).toBe(10);
+    const picked = pickCurrentReplay([{ name: "sim-1.json", label: "CAUSAL_REPLAY_1M_CANDLES" }, { name: "sim-2.json", label: "CANDLE_ONLY_NOT_EXECUTABLE" }]);
+    expect(picked.file).toBe("sim-2.json");
+    expect(picked.quarantined).toEqual(["sim-1.json"]);
+    expect(emptyTradeReport([]).note).toMatch(/zero trades/);
+    expect(emptyTradeReport(undefined).trades).toBe(0);
+    const feat = researchTrace({ mirofish: { headline: "x", probability: null, at: 1, stage: "error: down", source: "local" }, spark: { status: "processing", at: "2026-10-13T20:14:35.008Z" } });
+    expect(feat.every((f) => f.state === "UNKNOWN")).toBe(true);
   });
   it("brier is null with no outcomes", () => {
     expect(brier([])).toBeNull();
