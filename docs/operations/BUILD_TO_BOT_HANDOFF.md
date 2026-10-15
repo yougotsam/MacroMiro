@@ -9,7 +9,7 @@ Checked against GitHub on 2026-10-15, after PR #3 merged.
 - Repo: https://github.com/yougotsam/MacroMiro
 - Canonical branch: `main`
 - `main` SHA: `9b94dd38dc2bceba2c3c40790ba852a33142c8a9`
-- That SHA is the merge of PR #3. It is not `a30d5a1`. Closing PR #3 now would not roll `main` back.
+- That SHA is the GitHub merge of PR #3. Closing PR #3 does not move `main`.
 - The perps book work inside that merge ends at feature commit `0eb21f9182290ab983daeb1a1806b1f5f31664f8`.
 - `fix/executable-perps-book` is a finished branch, not the place to start new work.
 - This documentation lives on `audit/intelligence-map` as PR #4. Do not start a second docs PR for the same correction.
@@ -99,7 +99,7 @@ If a chat disagrees with these files, the files win. The audit and the probabili
 
 ## Rollback
 
-`main` already contains PR #3 at `9b94dd38dc2bceba2c3c40790ba852a33142c8a9`. Do not close PR #3 to undo it. Do not `reset` `main`. `a30d5a1` is the parent before that merge, not the current main. Rolling back would be a separate owner decision and is not requested.
+`main` already contains PR #3 at `9b94dd38dc2bceba2c3c40790ba852a33142c8a9`. Do not close PR #3 to undo it. Do not `reset` `main`. The commit that `main` pointed at before this merge is history, not the current branch.
 
 ## Next job
 
