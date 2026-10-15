@@ -6,13 +6,13 @@ This is a snapshot of the repo. It is not a strategy.
 
 - Repo: https://github.com/yougotsam/MacroMiro
 - Canonical branch: `main`
-- `main` SHA: `a30d5a1c652a1e6b7cde2a2f59a2958e84101744`
+- `main` SHA: `9b94dd38dc2bceba2c3c40790ba852a33142c8a9`
 - Feature branch: `fix/executable-perps-book`
 - Parent: `2dd92102ef5975adfa27f3805c0c000bd784e15a`
 - Release checkpoint with the rollover fix: `32fc153ee8876cdb7a2f31fca4eb5ab55f6a52f0`
 - The commit that records this line is the PR head. `git rev-parse origin/fix/executable-perps-book` wins if it differs.
-- Open PR: https://github.com/yougotsam/MacroMiro/pull/3
-- Do not merge PR #3 unless the owner says so.
+- PR #3 is merged. The merge commit is `9b94dd38dc2bceba2c3c40790ba852a33142c8a9`. It is not the same as the feature tip `0eb21f9182290ab983daeb1a1806b1f5f31664f8`.
+- Do not start new work from `fix/aurix-x` or `desk-brain-mirofish`.
 - The tip SHA is whatever `git rev-parse HEAD` prints on `fix/executable-perps-book` after this file is committed. Trust that command, not an old chat.
 
 ## What is running
