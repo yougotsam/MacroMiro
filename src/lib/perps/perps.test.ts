@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { parseBook, parseMarket, perpsReader, priceBand } from "./kalshi-perps-read";
+import { parseBook, parseMarket, perpsReader, priceBand, type Book } from "./kalshi-perps-read";
 import { buildPerpsCandidate, cleanBars } from "./candidates";
+import { evaluateExecution } from "./execution";
+import { brier, edgeReport } from "./prob-edge";
+import { fundingAsOf, nextKalshiFundingMs, to15Report } from "./sim";
 import { perpsOrders, PerpsOrdersLocked, PERPS_ORDERS_LOCKED } from "./order-adapter";
 import type { Candle } from "@/lib/desk/sniper";
 
@@ -56,6 +59,65 @@ describe("perps candidates", () => {
     const b = bars(80, 900_000); for (let k = 10; k < 20; k++) b[k] = { ...b[k], l: 0.01 };
     expect(cleanBars(b).dropped).toBe(10);
     expect(buildPerpsCandidate({ ...base, b15: b, dir: "long" }).gates.data_ready.pass).toBe(false);
+  });
+  it("unknown funding is not zero and a synthetic book cannot pass depth", () => {
+    const wallBefore = Date.now();
+    const c = buildPerpsCandidate({ ...base, dir: "long", fundingRate8h: null, observedMs: 1_700_000_000_000, decisionMs: 1_700_000_000_000, bookKind: "synthetic_candle" });
+    expect(c.gates.funding.pass).toBe(false);
+    expect(c.gates.depth.pass).toBe(false);
+    expect(c.funding.known).toBe(false);
+    expect(c.payoff.winProbabilityState).toBe("UNKNOWN");
+    expect(c.payoff.breakEvenWinRate).toBeNull();
+    expect(c.decidedAt).toBe(new Date(1_700_000_000_000).toISOString());
+    expect(Date.parse(c.decidedAt)).toBeLessThan(wallBefore);
+    expect(c.executionClass).toBe("candle_proxy_not_a_fill");
+  });
+  it("venue price is dollars per contract: 1 contract moving 0.01 is $0.01, not contract_size times that", () => {
+    const c = buildPerpsCandidate({ ...base, dir: "short", fundingRate8h: 0, params: { riskUsd: 1, maxNotionalUsd: 100, holdHours: 1, maxFundingAgainst: 0.0005, minDepthMultiple: 3, macroClear: false } });
+    if (c.qtyContracts >= 1 && c.entry != null && c.stop != null) expect(c.riskUsd).toBeCloseTo(c.qtyContracts * Math.abs(c.entry - c.stop), 3);
+  });
+});
+
+describe("execution and bars", () => {
+  it("taker lift stops at displayed size", () => {
+    const v = evaluateExecution(book, "long", 500, "taker");
+    expect(v.executable).toBe(true);
+    expect(v.takerFillQty).toBe(500);
+    expect(v.queuePosition).toBe("UNKNOWN");
+    expect(evaluateExecution(book, "long", 10, "taker", "synthetic_candle").executable).toBe(false);
+  });
+  it("a 10-minute bucket is incomplete; 15 aligned minutes become one bar", () => {
+    const start = 1_700_000_000_000;
+    const bucket = Math.floor(start / 900_000) * 900_000;
+    const ten = Array.from({ length: 10 }, (_, i) => ({ t: bucket + i * 60_000, o: 1, h: 1, l: 1, c: 1, v: 1 }));
+    expect(to15Report(ten, bucket + 900_000).bars).toHaveLength(0);
+    expect(to15Report(ten, bucket + 900_000).incomplete[0].reason).toMatch(/10\/15/);
+    const full = Array.from({ length: 15 }, (_, i) => ({ t: bucket + i * 60_000, o: 1, h: 2, l: 0.5, c: 1.5, v: 1 }));
+    const built = to15Report(full, bucket + 900_000);
+    expect(built.bars).toHaveLength(1);
+    expect(built.bars[0].h).toBe(2);
+    expect(built.bars[0].l).toBe(0.5);
+  });
+  it("funding as-of ignores a later print", () => {
+    const rows = [{ tMs: 100, rate: 0.01 }, { tMs: 500, rate: 0.9 }];
+    expect(fundingAsOf(rows, 200).rate8h).toBe(0.01);
+    expect(fundingAsOf(rows, 50).rate8h).toBeNull();
+    expect(nextKalshiFundingMs(Date.parse("2026-10-15T03:00:00Z"))).toBe(Date.parse("2026-10-15T04:00:00Z"));
+  });
+  it("the 2026-10-15 BTC snapshot can lift 1000 and is still not a sniper trade", () => {
+    const raw = JSON.parse(readFileSync(new URL("./fixtures/book-sample-2026-10-15.json", import.meta.url), "utf8"));
+    const btc = raw.markets.KXBTCPERP;
+    const book: Book = { bids: btc.bids, asks: btc.asks, bestBid: btc.bestBid, bestAsk: btc.bestAsk };
+    const v = evaluateExecution(book, "long", 1000, "taker");
+    expect(v.takerFillQty).toBe(1000);
+    expect(v.takerUnfilled).toBe(0);
+    expect(btc.candidates[0].decision).toBe("NO_TRADE");
+    expect(btc.candidates[0].winP).toBe("UNKNOWN");
+  });
+  it("brier is null with no outcomes", () => {
+    expect(brier([])).toBeNull();
+    expect(edgeReport("kalshi_perps_target_before_stop", 0.4, []).modelProbability).toBe("UNKNOWN");
+    expect(brier([{ p: 0.25, y: 1 }, { p: 0.25, y: 0 }])).toBeCloseTo((0.75 ** 2 + 0.25 ** 2) / 2, 6);
   });
 });
 

@@ -1,4 +1,8 @@
-/** Kalshi margin perps. Not the 15-minute ticket. Not Hyperliquid. */
+/** Kalshi margin perps. Not the 15-minute ticket. Not Hyperliquid.
+ * This file is a shadow lean (three finished minutes). It does not authorize an order.
+ * The research selector is src/lib/perps/candidates.ts. Live sends stay in src/lib/perps/oms.ts, which is locked.
+ */
+export const PERP_DESK_AUTHORIZES_ORDERS = false;
 
 export const PERP_TICKERS = ["KXGOLDPERP", "KXBTCPERP", "KXETHPERP", "KXSOLPERP", "KXXRPPERP", "KXBNBPERP", "KXSILVERPERP", "KXUS500PERP"] as const;
 
@@ -10,6 +14,8 @@ export type PerpCall = {
   /** Leverage we will actually use. Lower than the contract max on purpose. */
   useLev: number;
   why: string;
+  /** Always false. A lean is not an order. candidates.ts is the selector. */
+  authorizesOrder: false;
 };
 
 type Tape = { minute: number; price: number };
@@ -42,7 +48,7 @@ export function pickLeverage(maxLev: number, pushOverNoise: number) {
 
 /** Three finished minutes, all the same way, and the push is at least twice the recent noise. Spread width does not sit. */
 export function perpDecision(ticker: string, bid: number, ask: number, lev: number): PerpCall {
-  const sit = (why: string): PerpCall => ({ take: false, ticker, side: null, pushOverNoise: 0, useLev: 0, why });
+  const sit = (why: string): PerpCall => ({ take: false, ticker, side: null, pushOverNoise: 0, useLev: 0, why, authorizesOrder: false });
   if (!(bid > 0) || !(ask > 0) || ask < bid) return sit("no book");
   if (!(lev >= 2)) return sit("leverage unread");
   const rows = tapes.get(ticker) ?? [];
@@ -67,6 +73,7 @@ export function perpDecision(ticker: string, bid: number, ask: number, lev: numb
     pushOverNoise: ratio,
     useLev,
     why: `${up ? "long" : "short"} · ${(push * 100).toFixed(2)}% / noise ${(noise * 100).toFixed(2)}% · ${useLev.toFixed(1)}x of ${lev.toFixed(1)}x max`,
+    authorizesOrder: false,
   };
 }
 

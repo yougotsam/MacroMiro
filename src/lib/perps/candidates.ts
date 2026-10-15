@@ -11,13 +11,16 @@ export type PerpsParams = { riskUsd: number; maxNotionalUsd: number; holdHours: 
 export const DEFAULT_PARAMS: PerpsParams = { riskUsd: 1, maxNotionalUsd: 100, holdHours: 1, maxFundingAgainst: 0.0005, minDepthMultiple: 3, macroClear: false };
 
 export type PerpsCandidate = {
-  schema: string; ticker: string; dir: "long" | "short"; observedAt: string; decidedAt: string;
+  schema: string; ticker: string; dir: "long" | "short"; observedAt: string; receivedAt: string; decidedAt: string;
+  bookKind: "venue" | "synthetic_candle"; executionClass: "venue_book" | "candle_proxy_not_a_fill";
   setup: string; score: number; scoreState: "NOT_READY" | "VALID_SCORE"; missing: string[];
   bestBid: number | null; bestAsk: number | null; spreadPct: number | null;
   entry: number | null; entryType: "post_only_limit"; stop: number | null; stopBasis: string; target1: number | null; target2: number | null;
   qtyContracts: number; notionalUsd: number; riskUsd: number;
-  fees: { makerRate: number; takerRate: number }; funding: { rate8h: number; nextFundingAt: string; costPctOverHold: number };
-  costs: { winCostUsd: number; lossCostUsd: number }; payoff: { winUsdNet: number; lossUsdNet: number; breakEvenWinRate: number | null };
+  fees: { makerRate: number; takerRate: number };
+  funding: { known: boolean; rate8h: number | null; nextFundingAt: string; costPctOverHold: number | null };
+  costs: { winCostUsd: number | null; lossCostUsd: number | null };
+  payoff: { winUsdNet: number; lossUsdNet: number; breakEvenWinRate: number | null; winProbability: null; winProbabilityState: "UNKNOWN" };
   gates: Record<string, { pass: boolean; why: string }>; decision: "NO_TRADE" | "RESEARCH_CANDIDATE"; reason: string;
 };
 
@@ -32,7 +35,8 @@ export function cleanBars(b: Candle[]): { bars: Candle[]; dropped: number } {
 
 export function buildPerpsCandidate(input: {
   market: PerpMarket; book: Book; b15: Candle[]; b1h: Candle[]; dir: "long" | "short"; makerRate: number; takerRate: number;
-  fundingRate8h: number; nextFundingMs: number; observedMs: number; params?: Partial<PerpsParams>;
+  fundingRate8h: number | null; nextFundingMs: number; observedMs: number; receivedMs?: number; decisionMs?: number;
+  bookKind?: "venue" | "synthetic_candle"; params?: Partial<PerpsParams>;
 }): PerpsCandidate {
   const p = { ...DEFAULT_PARAMS, ...input.params };
   const { market: m, book, dir } = input;
@@ -59,37 +63,45 @@ export function buildPerpsCandidate(input: {
   const qty = entry ? Math.min(qtyRisk, Math.floor(p.maxNotionalUsd / entry)) : 0;
   const notional = entry != null ? +(qty * entry).toFixed(2) : 0;
   const spreadPct = book.bestBid && book.bestAsk ? ((book.bestAsk - book.bestBid) / ((book.bestAsk + book.bestBid) / 2)) * 100 : null;
-  // funding: positive rate → longs pay shorts, per 8 h, prorated over the planned hold
-  const fundingPct = (long ? 1 : -1) * input.fundingRate8h * (p.holdHours / 8);
-  // win path: maker in, half off at T1 and half at T2 as maker limits; loss path: maker in, taker stop + one tick slip
+  const bookKind = input.bookKind ?? "venue";
+  const rate = input.fundingRate8h;
+  const fundingKnown = rate != null && Number.isFinite(rate);
+  // funding: positive rate → longs pay shorts, per 8 h, prorated over the planned hold. Unknown is not zero.
+  const fundingPct = fundingKnown ? (long ? 1 : -1) * rate * (p.holdHours / 8) : null;
   const winGross = r ? qty * (0.5 * r + 0.5 * 2 * r) : 0;
-  const winCost = notional * (input.makerRate * 2) + notional * fundingPct;
+  const winCost = fundingKnown ? notional * (input.makerRate * 2) + notional * fundingPct! : null;
   const lossGross = r ? qty * r : 0;
-  const lossCost = notional * (input.makerRate + input.takerRate) + qty * m.tick + notional * fundingPct;
-  const winNet = +(winGross - winCost).toFixed(4), lossNet = +(-(lossGross + lossCost)).toFixed(4);
-  const be = winNet > 0 ? +(-lossNet / (winNet - lossNet)).toFixed(4) : null;
-  const sideDepth = (long ? book.bids : book.asks).slice(0, 5).reduce((s, x) => s + x[1], 0);
+  const lossCost = fundingKnown ? notional * (input.makerRate + input.takerRate) + qty * m.tick + notional * fundingPct! : null;
+  const winNet = fundingKnown ? +(winGross - winCost!).toFixed(4) : 0;
+  const lossNet = fundingKnown ? +(-(lossGross + lossCost!)).toFixed(4) : 0;
+  const be = fundingKnown && winNet > 0 ? +(-lossNet / (winNet - lossNet)).toFixed(4) : null;
   const stopSideDepth = (long ? book.bids : book.asks).filter((x) => (long ? x[0] >= (stop ?? 0) : x[0] <= (stop ?? Infinity))).reduce((s, x) => s + x[1], 0);
+  const synthetic = bookKind === "synthetic_candle";
   const gates = {
     data_ready: { pass: ready && c15.dropped + c1h.dropped <= Math.max(1, Math.floor(0.02 * (input.b15.length + input.b1h.length))), why: (ready ? "60×15m + 205×1h bars" : e.missing.join("; ")) + (c15.dropped + c1h.dropped ? `; dropped ${c15.dropped + c1h.dropped} impossible bars` : "") },
     setup: { pass: e.setup !== "NONE", why: e.setup },
     confluence_9: { pass: e.eligible, why: `${e.score}/13${e.eligible ? " eligible" : ""}` },
-    funding: { pass: long ? input.fundingRate8h <= p.maxFundingAgainst : input.fundingRate8h >= -p.maxFundingAgainst, why: `rate ${input.fundingRate8h} per 8h (${long ? "longs pay if +" : "shorts pay if −"})` },
-    depth: { pass: qty > 0 && stopSideDepth >= p.minDepthMultiple * qty, why: `${stopSideDepth} contracts between entry and stop on our side vs need ${p.minDepthMultiple}×${qty}` },
+    funding: { pass: fundingKnown && (long ? rate! <= p.maxFundingAgainst : rate! >= -p.maxFundingAgainst), why: fundingKnown ? `rate ${rate} per 8h (${long ? "longs pay if +" : "shorts pay if −"})` : "funding unknown at decision time (not treated as zero)" },
+    depth: { pass: !synthetic && qty > 0 && stopSideDepth >= p.minDepthMultiple * qty, why: synthetic ? "synthetic candle book is not executable depth" : `${stopSideDepth} contracts between entry and stop on our side vs need ${p.minDepthMultiple}×${qty}` },
     size: { pass: qty >= 1, why: qty >= 1 ? `${qty} contracts (risk cap ${qtyRisk}, notional cap $${p.maxNotionalUsd})` : `stop distance ${r?.toFixed(4)} > risk $${p.riskUsd} per contract` },
-    after_cost_positive_payoff: { pass: winNet > 0, why: `win ${winNet} / loss ${lossNet}` },
+    after_cost_positive_payoff: { pass: fundingKnown && winNet > 0, why: fundingKnown ? `win ${winNet} / loss ${lossNet}` : "payoff not estimated; funding missing" },
   };
   const failed = Object.entries(gates).filter(([, g]) => !g.pass).map(([k]) => k);
+  const eventAt = new Date(input.observedMs).toISOString();
+  const receivedAt = new Date(input.receivedMs ?? input.observedMs).toISOString();
+  const decidedAt = new Date(input.decisionMs ?? input.observedMs).toISOString();
   return {
-    schema: PERPS_CANDIDATE_SCHEMA, ticker: m.ticker, dir, observedAt: new Date(input.observedMs).toISOString(), decidedAt: new Date().toISOString(),
+    schema: PERPS_CANDIDATE_SCHEMA, ticker: m.ticker, dir, observedAt: eventAt, receivedAt, decidedAt,
+    bookKind, executionClass: synthetic ? "candle_proxy_not_a_fill" : "venue_book",
     setup: e.setup, score: e.score, scoreState: ready ? "VALID_SCORE" : "NOT_READY", missing: e.missing,
     bestBid: book.bestBid, bestAsk: book.bestAsk, spreadPct: spreadPct == null ? null : +spreadPct.toFixed(4),
     entry, entryType: "post_only_limit", stop: stop == null ? null : +stop.toFixed(4), stopBasis, target1, target2,
     qtyContracts: qty, notionalUsd: notional, riskUsd: r ? +(qty * r).toFixed(4) : 0,
     fees: { makerRate: input.makerRate, takerRate: input.takerRate },
-    funding: { rate8h: input.fundingRate8h, nextFundingAt: new Date(input.nextFundingMs).toISOString(), costPctOverHold: +(fundingPct * 100).toFixed(5) },
-    costs: { winCostUsd: +winCost.toFixed(4), lossCostUsd: +lossCost.toFixed(4) }, payoff: { winUsdNet: winNet, lossUsdNet: lossNet, breakEvenWinRate: be },
+    funding: { known: fundingKnown, rate8h: fundingKnown ? rate : null, nextFundingAt: new Date(input.nextFundingMs).toISOString(), costPctOverHold: fundingPct == null ? null : +(fundingPct * 100).toFixed(5) },
+    costs: { winCostUsd: winCost == null ? null : +winCost.toFixed(4), lossCostUsd: lossCost == null ? null : +lossCost.toFixed(4) },
+    payoff: { winUsdNet: winNet, lossUsdNet: lossNet, breakEvenWinRate: be, winProbability: null, winProbabilityState: "UNKNOWN" },
     gates, decision: failed.length ? "NO_TRADE" : "RESEARCH_CANDIDATE",
-    reason: failed.length ? `failed: ${failed.join(", ")}` : "all research gates pass (paper only; live orders locked; win probability not yet measured)",
+    reason: failed.length ? `failed: ${failed.join(", ")}` : "all research gates pass (paper only; live orders locked; win probability UNKNOWN — break-even is not a win rate)",
   };
 }

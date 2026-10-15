@@ -5,19 +5,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { perpsReader, priceBand, type PerpCandle } from "../../src/lib/perps/kalshi-perps-read";
 import { buildPerpsCandidate } from "../../src/lib/perps/candidates";
+import { to15 } from "../../src/lib/perps/sim";
 import { DATA_ROOT } from "../../src/lib/data-root";
 
 const R = perpsReader();
 const tickers = process.argv.slice(2).length ? process.argv.slice(2) : ["KXBTCPERP", "KXETHPERP", "KXGOLDPERP", "KXSILVERPERP"];
 const nowS = Math.floor(Date.now() / 1000);
 
-/** venue 1m candles → 15m buckets (only buckets with ≥ 10 of 15 minutes; open/close from first/last minute) */
-function to15(m1: PerpCandle[], nowMs: number) {
-  const g = new Map<number, PerpCandle[]>();
-  for (const k of m1) { const b = Math.floor(k.t / 900_000) * 900_000; g.set(b, [...(g.get(b) ?? []), k]); }
-  return [...g.entries()].filter(([b, ks]) => b + 900_000 <= nowMs && ks.length >= 10).sort((a, b) => a[0] - b[0])
-    .map(([t, ks]) => ({ t, o: ks[0].o, h: Math.max(...ks.map((k) => k.h)), l: Math.min(...ks.map((k) => k.l)), c: ks.at(-1)!.c, v: ks.reduce((s, k) => s + k.v, 0) }));
-}
 async function pagedCandles(t: string, period: 1 | 60, spanS: number) {
   const out: PerpCandle[] = [];
   const step = period === 1 ? 4 * 3600 : 200 * 3600;
