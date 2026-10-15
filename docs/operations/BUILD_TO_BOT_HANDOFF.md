@@ -8,7 +8,9 @@ This is a snapshot of the repo. It is not a strategy.
 - Canonical branch: `main`
 - `main` SHA: `a30d5a1c652a1e6b7cde2a2f59a2958e84101744`
 - Feature branch: `fix/executable-perps-book`
-- Code parent before the release checkpoint: `2dd92102ef5975adfa27f3805c0c000bd784e15a`
+- Parent: `2dd92102ef5975adfa27f3805c0c000bd784e15a`
+- Release checkpoint with the rollover fix: `32fc153ee8876cdb7a2f31fca4eb5ab55f6a52f0`
+- The commit that records this line is the PR head. `git rev-parse origin/fix/executable-perps-book` wins if it differs.
 - Open PR: https://github.com/yougotsam/MacroMiro/pull/3
 - Do not merge PR #3 unless the owner says so.
 - The tip SHA is whatever `git rev-parse HEAD` prints on `fix/executable-perps-book` after this file is committed. Trust that command, not an old chat.
