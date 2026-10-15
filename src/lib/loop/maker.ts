@@ -27,14 +27,14 @@ export class StubMaker implements Maker {
   name = "stub";
   async decide(ctx: SelectCtx): Promise<MakerDecision> {
     const q = ctx.quals.find((x) => x.dir === codePick(ctx));
-    const ok = q && q.lossNet < 0 && q.winNet / -q.lossNet >= 1.5;
+    const ok = q && q.lossNet != null && q.winNet != null && q.lossNet < 0 && q.winNet / -q.lossNet >= 1.5;
     return { dir: ok ? q!.dir : null, reasoning: "stub", promptTokens: 400, completionTokens: 40, costUsd: costOf("gemini-3.8-flash", { prompt: 400, completion: 40 }) };
   }
 }
 
 export function makerPrompt(ctx: SelectCtx, skill: string, lessons: string[]) {
   const bars = ctx.b15.slice(-16).map((b) => `${new Date(b.t).toISOString().slice(5, 16)} o${b.o} h${b.h} l${b.l} c${b.c}`).join("\n");
-  const q = ctx.quals.map((x) => `- ${x.dir}: setup ${x.setup}, score ${x.score}/13, entry ${x.entry}, stop ${x.stop}, net if win $${x.winNet.toFixed(2)}, net if loss $${x.lossNet.toFixed(2)}`).join("\n");
+  const q = ctx.quals.map((x) => `- ${x.dir}: setup ${x.setup}, score ${x.score}/13, entry ${x.entry}, stop ${x.stop}, net if win ${x.winNet == null ? "UNKNOWN" : `$${x.winNet.toFixed(2)}`}, net if loss ${x.lossNet == null ? "UNKNOWN" : `$${x.lossNet.toFixed(2)}`}`).join("\n");
   return `You are the MAKER for a paper-only perps scalper (${ctx.ticker}). Decide on ONE closed 15m bar. You only see past data.
 SKILL:\n${skill}\nACTIVE LESSONS (must respect):\n${lessons.map((l) => `- ${l}`).join("\n") || "- none"}
 LAST 16 x 15m BARS:\n${bars}\nQUALIFYING CANDIDATES from the code engine:\n${q}

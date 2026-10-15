@@ -3,13 +3,15 @@
  *   channels ticker (bid/ask/size, mark, liquidation mark, reference price, funding rate/next time),
  *   trade (public prints) and orderbook_delta (snapshot + deltas, seq-checked), for the dynamic registry.
  * REST every 60 s: exchange status, balance, risk parameters. Builds 1m/5m/15m candles from trades.
- * Writes JSONL under $DATA_ROOT/perps/stream/YYYY-MM-DD/. No order endpoints are referenced.
+ * Writes JSONL under $DATA_ROOT/perps/stream/YYYY-MM-DD/. book.jsonl is the lossless snapshot/delta/gap/reconnect log.
+ * Raw archives stay out of git. No order endpoints are referenced.
  *   bun scripts/perps/collect.ts [--seconds N]
  */
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { kalshiSignedHeaders } from "../../src/lib/scan/kalshi-auth";
 import { perpsReader, signedGet } from "../../src/lib/perps/kalshi-perps-read";
 import { CandleBuilder, LocalBook, SeqTracker, eligibleMarkets, type TradeMsg } from "../../src/lib/perps/stream";
+import { rolloverSeed } from "../../src/lib/perps/book-replay";
 import { DATA_ROOT } from "../../src/lib/data-root";
 
 const WS_HOST = process.env.KALSHI_PERPS_WS || "wss://external-api-margin-ws.kalshi.com";
@@ -19,6 +21,16 @@ const R = perpsReader();
 const day = () => new Date().toISOString().slice(0, 10);
 const dir = () => { const d = `${DATA_ROOT}/perps/stream/${day()}`; mkdirSync(d, { recursive: true }); return d; };
 const out = (f: string, o: unknown) => appendFileSync(`${dir()}/${f}.jsonl`, JSON.stringify(o) + "\n");
+let logDay = day();
+const bookSid = new Map<string, number>();
+/** A new UTC day gets the full in-memory book, not the top 80. A stale book stays stale. */
+function rollDay() {
+  const d = day();
+  if (d === logDay) return;
+  logDay = d;
+  for (const [sid, seqNo] of seq.last) out("book", { kind: "day_cursor", sid, seq: seqNo, venueTs: null, rx: Date.now() });
+  for (const [t, b] of books) out("book", rolloverSeed(t, b, bookSid.get(t) ?? null));
+}
 const tickers = eligibleMarkets(await R.markets()).slice(0, 12);
 const books = new Map(tickers.map((t) => [t, new LocalBook()]));
 const builders = new Map(tickers.map((t) => [t, [60_000, 300_000, 900_000].map((p) => new CandleBuilder(p))]));
@@ -32,18 +44,35 @@ function connect() {
   ws.onopen = () => { seq = new SeqTracker(); subscribe(["ticker"]); subscribe(["trade"]); subscribe(["orderbook_delta"], { send_initial_snapshot: true }); };
   ws.onmessage = (ev) => {
     stats.msgs++; stats.lastMsgMs = Date.now();
+    rollDay();
     const m = JSON.parse(String(ev.data)) as { type: string; seq?: number; msg?: any };
     const sid = (m as { sid?: number }).sid;
-    if ((m.type === "orderbook_snapshot" || m.type === "orderbook_delta") && sid != null && !seq.ok(sid, m.seq!)) { stats.gaps++; resync(); return; }
-    if (m.type === "orderbook_snapshot") books.get(m.msg.market_ticker)?.snapshot(m.msg, m.seq!);
-    else if (m.type === "orderbook_delta") { stats.deltas++; books.get(m.msg.market_ticker)?.delta(m.msg);
+    if ((m.type === "orderbook_snapshot" || m.type === "orderbook_delta") && sid != null && !seq.ok(sid, m.seq!)) {
+      stats.gaps++;
+      out("book", { kind: "seq_gap", sid, seq: m.seq ?? null, venueTs: null, rx: Date.now() });
+      for (const b of books.values()) b.stale = true;
+      resync();
+      return;
+    }
+    if (m.type === "orderbook_snapshot") {
+      if (sid != null) bookSid.set(m.msg.market_ticker, sid);
+      out("book", { kind: "orderbook_snapshot", market_ticker: m.msg?.market_ticker, sid: sid ?? null, seq: m.seq ?? null, venueTs: m.msg?.ts_ms ?? null, rx: Date.now(), bid: m.msg?.bid, ask: m.msg?.ask });
+      const book = books.get(m.msg.market_ticker);
+      book?.snapshot(m.msg, m.seq!);
+    } else if (m.type === "orderbook_delta") {
+      stats.deltas++;
+      if (sid != null && m.msg?.market_ticker) bookSid.set(m.msg.market_ticker, sid);
+      out("book", { kind: "orderbook_delta", market_ticker: m.msg?.market_ticker, sid: sid ?? null, seq: m.seq ?? null, venueTs: m.msg?.ts_ms ?? null, rx: Date.now(), price: m.msg?.price, delta: m.msg?.delta, side: m.msg?.side });
+      const book = books.get(m.msg.market_ticker);
+      book?.delta(m.msg);
+      if (book && m.seq != null) book.lastSeq = m.seq;
     } else if (m.type === "ticker") { stats.tickerMsgs++; const x = m.msg; out("ticker", { t: x.ts_ms, rx: Date.now(), k: x.market_ticker, bid: x.bid, ask: x.ask, bs: x.bid_size_fp, as: x.ask_size_fp, px: x.price, mark: x.settlement_mark_price, liqMark: x.liquidation_mark_price, ref: x.reference_price, funding: x.funding_rate, oi: x.open_interest_notional_value_dollars }); }
     else if (m.type === "trade") {
       stats.trades++; const t = m.msg as TradeMsg; out("trades", { ...t, rx: Date.now() });
       for (const b of builders.get(t.market_ticker) ?? []) for (const bar of b.add(t)) { stats.bars++; out(`bars-${b.periodMs / 60_000}m`, { k: t.market_ticker, ...bar }); }
     } else if (m.type === "error") out("errors", m);
   };
-  ws.onclose = () => { stats.reconnects++; for (const b of books.values()) b.stale = true; setTimeout(connect, 2_000); };
+  ws.onclose = () => { stats.reconnects++; out("book", { kind: "reconnect", sid: null, seq: null, venueTs: null, rx: Date.now() }); for (const b of books.values()) b.stale = true; setTimeout(connect, 2_000); };
   ws.onerror = () => { /* onclose follows */ };
 }
 let resyncing = false;

@@ -21,4 +21,4 @@ Superseded: `docs/archive/**` and any note that says the day stop is −$5 or th
 
 ## Perps (2026-10-13)
 Risk profile: AGGRESSIVE_EXPERIMENTAL v1 (proposed, paper/demo). The conservative perps profile is REJECTED BY OWNER, SUPERSEDED. The −$15 daily stop applies to Kalshi 15m only.
-Perps orders stay LOCKED (`PERPS_ORDERS_LOCKED`, `lockedTransport`). Collector: `bun scripts/perps/collect.ts` (read-only WS). Sim: `bun scripts/perps/sim.ts 21`. Report: `bun scripts/perps/report.ts`.
+Perps orders stay LOCKED (`PERPS_ORDERS_LOCKED`, `lockedTransport`). Collector: `bun scripts/perps/collect.ts` (read-only WS). Sim: `bun scripts/perps/sim.ts 21`. Report: `bun scripts/perps/report.ts`. Candle replay is not a fill (`CANDLE_ONLY_NOT_EXECUTABLE`, see `docs/strategies/EXECUTION_EVAL.md`). The selector is `src/lib/perps/candidates.ts`. `src/lib/scan/perp-desk.ts` does not authorize orders.

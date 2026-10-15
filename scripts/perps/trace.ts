@@ -4,20 +4,15 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { perpsReader, priceBand, type PerpCandle } from "../../src/lib/perps/kalshi-perps-read";
-import { buildPerpsCandidate } from "../../src/lib/perps/candidates";
+import { buildPerpsCandidate, RESEARCH_CLIP_ID } from "../../src/lib/perps/candidates";
+import { to15Report } from "../../src/lib/perps/sim";
+import { bookFreshness } from "../../src/lib/perps/execution";
 import { DATA_ROOT } from "../../src/lib/data-root";
 
 const R = perpsReader();
 const tickers = process.argv.slice(2).length ? process.argv.slice(2) : ["KXBTCPERP", "KXETHPERP", "KXGOLDPERP", "KXSILVERPERP"];
 const nowS = Math.floor(Date.now() / 1000);
 
-/** venue 1m candles → 15m buckets (only buckets with ≥ 10 of 15 minutes; open/close from first/last minute) */
-function to15(m1: PerpCandle[], nowMs: number) {
-  const g = new Map<number, PerpCandle[]>();
-  for (const k of m1) { const b = Math.floor(k.t / 900_000) * 900_000; g.set(b, [...(g.get(b) ?? []), k]); }
-  return [...g.entries()].filter(([b, ks]) => b + 900_000 <= nowMs && ks.length >= 10).sort((a, b) => a[0] - b[0])
-    .map(([t, ks]) => ({ t, o: ks[0].o, h: Math.max(...ks.map((k) => k.h)), l: Math.min(...ks.map((k) => k.l)), c: ks.at(-1)!.c, v: ks.reduce((s, k) => s + k.v, 0) }));
-}
 async function pagedCandles(t: string, period: 1 | 60, spanS: number) {
   const out: PerpCandle[] = [];
   const step = period === 1 ? 4 * 3600 : 200 * 3600;
@@ -27,15 +22,27 @@ async function pagedCandles(t: string, period: 1 | 60, spanS: number) {
 }
 
 const [status, fees, enabled] = await Promise.all([R.exchangeStatus(), R.feeTiers(), R.enabled()]);
-const report: Record<string, unknown> = { at: new Date().toISOString(), enabled, exchangeStatus: status, ordersPath: "LOCKED OFF (src/lib/perps/order-adapter.ts)", markets: {} };
+const report: Record<string, unknown> = { at: new Date().toISOString(), enabled, exchangeStatus: status, ordersPath: "LOCKED OFF (src/lib/perps/order-adapter.ts)", sizingProfile: RESEARCH_CLIP_ID, markets: {} };
 for (const t of tickers) {
-  const observed = Date.now();
-  const [market, book, funding] = await Promise.all([R.market(t), R.book(t, 50), R.fundingEstimate(t)]);
-  const m1 = await pagedCandles(t, 1, 16 * 3600);
-  const h1 = (await pagedCandles(t, 60, 230 * 3600)).filter((k) => k.t + 3_600_000 <= observed);
-  const b15 = to15(m1, observed);
-  const cands = (["long", "short"] as const).map((dir) => buildPerpsCandidate({ market, book, b15, b1h: h1, dir, makerRate: fees.maker_fee_rates[t], takerRate: fees.taker_fee_rates[t], fundingRate8h: funding.rate, nextFundingMs: funding.nextMs, observedMs: observed }));
-  (report.markets as Record<string, unknown>)[t] = { market, bars: { m1: m1.length, b15: b15.length, h1: h1.length }, band: priceBand(book, market.tick), funding, topOfBook: { bids: book.bids.slice(0, 3), asks: book.asks.slice(0, 3) }, candidates: cands };
+  const requestedAt = Date.now();
+  const m1 = await pagedCandles(t, 1, 48 * 3600);
+  const h1raw = await pagedCandles(t, 60, 230 * 3600);
+  const [market, book, funding, liveStatus] = await Promise.all([R.market(t), R.book(t, 50), R.fundingEstimate(t), R.exchangeStatus()]);
+  const bookReceivedAt = Date.now();
+  const decisionMs = Date.now();
+  const fresh = bookFreshness({ fetchedAt: bookReceivedAt, decisionMs, tradingActive: Boolean(liveStatus.trading_active), bestBid: book.bestBid, bestAsk: book.bestAsk });
+  const h1 = h1raw.filter((k) => k.t + 3_600_000 <= decisionMs);
+  const built = to15Report(m1, decisionMs);
+  const cands = (["long", "short"] as const).map((dir) => buildPerpsCandidate({
+    market, book, b15: built.bars, b1h: h1, dir, makerRate: fees.maker_fee_rates[t], takerRate: fees.taker_fee_rates[t],
+    fundingRate8h: funding.rate, nextFundingMs: funding.nextMs, observedMs: market.markTsMs ?? requestedAt, receivedMs: bookReceivedAt, decisionMs,
+    bookKind: "venue", bookFresh: fresh.ok, tradingActive: Boolean(liveStatus.trading_active), sizingProfile: RESEARCH_CLIP_ID,
+  }));
+  (report.markets as Record<string, unknown>)[t] = {
+    market, bars: { m1: m1.length, b15: built.bars.length, incomplete15: built.incomplete.length, h1: h1.length, need15: 60, need1h: 205 },
+    book: { fetchedAt: new Date(bookReceivedAt).toISOString(), ageMs: fresh.ageMs, ok: fresh.ok, reasons: fresh.reasons, tradingActive: liveStatus.trading_active },
+    band: priceBand(book, market.tick), funding, topOfBook: { bids: book.bids.slice(0, 3), asks: book.asks.slice(0, 3) }, candidates: cands,
+  };
 }
 const dir = `${DATA_ROOT}/perps`; mkdirSync(dir, { recursive: true });
 const f = `${dir}/trace-${Date.now()}.json`; writeFileSync(f, JSON.stringify(report, null, 1));

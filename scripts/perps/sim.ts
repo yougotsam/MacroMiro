@@ -4,6 +4,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { simulate, type SimCfg } from "../../src/lib/perps/sim";
+import { CURRENT_REPLAY_LABEL } from "../../src/lib/perps/replay-report";
 import { loadSimData } from "./load";
 import { RISK_CONFIGS } from "../../src/lib/perps/mandate";
 import { DATA_ROOT } from "../../src/lib/data-root";
@@ -20,7 +21,7 @@ const macroClear = (t: number) => { if (t < calAt) return false; const g = macro
 for (const entry of ["maker", "taker"] as const) cfgs.push({ ...base, name: `aggr7+intel/${entry}/15%`, riskPct: 0.15, entry, gate: "aggr7", macroClear });
 const results = data.flatMap((d) => cfgs.map((c) => simulate(d, c)));
 const dir = `${DATA_ROOT}/perps`; const f = `${dir}/sim-${Date.now()}.json`;
-writeFileSync(f, JSON.stringify({ at: new Date().toISOString(), label: "CAUSAL REPLAY on Kalshi venue 1m candles (not live fills)", days, base, results }, null, 1));
+writeFileSync(f, JSON.stringify({ at: new Date().toISOString(), label: CURRENT_REPLAY_LABEL, note: "1m candles are not a Kalshi book fill", days, base, results }, null, 1));
 console.log(f);
 console.log("market | cfg | signals | maker misses | trades | net $ | end eq | maxDD% | win% | avgW | avgL | exposure% | avgLev | liq");
 for (const r of results) console.log([r.market, r.cfg, r.signals, r.makerMisses, r.trades.length, r.netUsd, r.endEquity, r.maxDdPct, r.winRate == null ? "-" : (r.winRate * 100).toFixed(0), r.avgWin ?? "-", r.avgLoss ?? "-", r.exposurePct, r.avgLev ?? "-", r.liquidations].join(" | "));

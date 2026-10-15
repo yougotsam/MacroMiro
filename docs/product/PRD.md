@@ -13,7 +13,7 @@ An experimental, aggressive, autonomous selector of executable long/short and ev
 ## Pipeline
 Venue data with source timestamps → features (BOS/MSS, sweeps, FVG, OB, EMA, VWAP, RSI, MACD, ATR, RVOL; CVD only with valid signed flow) → strategy candidate engines (`PERPS_SCALPER`, `KALSHI_15M_BINARY`, `KALSHI_PAIR_UNDER_1`) → selector (liquidity, time, maker fill probability, spread, funding, slippage, after-cost expectancy, confidence) → venue risk mandate + OMS → exit/reconcile worker → realized P&L → walk-forward feedback.
 
-There is one versioned candidate schema per venue (`perps-candidate/v1` in `src/lib/perps/candidates.ts`; `paper/candidates.ts` for Kalshi 15m). **The binary settlement-probability model is never reused for perps.**
+There is one versioned candidate schema per venue (`perps-candidate/v2` in `src/lib/perps/candidates.ts`; `paper/candidates.ts` for Kalshi 15m). **The binary settlement-probability model is never reused for perps.** v1 is retired. Nullable funding and payoff fields live only on v2.
 
 ## Research blend (from the X digest; each item must earn its place with measured value)
 - Maker-only entries with a book-depth gate. Funding/OI crowding filter (short only when longs pay, and the reverse).

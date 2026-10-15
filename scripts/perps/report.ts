@@ -6,26 +6,43 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { signedGet } from "../../src/lib/perps/kalshi-perps-read";
 import { aggressiveProfile, sizePosition, RISK_CONFIGS } from "../../src/lib/perps/mandate";
 import { PerpsOms, FakeExchange, type Intent } from "../../src/lib/perps/oms";
+import { pickCurrentReplay, emptyTradeReport } from "../../src/lib/perps/replay-report";
 import { DATA_ROOT } from "../../src/lib/data-root";
 
 const risk: any = await signedGet("/risk_parameters"); const fees: any = await signedGet("/fee_tiers");
 const out: Record<string, unknown> = {};
-const simF = readdirSync(`${DATA_ROOT}/perps`).filter((f) => /^sim-\d+\.json$/.test(f)).sort().at(-1)!;
-const sim = JSON.parse(readFileSync(`${DATA_ROOT}/perps/${simF}`, "utf8"));
+const dir = `${DATA_ROOT}/perps`;
+const names = readdirSync(dir).filter((f) => /^sim-\d+\.json$/.test(f)).sort();
+const loaded: { name: string; label?: string; sim: any }[] = [];
+const unreadable: string[] = [];
+for (const name of names) {
+  try { const sim = JSON.parse(readFileSync(`${dir}/${name}`, "utf8")); loaded.push({ name, label: sim.label as string | undefined, sim }); }
+  catch { unreadable.push(name); }
+}
+const picked = pickCurrentReplay(loaded);
+out.quarantined = picked.quarantined;
+out.unreadable = unreadable;
+if (!picked.file) {
+  out.note = "no current replay. Legacy sim-*.json files are quarantined and are not P&L.";
+  const f = `${dir}/report-${Date.now()}.json`; writeFileSync(f, JSON.stringify(out, null, 1));
+  console.log(f); console.log(out.note); process.exit(0);
+}
+const sim = loaded.find((x) => x.name === picked.file)!.sim;
+const simF = picked.file;
 const rows: string[] = [];
 for (const t of ["KXGOLDPERP", "KXBTCPERP"]) {
   const m: any = (await signedGet(`/markets/${t}`) as any).market;
   const spec = { leverage: m.leverage_estimates, initialMultiplier: Number(risk.initial_margin_multiplier[t] ?? 1.3), liqThreshold: Number(risk.liquidation_margin_ratio_threshold) };
-  const trades = sim.results.find((r: any) => r.market === t && r.cfg === "aggr7/maker/15%").trades;
-  const stopPct = trades.map((x: any) => Math.abs(x.entry - x.stop) / x.entry).sort((a: number, b: number) => a - b)[Math.floor(trades.length / 2)];
+  const found = sim.results.find((r: any) => r.market === t && r.cfg === "aggr7/maker/15%");
+  const pack = emptyTradeReport(found?.trades);
+  const stopPct = pack.stopMedian ?? 0.02;
+  const stopName = pack.stopMedian == null ? "no-trade stand-in 2% (not a median)" : "median scalp stop";
   const entry = Number(m.price);
-  for (const eq of [250, 500, 1000]) for (const rp of RISK_CONFIGS) for (const [label, sp] of [["median scalp stop", stopPct], ["wide 1h-swing stop (2%)", 0.02]] as const) {
+  for (const eq of [250, 500, 1000]) for (const rp of RISK_CONFIGS) for (const [label, sp] of [[stopName, stopPct], ["wide 1h-swing stop (2%)", 0.02]] as const) {
     const s = sizePosition({ profile: aggressiveProfile(rp), equityUsd: eq, spec, ticker: t, group: t === "KXGOLDPERP" ? "metals" : "crypto", dir: "long", entry, stop: entry * (1 - sp), feeRateIn: fees.maker_fee_rates[t], feeRateOut: fees.taker_fee_rates[t], slipPerContract: 2 * Number(m.tick_size), fundingPctOverHold: 0 });
     rows.push(`${t} | $${eq} | ${rp * 100}% | ${label} ${(sp * 100).toFixed(2)}% | ${s.qty} | $${s.notionalUsd} | ${s.leverage}x | $${s.initialMarginUsd} | $${s.riskUsd} (${s.riskPctOfEquity}%) | liq ${s.liq?.liquidationPrice ?? "-"} (${s.liq?.distanceToLiqPct ?? "-"}% away) | binds: ${s.binding}`);
   }
-  // one trace per market: the first trade with a partial exit, else the first trade
-  const tr = trades.find((x: any) => /t1_partial/.test(x.exits)) ?? trades[0];
-  out[`trace_${t}`] = { simFile: simF, cfg: "aggr7/maker/15%", ...tr, at: new Date(tr.t).toISOString(), makerFee: fees.maker_fee_rates[t], takerFee: fees.taker_fee_rates[t] };
+  out[`trace_${t}`] = pack.trace ? { simFile: simF, cfg: "aggr7/maker/15%", label: sim.label, ...pack.trace, at: pack.at, makerFee: fees.maker_fee_rates[t], takerFee: fees.taker_fee_rates[t] } : { simFile: simF, cfg: "aggr7/maker/15%", label: sim.label, trades: 0, note: pack.note };
 }
 out.sizing = rows;
 // reconciliation demo
