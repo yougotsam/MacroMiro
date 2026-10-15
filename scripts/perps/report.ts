@@ -13,9 +13,15 @@ const risk: any = await signedGet("/risk_parameters"); const fees: any = await s
 const out: Record<string, unknown> = {};
 const dir = `${DATA_ROOT}/perps`;
 const names = readdirSync(dir).filter((f) => /^sim-\d+\.json$/.test(f)).sort();
-const loaded = names.map((name) => { const sim = JSON.parse(readFileSync(`${dir}/${name}`, "utf8")); return { name, label: sim.label as string | undefined, sim }; });
+const loaded: { name: string; label?: string; sim: any }[] = [];
+const unreadable: string[] = [];
+for (const name of names) {
+  try { const sim = JSON.parse(readFileSync(`${dir}/${name}`, "utf8")); loaded.push({ name, label: sim.label as string | undefined, sim }); }
+  catch { unreadable.push(name); }
+}
 const picked = pickCurrentReplay(loaded);
 out.quarantined = picked.quarantined;
+out.unreadable = unreadable;
 if (!picked.file) {
   out.note = "no current replay. Legacy sim-*.json files are quarantined and are not P&L.";
   const f = `${dir}/report-${Date.now()}.json`; writeFileSync(f, JSON.stringify(out, null, 1));

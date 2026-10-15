@@ -8,7 +8,7 @@ This is a snapshot of the repo. It is not a strategy.
 - Canonical branch: `main`
 - `main` SHA: `a30d5a1c652a1e6b7cde2a2f59a2958e84101744`
 - Feature branch: `fix/executable-perps-book`
-- Code parent before this file: `3643d70c810ec7fb0a4b0d8ac1582f7025015e86`
+- Code parent before the release checkpoint: `2dd92102ef5975adfa27f3805c0c000bd784e15a`
 - Open PR: https://github.com/yougotsam/MacroMiro/pull/3
 - Do not merge PR #3 unless the owner says so.
 - The tip SHA is whatever `git rev-parse HEAD` prints on `fix/executable-perps-book` after this file is committed. Trust that command, not an old chat.
@@ -39,28 +39,36 @@ This is a snapshot of the repo. It is not a strategy.
 
 Root: `/workspace/data` (`MACROMIRO_DATA_DIR` overrides it in tests).
 
-- `data/perps/stream/YYYY-MM-DD/book.jsonl` — snapshots, deltas, gaps, reconnects. Not in git.
-- `data/perps/stream/YYYY-MM-DD/trades.jsonl` and `ticker.jsonl`
-- `data/perps/collector-status.json`
-- `data/perps/trace-*.json`
-- `data/heart.json`, `data/kill.json`, `data/ledger.jsonl`
-- `data/mirofish-latest.json`, `data/spark-latest.json`
+Second copy, checksum-verified on 2026-10-15, not in git:
 
-There is no second backup of these files in git. Copy the `data/perps/stream` folder yourself if you need a backup. Do not put keys or account balances in git.
+- Location: `/workspace/backups/macromiro-2026-10-15/`
+- 23 files, 23,664,551 bytes, every copy matches its source SHA-256.
+- `data/perps/stream/2026-10-15/book.jsonl` — 15,377 lines, 2,594,656 bytes, `cad75b40f95991ee…`. The copy was parsed from the first line through the last line.
+- `trades.jsonl` 46,945 bytes `4e9b3ab534c98498…`. `ticker.jsonl` 135,097 bytes `8ac9d7b1bc299350…`.
+- Replaying the copy with `tradingActive: true` rebuilt Bitcoin `8.1253 / 8.1257` and gold `4.1537 / 4.1538`. With no exchange-status flag, those books are not marked executable.
+- `data/ledger.jsonl` and collector status were copied too. They stay out of GitHub. The manifest is `backups/macromiro-2026-10-15/MANIFEST.json`.
+- This backup lives only on this machine. It is not a second host.
+
+Also on the working disk, not a substitute for the backup:
+
+- `data/heart.json`, `data/kill.json`, `data/mirofish-latest.json`, `data/spark-latest.json`
 
 ## Active-market check (2026-10-15)
 
 - 08:35 UTC: `trading_active` was false (Thursday maintenance). 12 snapshots, 0 deltas.
 - 09:01 UTC: `trading_active` was true. About 20 seconds added 15,353 deltas and 270 trades. Replay of `book.jsonl` matched the live top of book for BTC `8.1253 / 8.1257` and gold `4.1537 / 4.1538`.
-- The combined file counted 1 sequence seam between the maintenance capture and the open capture. The live session itself reported 0 gaps. Replay refuses a delta that skips a sequence.
+- A replay with no timestamped `tradingActive: true` is not treated as an open market.
+- A midnight seed writes the whole in-memory book and keeps a stale book stale. A depth-limited row cannot be called executable. A real UTC midnight has not been watched yet. The boundary is covered by a unit test, not by a live date change.
 - A later trace, book fetched after the candle pull: BTC and gold each had 183 complete 15-minute bars (the old 57 was a 16-hour pull, not a broken parser). The 60-bar rule was not lowered. No side passed the gates. BTC short was `TREND_PULLBACK` at 4/13 and still `NO_TRADE`. Win probability `UNKNOWN`.
 
 ## Tests on this checkpoint
 
 - `bun test`: 712 pass, 0 fail
 - `tsc --noEmit`: pass
-- eslint on the touched files: pass
+- `vite build`: pass (about 0.6s). `npm run build` also runs a database migrate; that step was not required to prove the bundle.
+- eslint on the project: 0 errors, 61 warnings. The warnings are older unused names in other files, not in this checkpoint's diff.
 - Orders stay locked. No live order was sent.
+- GitHub on `2dd9210`: Sourcery review SUCCESS. Codex left five notes on that commit (book time, funding-from-fill, stale seed, rollover sequence, unreadable sim file). Those five are fixed in the checkpoint after `2dd9210`. Sourcery has not graded the new commit until it finishes on GitHub.
 
 ## Docs to trust
 
@@ -88,8 +96,8 @@ If a chat disagrees with these files, the files win.
 
 ## Next job
 
-Keep `bun scripts/perps/collect.ts` running while trading is active so the book file grows. Do not turn on live orders. Do not spend research credits. The owner has to say "merge" before PR #3 lands.
+After the owner merges PR #3: keep `bun scripts/perps/collect.ts` running while the market is open. Build sniper candidates from that book. Compare the 5/13, 7/13, and 9/13 research gates on real outcomes. Do not invent fills. Do not turn on live orders. Do not spend research credits. Prediction limits stay separate from the proposed aggressive perps mandate.
 
 ## Verdict
 
-Not merge-ready until the owner reads this and says so. The book path works on a live market. There is still no qualifying sniper trade and no measured win probability.
+Engineering checks that can be run here passed. PR #3 is ready for the owner to merge. It is not merged. A live midnight rollover has not been watched; that path is covered by a unit test. Win probability is still unknown, and that is not a merge blocker for this read-only infrastructure.

@@ -5,7 +5,8 @@ import { buildPerpsCandidate, cleanBars } from "./candidates";
 import { evaluateExecution, bookFreshness } from "./execution";
 import { brier, edgeReport } from "./prob-edge";
 import { fundingAsOf, fundingClocksInHold, nextKalshiFundingMs, to15Report, contiguousLookback } from "./sim";
-import { replayBooks } from "./book-replay";
+import { replayBooks, rolloverSeed } from "./book-replay";
+import { LocalBook } from "./stream";
 import { pickCurrentReplay, emptyTradeReport } from "./replay-report";
 import { researchTrace } from "./research-features";
 import { perpsOrders, PerpsOrdersLocked, PERPS_ORDERS_LOCKED } from "./order-adapter";
@@ -161,9 +162,10 @@ describe("execution and bars", () => {
       { kind: "seq_gap" as const, sid: 1, seq: 9, venueTs: null, rx: 5 },
       { kind: "orderbook_delta" as const, market_ticker: "KXBTCPERP", sid: 1, seq: 10, venueTs: 6, rx: 7, price: "8.2", delta: "-100", side: "ask" as const },
     ];
-    const mid = replayBooks(events.slice(0, 2));
+    const mid = replayBooks(events.slice(0, 2), { tradingActive: true });
     expect(mid.books.KXBTCPERP.askDepth).toBe(10);
     expect(mid.books.KXBTCPERP.executable).toBe(true);
+    expect(replayBooks(events.slice(0, 2)).books.KXBTCPERP.executable).toBe(false);
     const after = replayBooks(events);
     expect(after.gaps).toBe(1);
     expect(after.books.KXBTCPERP.stale).toBe(true);
@@ -202,6 +204,45 @@ describe("execution and bars", () => {
     expect(emptyTradeReport(undefined).trades).toBe(0);
     const feat = researchTrace({ mirofish: { headline: "x", probability: null, at: 1, stage: "error: down", source: "local" }, spark: { status: "processing", at: "2026-10-13T20:14:35.008Z" } });
     expect(feat.every((f) => f.state === "UNKNOWN")).toBe(true);
+    const live = new LocalBook();
+    live.snapshot({ bid: [["8", "5"], ["7", "4"]], ask: [["9", "3"]] }, 10, 100);
+    live.lastSeq = 12;
+    const seed = rolloverSeed("KXBTCPERP", live, 3);
+    expect(seed.depthLimited).toBe(false);
+    expect(seed.seq).toBe(12);
+    expect(seed.stale).toBe(false);
+    const rolled = replayBooks([
+      seed,
+      { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 3, seq: 13, venueTs: 2, rx: 2, price: "9", delta: "2", side: "ask" },
+    ], { tradingActive: true });
+    expect(rolled.books.KXBTCPERP.askDepth).toBe(5);
+    expect(rolled.books.KXBTCPERP.executable).toBe(true);
+    expect(rolled.gaps).toBe(0);
+    const staleBook = new LocalBook();
+    staleBook.snapshot({ bid: [["8", "1"]], ask: [["9", "1"]] }, 4, 1);
+    staleBook.stale = true;
+    staleBook.lastSeq = 4;
+    const staleSeed = rolloverSeed("KXBTCPERP", staleBook, 3);
+    const stayed = replayBooks([
+      staleSeed,
+      { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 3, seq: 5, venueTs: 2, rx: 2, price: "9", delta: "9", side: "ask" },
+    ], { tradingActive: true });
+    expect(stayed.books.KXBTCPERP.stale).toBe(true);
+    expect(stayed.books.KXBTCPERP.executable).toBe(false);
+    expect(stayed.books.KXBTCPERP.askDepth).toBe(1);
+    const capped = replayBooks([
+      { kind: "orderbook_snapshot", market_ticker: "KXBTCPERP", sid: 1, seq: 1, venueTs: 1, rx: 1, bid: [["8", "5"]], ask: [["9", "5"]], seeded: true, depthLimited: true },
+    ], { tradingActive: true });
+    expect(capped.books.KXBTCPERP.depthLimited).toBe(true);
+    expect(capped.books.KXBTCPERP.executable).toBe(false);
+    const reconnect = replayBooks([
+      { kind: "orderbook_snapshot", market_ticker: "KXBTCPERP", sid: 1, seq: 1, venueTs: 1, rx: 1, bid: [["8", "5"]], ask: [["9", "5"]] },
+      { kind: "reconnect", sid: null, seq: null, venueTs: null, rx: 2 },
+      { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 1, seq: 1, venueTs: 3, rx: 3, price: "9", delta: "5", side: "ask" },
+    ], { tradingActive: true });
+    expect(reconnect.reconnects).toBe(1);
+    expect(reconnect.books.KXBTCPERP.stale).toBe(true);
+    expect(reconnect.books.KXBTCPERP.executable).toBe(false);
   });
   it("brier is null with no outcomes", () => {
     expect(brier([])).toBeNull();

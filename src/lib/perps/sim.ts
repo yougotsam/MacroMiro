@@ -159,7 +159,8 @@ export function simulate(d: SimData, cfg: SimCfg): SimResult {
     }
     const r0 = Math.abs(best.entry! - best.stop!);
     const stop = long ? entry - r0 : entry + r0;
-    const clocks = fundingClocksInHold(decideMs, cfg.maxHoldMin * 60_000);
+    const fillMs = m1[fillIdx].t;
+    const clocks = fundingClocksInHold(fillMs, cfg.maxHoldMin * 60_000);
     const fundAhead = known.rate8h == null ? 0 : (long ? 1 : -1) * known.rate8h * clocks.length;
     const sz = sizePosition({ profile: prof, equityUsd: equity, spec: d.spec, ticker: d.market.ticker, group: d.group, dir: best.dir, entry, stop, feeRateIn: cfg.entry === "maker" ? d.maker : d.taker, feeRateOut: d.taker, slipPerContract: slip, fundingPctOverHold: fundAhead });
     const qty = Math.floor(sz.qty * frac);

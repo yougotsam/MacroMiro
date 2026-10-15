@@ -17,6 +17,12 @@ export type PersistedBookEvent = {
   price?: string;
   delta?: string;
   side?: "bid" | "ask";
+  /** Copied from memory at UTC midnight. Not a venue snapshot. */
+  seeded?: boolean;
+  /** The in-memory book was already stale when this row was written. */
+  stale?: boolean;
+  /** True when the row does not contain every level. */
+  depthLimited?: boolean;
 };
 
 export type RebuiltBook = {
@@ -29,12 +35,14 @@ export type RebuiltBook = {
   asks: [number, number][];
   stale: boolean;
   crossed: boolean;
+  depthLimited: boolean;
   executable: boolean;
   lastSeq: number | null;
 };
 
 export function replayBooks(events: PersistedBookEvent[], opts?: { tradingActive?: boolean }): { books: Record<string, RebuiltBook>; gaps: number; reconnects: number; duplicates: number; skipped: number } {
   const live = new Map<string, LocalBook>();
+  const limited = new Map<string, boolean>();
   const sidSeq = new Map<number, number>();
   let gaps = 0, reconnects = 0, duplicates = 0, skipped = 0;
   const touch = (t: string) => {
@@ -70,23 +78,39 @@ export function replayBooks(events: PersistedBookEvent[], opts?: { tradingActive
     if (seq === "unsequenced" && e.kind !== "orderbook_snapshot") { skipped++; continue; }
     if (e.kind === "orderbook_snapshot") {
       b.snapshot({ bid: e.bid, ask: e.ask }, e.seq ?? 0, e.venueTs ?? e.rx);
-      b.stale = false;
+      b.stale = e.stale === true;
+      limited.set(ticker, e.depthLimited === true);
     } else if (!b.stale && e.price != null && e.delta != null && (e.side === "bid" || e.side === "ask")) {
       b.delta({ price: e.price, delta: e.delta, side: e.side, ts_ms: e.venueTs ?? undefined });
+      if (e.seq != null) b.lastSeq = e.seq;
     } else skipped++;
   }
-  const open = opts?.tradingActive !== false;
+  const open = opts?.tradingActive === true;
   const books: Record<string, RebuiltBook> = {};
   for (const [ticker, b] of live) {
     const top = b.top(50);
     const crossed = top.bestBid != null && top.bestAsk != null && top.bestBid >= top.bestAsk;
     const incomplete = top.bestBid == null || top.bestAsk == null;
+    const depthLimited = limited.get(ticker) === true;
     const bidDepth = top.bids.reduce((s, x) => s + x[1], 0);
     const askDepth = top.asks.reduce((s, x) => s + x[1], 0);
     books[ticker] = {
       ticker, bestBid: top.bestBid, bestAsk: top.bestAsk, bidDepth, askDepth, bids: top.bids, asks: top.asks,
-      stale: b.stale, crossed, executable: open && !b.stale && !crossed && !incomplete, lastSeq: b.lastSeq,
+      stale: b.stale, crossed, depthLimited, executable: open && !b.stale && !depthLimited && !crossed && !incomplete, lastSeq: b.lastSeq,
     };
   }
   return { books, gaps, reconnects, duplicates, skipped };
 }
+
+/** Full in-memory book for a new UTC-day file. A stale book stays stale. Top-80 is not used. */
+export function rolloverSeed(ticker: string, book: LocalBook, sid: number | null): PersistedBookEvent {
+  const bids = [...book.bids.entries()].sort((a, b) => b[0] - a[0]);
+  const asks = [...book.asks.entries()].sort((a, b) => a[0] - b[0]);
+  const unanchored = book.lastSeq == null || sid == null;
+  return {
+    kind: "orderbook_snapshot", market_ticker: ticker, sid, seq: book.lastSeq, venueTs: book.updatedMs || null, rx: Date.now(),
+    seeded: true, stale: book.stale || unanchored, depthLimited: false,
+    bid: bids.map(([p, q]) => [String(p), String(q)]), ask: asks.map(([p, q]) => [String(p), String(q)]),
+  };
+}
+

@@ -27,20 +27,20 @@ for (const t of tickers) {
   const requestedAt = Date.now();
   const m1 = await pagedCandles(t, 1, 48 * 3600);
   const h1raw = await pagedCandles(t, 60, 230 * 3600);
-  const bookFetchedAt = Date.now();
   const [market, book, funding, liveStatus] = await Promise.all([R.market(t), R.book(t, 50), R.fundingEstimate(t), R.exchangeStatus()]);
+  const bookReceivedAt = Date.now();
   const decisionMs = Date.now();
-  const fresh = bookFreshness({ fetchedAt: bookFetchedAt, decisionMs, tradingActive: Boolean(liveStatus.trading_active), bestBid: book.bestBid, bestAsk: book.bestAsk });
+  const fresh = bookFreshness({ fetchedAt: bookReceivedAt, decisionMs, tradingActive: Boolean(liveStatus.trading_active), bestBid: book.bestBid, bestAsk: book.bestAsk });
   const h1 = h1raw.filter((k) => k.t + 3_600_000 <= decisionMs);
   const built = to15Report(m1, decisionMs);
   const cands = (["long", "short"] as const).map((dir) => buildPerpsCandidate({
     market, book, b15: built.bars, b1h: h1, dir, makerRate: fees.maker_fee_rates[t], takerRate: fees.taker_fee_rates[t],
-    fundingRate8h: funding.rate, nextFundingMs: funding.nextMs, observedMs: market.markTsMs ?? requestedAt, receivedMs: bookFetchedAt, decisionMs,
+    fundingRate8h: funding.rate, nextFundingMs: funding.nextMs, observedMs: market.markTsMs ?? requestedAt, receivedMs: bookReceivedAt, decisionMs,
     bookKind: "venue", bookFresh: fresh.ok, tradingActive: Boolean(liveStatus.trading_active), sizingProfile: RESEARCH_CLIP_ID,
   }));
   (report.markets as Record<string, unknown>)[t] = {
     market, bars: { m1: m1.length, b15: built.bars.length, incomplete15: built.incomplete.length, h1: h1.length, need15: 60, need1h: 205 },
-    book: { fetchedAt: new Date(bookFetchedAt).toISOString(), ageMs: fresh.ageMs, ok: fresh.ok, reasons: fresh.reasons, tradingActive: liveStatus.trading_active },
+    book: { fetchedAt: new Date(bookReceivedAt).toISOString(), ageMs: fresh.ageMs, ok: fresh.ok, reasons: fresh.reasons, tradingActive: liveStatus.trading_active },
     band: priceBand(book, market.tick), funding, topOfBook: { bids: book.bids.slice(0, 3), asks: book.asks.slice(0, 3) }, candidates: cands,
   };
 }

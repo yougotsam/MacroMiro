@@ -11,6 +11,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { kalshiSignedHeaders } from "../../src/lib/scan/kalshi-auth";
 import { perpsReader, signedGet } from "../../src/lib/perps/kalshi-perps-read";
 import { CandleBuilder, LocalBook, SeqTracker, eligibleMarkets, type TradeMsg } from "../../src/lib/perps/stream";
+import { rolloverSeed } from "../../src/lib/perps/book-replay";
 import { DATA_ROOT } from "../../src/lib/data-root";
 
 const WS_HOST = process.env.KALSHI_PERPS_WS || "wss://external-api-margin-ws.kalshi.com";
@@ -21,15 +22,13 @@ const day = () => new Date().toISOString().slice(0, 10);
 const dir = () => { const d = `${DATA_ROOT}/perps/stream/${day()}`; mkdirSync(d, { recursive: true }); return d; };
 const out = (f: string, o: unknown) => appendFileSync(`${dir()}/${f}.jsonl`, JSON.stringify(o) + "\n");
 let logDay = day();
-/** A new UTC day starts an empty book file. Copy the current book in as a snapshot so later deltas are not orphaned. */
+const bookSid = new Map<string, number>();
+/** A new UTC day gets the full in-memory book, not the top 80. A stale book stays stale. */
 function rollDay() {
   const d = day();
   if (d === logDay) return;
   logDay = d;
-  for (const [t, b] of books) {
-    const top = b.top(80);
-    out("book", { kind: "orderbook_snapshot", market_ticker: t, sid: null, seq: b.lastSeq, venueTs: b.updatedMs || null, rx: Date.now(), seeded: true, stale: b.stale, bid: top.bids.map(([p, q]) => [String(p), String(q)]), ask: top.asks.map(([p, q]) => [String(p), String(q)]) });
-  }
+  for (const [t, b] of books) out("book", rolloverSeed(t, b, bookSid.get(t) ?? null));
 }
 const tickers = eligibleMarkets(await R.markets()).slice(0, 12);
 const books = new Map(tickers.map((t) => [t, new LocalBook()]));
@@ -55,12 +54,17 @@ function connect() {
       return;
     }
     if (m.type === "orderbook_snapshot") {
+      if (sid != null) bookSid.set(m.msg.market_ticker, sid);
       out("book", { kind: "orderbook_snapshot", market_ticker: m.msg?.market_ticker, sid: sid ?? null, seq: m.seq ?? null, venueTs: m.msg?.ts_ms ?? null, rx: Date.now(), bid: m.msg?.bid, ask: m.msg?.ask });
-      books.get(m.msg.market_ticker)?.snapshot(m.msg, m.seq!);
+      const book = books.get(m.msg.market_ticker);
+      book?.snapshot(m.msg, m.seq!);
     } else if (m.type === "orderbook_delta") {
       stats.deltas++;
+      if (sid != null && m.msg?.market_ticker) bookSid.set(m.msg.market_ticker, sid);
       out("book", { kind: "orderbook_delta", market_ticker: m.msg?.market_ticker, sid: sid ?? null, seq: m.seq ?? null, venueTs: m.msg?.ts_ms ?? null, rx: Date.now(), price: m.msg?.price, delta: m.msg?.delta, side: m.msg?.side });
-      books.get(m.msg.market_ticker)?.delta(m.msg);
+      const book = books.get(m.msg.market_ticker);
+      book?.delta(m.msg);
+      if (book && m.seq != null) book.lastSeq = m.seq;
     } else if (m.type === "ticker") { stats.tickerMsgs++; const x = m.msg; out("ticker", { t: x.ts_ms, rx: Date.now(), k: x.market_ticker, bid: x.bid, ask: x.ask, bs: x.bid_size_fp, as: x.ask_size_fp, px: x.price, mark: x.settlement_mark_price, liqMark: x.liquidation_mark_price, ref: x.reference_price, funding: x.funding_rate, oi: x.open_interest_notional_value_dollars }); }
     else if (m.type === "trade") {
       stats.trades++; const t = m.msg as TradeMsg; out("trades", { ...t, rx: Date.now() });
