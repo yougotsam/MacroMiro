@@ -34,7 +34,16 @@ function walk(levels: [number, number][], qty: number): { fill: number; vwap: nu
   return { fill: got, vwap: got > 0 ? cost / got : null, left: qty - got, worst };
 }
 
-/** Maker joins our side. Taker lifts the other side, only up to displayed size. */
+export function bookFreshness(input: { fetchedAt: number; decisionMs: number; maxAgeMs?: number; tradingActive: boolean; bestBid: number | null; bestAsk: number | null }) {
+  const ageMs = input.decisionMs - input.fetchedAt;
+  const max = input.maxAgeMs ?? 15_000;
+  const reasons: string[] = [];
+  if (!(ageMs >= 0) || ageMs > max) reasons.push(`stale book ${ageMs}ms`);
+  if (!input.tradingActive) reasons.push("trading_active false");
+  if (input.bestBid == null || input.bestAsk == null) reasons.push("incomplete book");
+  else if (input.bestBid >= input.bestAsk) reasons.push("crossed book");
+  return { ageMs, ok: reasons.length === 0, reasons };
+}
 export function evaluateExecution(book: Book, dir: "long" | "short", qty: number, mode: "maker" | "taker", bookKind: BookKind = "venue"): ExecutionView {
   const spread = book.bestBid != null && book.bestAsk != null ? +(book.bestAsk - book.bestBid).toFixed(6) : null;
   const blank = (reason: string): ExecutionView => ({
@@ -43,6 +52,7 @@ export function evaluateExecution(book: Book, dir: "long" | "short", qty: number
   if (bookKind !== "venue") return blank("synthetic book is not a fill");
   if (!(qty >= 1)) return blank("qty < 1");
   if (book.bestBid == null || book.bestAsk == null) return blank("book missing a side");
+  if (book.bestBid >= book.bestAsk) return blank("crossed book");
   if (mode === "maker") {
     const levels = dir === "long" ? book.bids : book.asks;
     const px = dir === "long" ? book.bestBid : book.bestAsk;

@@ -16,7 +16,7 @@
  */
 import { buildPerpsCandidate } from "./candidates";
 import { startState, stepBar, type ManagePlan } from "./manage";
-import { sizePosition, aggressiveProfile, type Profile } from "./mandate";
+import { sizePosition, aggressiveProfile, AGGRESSIVE_EXPERIMENTAL_VERSION, type Profile } from "./mandate";
 import type { MarginSpec } from "./margin";
 import type { Candle } from "@/lib/desk/sniper";
 import type { PerpMarket } from "./kalshi-perps-read";
@@ -133,7 +133,7 @@ export function simulate(d: SimData, cfg: SimCfg): SimResult {
     let best: ReturnType<typeof buildPerpsCandidate> | null = null;
     const quals: ReturnType<typeof buildPerpsCandidate>[] = [];
     for (const dir of ["long", "short"] as const) {
-      const c = buildPerpsCandidate({ market: { ...d.market, tick }, book, b15, b1h, dir, makerRate: d.maker, takerRate: d.taker, fundingRate8h: known.rate8h, nextFundingMs: nextKalshiFundingMs(decideMs), observedMs: decideMs, decisionMs: decideMs, receivedMs: decideMs, bookKind: "synthetic_candle", params: { riskUsd: cfg.riskPct * equity, maxNotionalUsd: Math.max(100, equity), macroClear: cfg.macroClear?.(decideMs) ?? false } });
+      const c = buildPerpsCandidate({ market: { ...d.market, tick }, book, b15, b1h, dir, makerRate: d.maker, takerRate: d.taker, fundingRate8h: known.rate8h, nextFundingMs: nextKalshiFundingMs(decideMs), observedMs: decideMs, decisionMs: decideMs, receivedMs: decideMs, bookKind: "synthetic_candle", sizingProfile: AGGRESSIVE_EXPERIMENTAL_VERSION, params: { riskUsd: cfg.riskPct * equity, maxNotionalUsd: Math.max(100, equity), macroClear: cfg.macroClear?.(decideMs) ?? false } });
       const ok = c.gates.data_ready.pass && c.gates.setup.pass && c.gates.funding.pass && (cfg.gate === "strict9" ? c.gates.confluence_9.pass : c.score >= 7) && c.stop != null;
       if (ok) quals.push(c);
       if (ok && (!best || c.score > best.score)) best = c;

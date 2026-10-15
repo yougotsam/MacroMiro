@@ -20,6 +20,17 @@ const R = perpsReader();
 const day = () => new Date().toISOString().slice(0, 10);
 const dir = () => { const d = `${DATA_ROOT}/perps/stream/${day()}`; mkdirSync(d, { recursive: true }); return d; };
 const out = (f: string, o: unknown) => appendFileSync(`${dir()}/${f}.jsonl`, JSON.stringify(o) + "\n");
+let logDay = day();
+/** A new UTC day starts an empty book file. Copy the current book in as a snapshot so later deltas are not orphaned. */
+function rollDay() {
+  const d = day();
+  if (d === logDay) return;
+  logDay = d;
+  for (const [t, b] of books) {
+    const top = b.top(80);
+    out("book", { kind: "orderbook_snapshot", market_ticker: t, sid: null, seq: b.lastSeq, venueTs: b.updatedMs || null, rx: Date.now(), seeded: true, stale: b.stale, bid: top.bids.map(([p, q]) => [String(p), String(q)]), ask: top.asks.map(([p, q]) => [String(p), String(q)]) });
+  }
+}
 const tickers = eligibleMarkets(await R.markets()).slice(0, 12);
 const books = new Map(tickers.map((t) => [t, new LocalBook()]));
 const builders = new Map(tickers.map((t) => [t, [60_000, 300_000, 900_000].map((p) => new CandleBuilder(p))]));
@@ -33,6 +44,7 @@ function connect() {
   ws.onopen = () => { seq = new SeqTracker(); subscribe(["ticker"]); subscribe(["trade"]); subscribe(["orderbook_delta"], { send_initial_snapshot: true }); };
   ws.onmessage = (ev) => {
     stats.msgs++; stats.lastMsgMs = Date.now();
+    rollDay();
     const m = JSON.parse(String(ev.data)) as { type: string; seq?: number; msg?: any };
     const sid = (m as { sid?: number }).sid;
     if ((m.type === "orderbook_snapshot" || m.type === "orderbook_delta") && sid != null && !seq.ok(sid, m.seq!)) {

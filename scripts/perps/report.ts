@@ -30,8 +30,9 @@ for (const t of ["KXGOLDPERP", "KXBTCPERP"]) {
   const found = sim.results.find((r: any) => r.market === t && r.cfg === "aggr7/maker/15%");
   const pack = emptyTradeReport(found?.trades);
   const stopPct = pack.stopMedian ?? 0.02;
+  const stopName = pack.stopMedian == null ? "no-trade stand-in 2% (not a median)" : "median scalp stop";
   const entry = Number(m.price);
-  for (const eq of [250, 500, 1000]) for (const rp of RISK_CONFIGS) for (const [label, sp] of [["median scalp stop", stopPct], ["wide 1h-swing stop (2%)", 0.02]] as const) {
+  for (const eq of [250, 500, 1000]) for (const rp of RISK_CONFIGS) for (const [label, sp] of [[stopName, stopPct], ["wide 1h-swing stop (2%)", 0.02]] as const) {
     const s = sizePosition({ profile: aggressiveProfile(rp), equityUsd: eq, spec, ticker: t, group: t === "KXGOLDPERP" ? "metals" : "crypto", dir: "long", entry, stop: entry * (1 - sp), feeRateIn: fees.maker_fee_rates[t], feeRateOut: fees.taker_fee_rates[t], slipPerContract: 2 * Number(m.tick_size), fundingPctOverHold: 0 });
     rows.push(`${t} | $${eq} | ${rp * 100}% | ${label} ${(sp * 100).toFixed(2)}% | ${s.qty} | $${s.notionalUsd} | ${s.leverage}x | $${s.initialMarginUsd} | $${s.riskUsd} (${s.riskPctOfEquity}%) | liq ${s.liq?.liquidationPrice ?? "-"} (${s.liq?.distanceToLiqPct ?? "-"}% away) | binds: ${s.binding}`);
   }

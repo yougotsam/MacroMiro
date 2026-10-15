@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseBook, parseMarket, perpsReader, priceBand, type Book } from "./kalshi-perps-read";
 import { buildPerpsCandidate, cleanBars } from "./candidates";
-import { evaluateExecution } from "./execution";
+import { evaluateExecution, bookFreshness } from "./execution";
 import { brier, edgeReport } from "./prob-edge";
 import { fundingAsOf, fundingClocksInHold, nextKalshiFundingMs, to15Report, contiguousLookback } from "./sim";
 import { replayBooks } from "./book-replay";
@@ -108,7 +108,7 @@ describe("execution and bars", () => {
     expect(over.takerUnfilled).toBe(20_000 - shown);
     expect(over.limitPrice).toBe(book.asks[book.asks.length - 1][0]);
     expect(over.takerVwap).toBeLessThan(over.limitPrice!);
-    const two = evaluateExecution({ bids: [[1, 10]], asks: [[1, 10], [2, 10]], bestBid: 1, bestAsk: 1 }, "long", 20, "taker");
+    const two = evaluateExecution({ bids: [[0.9, 10]], asks: [[1, 10], [2, 10]], bestBid: 0.9, bestAsk: 1 }, "long", 20, "taker");
     expect(two.takerFillQty).toBe(20);
     expect(two.takerVwap).toBeCloseTo(1.5, 6);
     expect(two.limitPrice).toBe(2);
@@ -169,6 +169,32 @@ describe("execution and bars", () => {
     expect(after.books.KXBTCPERP.stale).toBe(true);
     expect(after.books.KXBTCPERP.executable).toBe(false);
     expect(after.books.KXBTCPERP.askDepth).toBe(10);
+    const jumped = replayBooks([
+      { kind: "orderbook_snapshot", market_ticker: "KXBTCPERP", sid: 1, seq: 1, venueTs: 1, rx: 1, bid: [["8", "5"]], ask: [["9", "5"]] },
+      { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 1, seq: 3, venueTs: 2, rx: 2, price: "9", delta: "5", side: "ask" },
+    ]);
+    expect(jumped.gaps).toBe(1);
+    expect(jumped.books.KXBTCPERP.stale).toBe(true);
+    expect(jumped.books.KXBTCPERP.executable).toBe(false);
+    expect(jumped.books.KXBTCPERP.askDepth).toBe(5);
+    const dup = replayBooks([
+      { kind: "orderbook_snapshot", market_ticker: "KXBTCPERP", sid: 1, seq: 1, venueTs: 1, rx: 1, bid: [["8", "5"]], ask: [["9", "5"]] },
+      { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 1, seq: 2, venueTs: 2, rx: 2, price: "9", delta: "1", side: "ask" },
+      { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 1, seq: 2, venueTs: 3, rx: 3, price: "9", delta: "100", side: "ask" },
+    ]);
+    expect(dup.duplicates).toBe(1);
+    expect(dup.books.KXBTCPERP.askDepth).toBe(6);
+    const closed = replayBooks([
+      { kind: "orderbook_snapshot", market_ticker: "KXGOLDPERP", sid: 1, seq: 1, venueTs: 1, rx: 1, bid: [["4.1", "10"]], ask: [["4.2", "10"]] },
+    ], { tradingActive: false });
+    expect(closed.books.KXGOLDPERP.executable).toBe(false);
+    const crossed = evaluateExecution({ bids: [[5, 1]], asks: [[5, 1]], bestBid: 5, bestAsk: 5 }, "long", 1, "taker");
+    expect(crossed.executable).toBe(false);
+    expect(crossed.reason).toMatch(/crossed/);
+    const stale = bookFreshness({ fetchedAt: 1_000, decisionMs: 30_000, tradingActive: true, bestBid: 1, bestAsk: 2 });
+    expect(stale.ok).toBe(false);
+    const feat2 = researchTrace({ mirofish: { probability: 0.5, stage: "ok" }, spark: { status: "complete" } });
+    expect(feat2.every((f) => f.state === "UNKNOWN")).toBe(true);
     const picked = pickCurrentReplay([{ name: "sim-1.json", label: "CAUSAL_REPLAY_1M_CANDLES" }, { name: "sim-2.json", label: "CANDLE_ONLY_NOT_EXECUTABLE" }]);
     expect(picked.file).toBe("sim-2.json");
     expect(picked.quarantined).toEqual(["sim-1.json"]);

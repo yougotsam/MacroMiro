@@ -8,6 +8,8 @@ import type { Book, PerpMarket } from "./kalshi-perps-read";
 
 export const PERPS_CANDIDATE_SCHEMA = "perps-candidate/v2";
 export type PerpsParams = { riskUsd: number; maxNotionalUsd: number; holdHours: number; maxFundingAgainst: number; minDepthMultiple: number; macroClear: boolean };
+export const RESEARCH_CLIP_ID = "research-clip/not-a-mandate";
+/** Dollar probe only. These $1 / $100 numbers match the rejected conservative record. They are not aggressive-experimental/v1 and they are not a live approval. */
 export const DEFAULT_PARAMS: PerpsParams = { riskUsd: 1, maxNotionalUsd: 100, holdHours: 1, maxFundingAgainst: 0.0005, minDepthMultiple: 3, macroClear: false };
 
 export type PerpsCandidate = {
@@ -24,6 +26,7 @@ export type PerpsCandidate = {
   gates: Record<string, { pass: boolean; why: string }>; decision: "NO_TRADE" | "RESEARCH_CANDIDATE"; reason: string;
   /** caller = the trace passed receipt and decision times. construction_clock = those times were missing, so they are "now", not the request start. */
   timeSource: "caller" | "construction_clock";
+  sizingProfile: string;
 };
 
 /** Drop impossible bars (data_ready tolerates at most 2% dropped, else NOT ready).
@@ -39,6 +42,7 @@ export function buildPerpsCandidate(input: {
   market: PerpMarket; book: Book; b15: Candle[]; b1h: Candle[]; dir: "long" | "short"; makerRate: number; takerRate: number;
   fundingRate8h: number | null; nextFundingMs: number; observedMs: number; receivedMs?: number; decisionMs?: number;
   bookKind?: "venue" | "synthetic_candle"; params?: Partial<PerpsParams>;
+  bookFresh?: boolean; tradingActive?: boolean; sizingProfile?: string;
 }): PerpsCandidate {
   const p = { ...DEFAULT_PARAMS, ...input.params };
   const { market: m, book, dir } = input;
@@ -87,6 +91,8 @@ export function buildPerpsCandidate(input: {
     depth: { pass: !synthetic && qty > 0 && stopSideDepth >= p.minDepthMultiple * qty, why: synthetic ? "synthetic candle book is not executable depth" : `${stopSideDepth} contracts between entry and stop on our side vs need ${p.minDepthMultiple}×${qty}` },
     size: { pass: qty >= 1, why: qty >= 1 ? `${qty} contracts (risk cap ${qtyRisk}, notional cap $${p.maxNotionalUsd})` : `stop distance ${r?.toFixed(4)} > risk $${p.riskUsd} per contract` },
     after_cost_positive_payoff: { pass: fundingKnown && winNet != null && winNet > 0, why: fundingKnown ? `win ${winNet} / loss ${lossNet}` : "payoff not estimated; funding missing" },
+    book_fresh: { pass: input.bookFresh !== false, why: input.bookFresh === false ? "book snapshot is stale or was taken before the candle pull" : "fresh, or the caller did not check" },
+    market_open: { pass: input.tradingActive !== false, why: input.tradingActive === false ? "trading_active is false" : "open, or the caller did not check" },
   };
   const failed = Object.entries(gates).filter(([, g]) => !g.pass).map(([k]) => k);
   const eventAt = new Date(input.observedMs).toISOString();
@@ -107,5 +113,6 @@ export function buildPerpsCandidate(input: {
     gates, decision: failed.length ? "NO_TRADE" : "RESEARCH_CANDIDATE",
     reason: failed.length ? `failed: ${failed.join(", ")}` : "all research gates pass (paper only; live orders locked; win probability UNKNOWN — break-even is not a win rate)",
     timeSource: stamped ? "caller" : "construction_clock",
+    sizingProfile: input.sizingProfile ?? RESEARCH_CLIP_ID,
   };
 }

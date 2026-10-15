@@ -16,9 +16,9 @@ export function researchTrace(input: {
   spark?: { status?: string; at?: string; error?: string } | null;
 }): ResearchFeature[] {
   const m = input.mirofish;
-  const swarmOk = !!m && m.probability != null && !String(m.stage ?? "").startsWith("error");
+  const swarmOk = !!m && m.probability != null && m.at != null && !String(m.stage ?? "").startsWith("error");
   const s = input.spark;
-  const sparkOk = !!s && s.status === "complete" && !s.error;
+  const sparkOk = !!s && s.status === "complete" && !s.error && !!s.at;
   return [
     { name: "mirofish_scenario", eventAt: m?.at != null ? new Date(m.at).toISOString() : null, source: m?.source ?? "mirofish", state: swarmOk ? "known" : "UNKNOWN", value: swarmOk ? m!.probability! : null, horizon: "next decision" },
     { name: "spark_catalyst", eventAt: s?.at ?? null, source: "spark-2", state: sparkOk ? "known" : "UNKNOWN", value: sparkOk ? s!.status! : null, horizon: "next decision" },
