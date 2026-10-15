@@ -28,6 +28,7 @@ function rollDay() {
   const d = day();
   if (d === logDay) return;
   logDay = d;
+  for (const [sid, seqNo] of seq.last) out("book", { kind: "day_cursor", sid, seq: seqNo, venueTs: null, rx: Date.now() });
   for (const [t, b] of books) out("book", rolloverSeed(t, b, bookSid.get(t) ?? null));
 }
 const tickers = eligibleMarkets(await R.markets()).slice(0, 12);

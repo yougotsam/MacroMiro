@@ -38,6 +38,18 @@ export function cleanBars(b: Candle[]): { bars: Candle[]; dropped: number } {
   return { bars, dropped: b.length - bars.length };
 }
 
+/** How many 8-hour funding prints fall inside the hold, starting at the venue's next funding time. A print counts in full. A fraction of the rate is not a charge. */
+export function fundingPrintsInHold(nextFundingMs: number, fromMs: number, holdHours: number): number {
+  if (!Number.isFinite(nextFundingMs) || !Number.isFinite(fromMs) || !(holdHours > 0)) return 0;
+  const end = fromMs + holdHours * 3_600_000;
+  let t = nextFundingMs;
+  let guard = 0;
+  while (t <= fromMs && guard++ < 12) t += 8 * 3_600_000;
+  let n = 0;
+  while (t > fromMs && t <= end && n < 8) { n++; t += 8 * 3_600_000; }
+  return n;
+}
+
 export function buildPerpsCandidate(input: {
   market: PerpMarket; book: Book; b15: Candle[]; b1h: Candle[]; dir: "long" | "short"; makerRate: number; takerRate: number;
   fundingRate8h: number | null; nextFundingMs: number; observedMs: number; receivedMs?: number; decisionMs?: number;
@@ -72,8 +84,8 @@ export function buildPerpsCandidate(input: {
   const bookKind = input.bookKind ?? "venue";
   const rate = input.fundingRate8h;
   const fundingKnown = rate != null && Number.isFinite(rate);
-  // funding: positive rate → longs pay shorts, per 8 h, prorated over the planned hold. Unknown is not zero.
-  const fundingPct = fundingKnown ? (long ? 1 : -1) * rate * (p.holdHours / 8) : null;
+  const prints = fundingPrintsInHold(input.nextFundingMs, input.decisionMs ?? input.observedMs, p.holdHours);
+  const fundingPct = fundingKnown ? (long ? 1 : -1) * rate * prints : null;
   const winGross = r ? qty * (0.5 * r + 0.5 * 2 * r) : 0;
   const winCost = fundingKnown ? notional * (input.makerRate * 2) + notional * fundingPct! : null;
   const lossGross = r ? qty * r : 0;
@@ -87,12 +99,12 @@ export function buildPerpsCandidate(input: {
     data_ready: { pass: ready && c15.dropped + c1h.dropped <= Math.max(1, Math.floor(0.02 * (input.b15.length + input.b1h.length))), why: (ready ? "60×15m + 205×1h bars" : e.missing.join("; ")) + (c15.dropped + c1h.dropped ? `; dropped ${c15.dropped + c1h.dropped} impossible bars` : "") },
     setup: { pass: e.setup !== "NONE", why: e.setup },
     confluence_9: { pass: e.eligible, why: `${e.score}/13${e.eligible ? " eligible" : ""}` },
-    funding: { pass: fundingKnown && (long ? rate! <= p.maxFundingAgainst : rate! >= -p.maxFundingAgainst), why: fundingKnown ? `rate ${rate} per 8h (${long ? "longs pay if +" : "shorts pay if −"})` : "funding unknown at decision time (not treated as zero)" },
+    funding: { pass: fundingKnown && (long ? rate! <= p.maxFundingAgainst : rate! >= -p.maxFundingAgainst), why: fundingKnown ? `${prints} print(s) at rate ${rate} per 8h` : "funding unknown at decision time (not treated as zero)" },
     depth: { pass: !synthetic && qty > 0 && stopSideDepth >= p.minDepthMultiple * qty, why: synthetic ? "synthetic candle book is not executable depth" : `${stopSideDepth} contracts between entry and stop on our side vs need ${p.minDepthMultiple}×${qty}` },
     size: { pass: qty >= 1, why: qty >= 1 ? `${qty} contracts (risk cap ${qtyRisk}, notional cap $${p.maxNotionalUsd})` : `stop distance ${r?.toFixed(4)} > risk $${p.riskUsd} per contract` },
     after_cost_positive_payoff: { pass: fundingKnown && winNet != null && winNet > 0, why: fundingKnown ? `win ${winNet} / loss ${lossNet}` : "payoff not estimated; funding missing" },
     book_fresh: { pass: input.bookFresh !== false, why: input.bookFresh === false ? "book snapshot is stale or was taken before the candle pull" : "fresh, or the caller did not check" },
-    market_open: { pass: input.tradingActive !== false, why: input.tradingActive === false ? "trading_active is false" : "open, or the caller did not check" },
+    market_open: { pass: input.tradingActive !== false && (!m.status || m.status === "active"), why: m.status && m.status !== "active" ? `market status ${m.status}` : input.tradingActive === false ? "trading_active is false" : "open, or the caller did not check" },
   };
   const failed = Object.entries(gates).filter(([, g]) => !g.pass).map(([k]) => k);
   const eventAt = new Date(input.observedMs).toISOString();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseBook, parseMarket, perpsReader, priceBand, type Book } from "./kalshi-perps-read";
-import { buildPerpsCandidate, cleanBars } from "./candidates";
+import { buildPerpsCandidate, cleanBars, fundingPrintsInHold } from "./candidates";
 import { evaluateExecution, bookFreshness } from "./execution";
 import { brier, edgeReport } from "./prob-edge";
 import { fundingAsOf, fundingClocksInHold, nextKalshiFundingMs, to15Report, contiguousLookback } from "./sim";
@@ -208,10 +208,12 @@ describe("execution and bars", () => {
     live.snapshot({ bid: [["8", "5"], ["7", "4"]], ask: [["9", "3"]] }, 10, 100);
     live.lastSeq = 12;
     const seed = rolloverSeed("KXBTCPERP", live, 3);
-    expect(seed.depthLimited).toBe(false);
-    expect(seed.seq).toBe(12);
+    expect(seed.kind).toBe("rollover_seed");
+    expect(seed.seq).toBeNull();
+    expect(seed.bookSeq).toBe(12);
     expect(seed.stale).toBe(false);
     const rolled = replayBooks([
+      { kind: "day_cursor", sid: 3, seq: 12, venueTs: null, rx: 1 },
       seed,
       { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 3, seq: 13, venueTs: 2, rx: 2, price: "9", delta: "2", side: "ask" },
     ], { tradingActive: true });
@@ -243,6 +245,25 @@ describe("execution and bars", () => {
     expect(reconnect.reconnects).toBe(1);
     expect(reconnect.books.KXBTCPERP.stale).toBe(true);
     expect(reconnect.books.KXBTCPERP.executable).toBe(false);
+    const btc = new LocalBook();
+    btc.snapshot({ bid: [["8", "2"]], ask: [["8.1", "2"]] }, 1, 1);
+    btc.lastSeq = 500;
+    const gold = new LocalBook();
+    gold.snapshot({ bid: [["4", "2"]], ask: [["4.1", "2"]] }, 1, 1);
+    gold.lastSeq = 20;
+    const two = replayBooks([
+      { kind: "day_cursor", sid: 3, seq: 500, venueTs: null, rx: 1 },
+      rolloverSeed("KXBTCPERP", btc, 3),
+      rolloverSeed("KXGOLDPERP", gold, 3),
+      { kind: "orderbook_delta", market_ticker: "KXBTCPERP", sid: 3, seq: 501, venueTs: 2, rx: 2, price: "8.1", delta: "1", side: "ask" },
+    ], { tradingActive: true });
+    expect(two.gaps).toBe(0);
+    expect(two.books.KXBTCPERP.executable).toBe(true);
+    expect(two.books.KXGOLDPERP.executable).toBe(true);
+    const paused = buildPerpsCandidate({ market: { ...market, status: "paused" }, book, b15: [], b1h: [], dir: "long", makerRate: 0.0002, takerRate: 0.0012, fundingRate8h: 0, nextFundingMs: 1, observedMs: 1, tradingActive: true });
+    expect(paused.gates.market_open.pass).toBe(false);
+    expect(fundingPrintsInHold(Date.parse("2026-10-15T04:00:00Z"), Date.parse("2026-10-15T03:30:00Z"), 1)).toBe(1);
+    expect(fundingPrintsInHold(Date.parse("2026-10-15T04:00:00Z"), Date.parse("2026-10-15T04:05:00Z"), 1)).toBe(0);
   });
   it("brier is null with no outcomes", () => {
     expect(brier([])).toBeNull();

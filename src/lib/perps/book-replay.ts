@@ -6,7 +6,7 @@
 import { LocalBook } from "./stream";
 
 export type PersistedBookEvent = {
-  kind: "orderbook_snapshot" | "orderbook_delta" | "seq_gap" | "reconnect";
+  kind: "orderbook_snapshot" | "orderbook_delta" | "seq_gap" | "reconnect" | "rollover_seed" | "day_cursor";
   market_ticker?: string;
   sid: number | null;
   seq: number | null;
@@ -23,6 +23,8 @@ export type PersistedBookEvent = {
   stale?: boolean;
   /** True when the row does not contain every level. */
   depthLimited?: boolean;
+  /** Last per-market sequence remembered at midnight. Not the shared subscription sequence. */
+  bookSeq?: number | null;
 };
 
 export type RebuiltBook = {
@@ -59,6 +61,10 @@ export function replayBooks(events: PersistedBookEvent[], opts?: { tradingActive
     return seq === prev + 1 ? "ok" : "gap";
   };
   for (const e of events) {
+    if (e.kind === "day_cursor") {
+      if (e.sid != null && e.seq != null) sidSeq.set(e.sid, e.seq);
+      continue;
+    }
     if (e.kind === "seq_gap" || e.kind === "reconnect") {
       if (e.kind === "seq_gap") gaps++; else reconnects++;
       for (const b of live.values()) b.stale = true;
@@ -67,6 +73,14 @@ export function replayBooks(events: PersistedBookEvent[], opts?: { tradingActive
     }
     const ticker = e.market_ticker;
     if (!ticker) continue;
+    const image = e.kind === "rollover_seed" || (e.kind === "orderbook_snapshot" && e.seeded === true);
+    if (image) {
+      const b = touch(ticker);
+      b.snapshot({ bid: e.bid, ask: e.ask }, e.bookSeq ?? e.seq ?? 0, e.venueTs ?? e.rx);
+      b.stale = e.stale === true;
+      limited.set(ticker, e.depthLimited === true);
+      continue;
+    }
     const seq = seqState(e.sid, e.seq);
     if (seq === "duplicate") { duplicates++; skipped++; continue; }
     const b = touch(ticker);
@@ -108,7 +122,7 @@ export function rolloverSeed(ticker: string, book: LocalBook, sid: number | null
   const asks = [...book.asks.entries()].sort((a, b) => a[0] - b[0]);
   const unanchored = book.lastSeq == null || sid == null;
   return {
-    kind: "orderbook_snapshot", market_ticker: ticker, sid, seq: book.lastSeq, venueTs: book.updatedMs || null, rx: Date.now(),
+    kind: "rollover_seed", market_ticker: ticker, sid: null, seq: null, bookSeq: book.lastSeq, venueTs: book.updatedMs || null, rx: Date.now(),
     seeded: true, stale: book.stale || unanchored, depthLimited: false,
     bid: bids.map(([p, q]) => [String(p), String(q)]), ask: asks.map(([p, q]) => [String(p), String(q)]),
   };
