@@ -6,14 +6,20 @@ import { loadOmniBoard } from "@/lib/omni/board";
 import { scenarioSeed, geminiPasses } from "@/lib/omni/flip";
 import type { BankPreset } from "@/lib/omni/flip";
 import { applyPreset, ledgerView, pushShadow, readLedger, writeLedger } from "@/lib/omni/ledger";
-import { probeKalshi } from "@/lib/scan/kalshi-auth";
+import { probeKalshi, kalshiGet } from "@/lib/scan/kalshi-auth";
 
-async function liveCash(): Promise<number | null> {
+async function liveBook(): Promise<{ cash: number | null; positions: number | null }> {
   try {
-    const p = await probeKalshi();
-    return p.auth ? p.cashUsd : null;
+    const [p, pos] = await Promise.all([
+      probeKalshi(),
+      kalshiGet<{ market_positions?: unknown[] }>("/trade-api/v2/portfolio/positions").catch(() => null),
+    ]);
+    return {
+      cash: p.auth ? p.cashUsd : null,
+      positions: pos ? (pos.data.market_positions?.length ?? 0) : null,
+    };
   } catch {
-    return null;
+    return { cash: null, positions: null };
   }
 }
 
@@ -24,8 +30,8 @@ export const Route = createFileRoute("/api/live/omni")({
     handlers: {
       GET: async ({ request }) => {
         const url = new URL(request.url);
-        const [board, cash] = await Promise.all([loadOmniBoard(), liveCash()]);
-        const ledger = ledgerView(readLedger(), cash);
+        const [board, book] = await Promise.all([loadOmniBoard(), liveBook()]);
+        const ledger = ledgerView(readLedger(), book.cash);
         const ticker = url.searchParams.get("ticker");
         const row = ticker ? board.rows.find((r) => r.ticker === ticker) : board.rows[0];
         const seed = row ? scenarioSeed({ question: row.question, ticker: row.ticker, sector: row.sector, yesAsk: row.yesAsk }) : null;
@@ -36,6 +42,7 @@ export const Route = createFileRoute("/api/live/omni")({
           error: board.error,
           rows: board.rows,
           ledger,
+          positions: book.positions,
           seed,
           geminiPasses: row ? geminiPasses(row.question) : [],
           note: "Win probability is UNKNOWN. A shadow row is not a Kalshi order. The 15-minute risk limits are unchanged.",
@@ -55,11 +62,11 @@ export const Route = createFileRoute("/api/live/omni")({
           target?: number | null;
           multiple?: number | null;
         };
-        const cash = await liveCash();
+        const book = await liveBook();
         if (body.kind === "preset" && body.preset != null && PRESETS.has(body.preset)) {
-          const next = applyPreset(readLedger(), body.preset, cash);
+          const next = applyPreset(readLedger(), body.preset, book.cash);
           writeLedger(next);
-          return Response.json({ ok: true, sendsOrders: false, ledger: ledgerView(next, cash) });
+          return Response.json({ ok: true, sendsOrders: false, ledger: ledgerView(next, book.cash) });
         }
         if (body.kind === "shadow" && body.ticker && body.question && body.mode) {
           const next = pushShadow(readLedger(), {
@@ -72,7 +79,7 @@ export const Route = createFileRoute("/api/live/omni")({
             multiple: typeof body.multiple === "number" ? body.multiple : null,
           });
           writeLedger(next);
-          return Response.json({ ok: true, sendsOrders: false, ledger: ledgerView(next, cash) });
+          return Response.json({ ok: true, sendsOrders: false, ledger: ledgerView(next, book.cash) });
         }
         return Response.json({ ok: false, sendsOrders: false, error: "preset or shadow required" }, { status: 400 });
       },

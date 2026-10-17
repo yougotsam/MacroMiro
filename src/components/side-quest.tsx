@@ -18,7 +18,7 @@ type Payload = {
   error: string | null;
   rows: Row[];
   seed: string | null;
-  note: string;
+  positions: number | null;
   ledger: { preset: number | "live"; shownCash: number; rung: { name: string; from: number; to: number; progress: number }; flips: { ticker: string; status: string }[] };
 };
 
@@ -67,7 +67,7 @@ export function SideQuest() {
       {data?.error ? <p className="text-zinc-400">Board: {data.error}</p> : null}
       {data ? (
         <p className="font-mono text-xs text-zinc-400">
-          Tracked ${data.ledger.shownCash.toFixed(0)} · preset {String(data.ledger.preset)} · rung {data.ledger.rung.name} ${data.ledger.rung.from}→${data.ledger.rung.to} · {Math.round(data.ledger.rung.progress * 100)}% · shadow flips {data.ledger.flips.length}
+          Tracked ${data.ledger.shownCash.toFixed(0)} · preset {String(data.ledger.preset)} · Kalshi positions {data.positions ?? "—"} · rung {data.ledger.rung.name} ${data.ledger.rung.from}→${data.ledger.rung.to} · {Math.round(data.ledger.rung.progress * 100)}% · shadow flips {data.ledger.flips.length}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-1">
