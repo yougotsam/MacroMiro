@@ -77,7 +77,8 @@ describe("AURIX-X genuine price/flow evidence",()=>{
     expect(fifteen.length).toBe(4);
     const result=evaluateSniper(fifteen,[],"long",true);
     expect(result.eligible).toBe(false);
-    expect(result.missing).toContain("205 complete 1h bars");
+    expect(result.missing).toContain("60 complete 15m bars");
+    expect(result.missing).not.toContain("205 complete 1h bars");
   });
   it("maps bullish 61.8 percent retracement to DISCOUNT, not premium", () => {
     expect(fibPocket(38.2,0,100,"long")?.inside).toBe(true);

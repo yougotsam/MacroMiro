@@ -201,8 +201,8 @@ export function evaluateSniper(b15:Candle[],b1h:Candle[],dir:Direction,macroClea
   const isLong=dir==="long",side=isLong?1:-1, tags:string[]=[],missing:string[]=[];
   const pts={structure:0,liquidity:0,flow:0,momentum:0,regime:0,macro:0,trigger:0};
   const last=b15.at(-1),prev=b15.at(-2), a=atr(b15), h=closes(b1h),c=closes(b15);
-  if(b15.length<60||b1h.length<205||!last||!prev||a==null||a<=0) {
-    return {direction:dir,setup:"NONE",score:0,families:0,points:pts,tags,missing:["60 complete 15m bars","205 complete 1h bars"],eligible:false};
+  if(b15.length<60||!last||!prev||a==null||a<=0) {
+    return {direction:dir,setup:"NONE",score:0,families:0,points:pts,tags,missing:["60 complete 15m bars"],eligible:false};
   }
   const swings=confirmedSwings(b15),hi=swings.highs.at(-1),lo=swings.lows.at(-1);
   const emaH=emaSeries(h,200).at(-1)!,ema7=emaSeries(c,7).at(-1)!,
