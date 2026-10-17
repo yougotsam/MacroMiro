@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { BrokerPanel, CalendarCompact, CatalystRadar, InboxCompact, liveAnalog } from "@/components/desk-panels";
 import { PerpCockpit } from "@/components/PerpCockpit";
 import { SwarmPanel } from "@/components/swarm-panel";
+import { SideQuest } from "@/components/side-quest";
 import { LoopPanel } from "@/components/loop";
 import { Fail, Quiet } from "@/components/fail";
 import type { Opinion, PlayId } from "@/lib/envelope/opinion";
@@ -25,12 +26,13 @@ import type { ScanPayload, ScanRow } from "@/lib/scan/types";
 import { EtClock } from "@/components/et-clock";
 import { cn } from "@/lib/utils";
 
-type Tab = "floor" | "scan" | "print" | "book" | "perps" | "swarm";
+type Tab = "floor" | "scan" | "print" | "book" | "perps" | "swarm" | "side";
 
 const TABS: { id: Tab; label: string; title: string; line: string }[] = [
   { id: "floor", label: "Desk", title: "Desk", line: "Chart, the open ticket, and the last decision." },
   { id: "print", label: "News", title: "News", line: "Calendar and Spark. A note. Not an order." },
   { id: "swarm", label: "Swarm", title: "Swarm", line: "MiroFish. A crowd read. Not an order." },
+  { id: "side", label: "Board", title: "Board", line: "Every Kalshi sector. A price rank. Not a win rate." },
   { id: "perps", label: "Perps", title: "Perps", line: "Kalshi margin. Own cash." },
 ];
 
@@ -784,6 +786,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         </div>
       ) : null}
       {tab === "swarm" ? <SwarmPanel /> : null}
+      {tab === "side" ? <SideQuest /> : null}
       {tab === "perps" ? <PerpsLater /> : null}
     </div>
   );

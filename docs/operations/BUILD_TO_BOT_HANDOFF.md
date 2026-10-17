@@ -4,21 +4,22 @@ This is a snapshot of the repo. It is not a strategy.
 
 ## Git
 
+Checked against GitHub on 2026-10-15, after PR #3 merged.
+
 - Repo: https://github.com/yougotsam/MacroMiro
 - Canonical branch: `main`
-- `main` SHA: `a30d5a1c652a1e6b7cde2a2f59a2958e84101744`
-- Feature branch: `fix/executable-perps-book`
-- Parent: `2dd92102ef5975adfa27f3805c0c000bd784e15a`
-- Release checkpoint with the rollover fix: `32fc153ee8876cdb7a2f31fca4eb5ab55f6a52f0`
-- The commit that records this line is the PR head. `git rev-parse origin/fix/executable-perps-book` wins if it differs.
-- Open PR: https://github.com/yougotsam/MacroMiro/pull/3
-- Do not merge PR #3 unless the owner says so.
-- The tip SHA is whatever `git rev-parse HEAD` prints on `fix/executable-perps-book` after this file is committed. Trust that command, not an old chat.
+- `main` SHA: `9b94dd38dc2bceba2c3c40790ba852a33142c8a9`
+- That SHA is the GitHub merge of PR #3. Closing PR #3 does not move `main`.
+- The perps book work inside that merge ends at feature commit `0eb21f9182290ab983daeb1a1806b1f5f31664f8`.
+- `fix/executable-perps-book` is a finished branch, not the place to start new work.
+- This documentation lives on `audit/intelligence-map` as PR #4. Do not start a second docs PR for the same correction.
+- Do not start new work from `fix/aurix-x` or `desk-brain-mirofish`.
+- Before coding, Bot runs `git fetch origin` and `git rev-parse origin/main`. If that SHA is not `9b94dd3`, main moved. Read the new handoff. Do not trust this paragraph over the command.
 
 ## What is running
 
-- This checkout is the feature branch. It is not a published deploy.
-- No deployed SHA was verified. `main` on GitHub is still `a30d5a1`.
+- This file is documentation. The trading code it describes is already on `main` at `9b94dd3`.
+- No separate deploy SHA was checked. Do not assume a website is serving `9b94dd3` until that site is asked.
 - Uncommitted files under `data/`, `attachments/`, and `artifacts/` are runtime notes. Do not commit them. Do not delete them.
 
 ## What the code does
@@ -50,6 +51,7 @@ Second copy, checksum-verified on 2026-10-15, not in git:
 - Replaying the copy with `tradingActive: true` rebuilt Bitcoin `8.1253 / 8.1257` and gold `4.1537 / 4.1538`. With no exchange-status flag, those books are not marked executable.
 - `data/ledger.jsonl` and collector status were copied too. They stay out of GitHub. The manifest is `backups/macromiro-2026-10-15/MANIFEST.json`.
 - This backup lives only on this machine. It is not a second host.
+- Owner copy, no purchase and no upload to GitHub: copy the folder `/workspace/backups/macromiro-2026-10-15/` onto a disk you control (a second computer or a USB drive). On that copy, hash each file and compare it to `sha256` in `MANIFEST.json`. All 23 rows must match. If one does not, the copy is bad. Do not commit the folder. Do not paste the files into a chat.
 
 Also on the working disk, not a substitute for the backup:
 
@@ -70,7 +72,8 @@ Also on the working disk, not a substitute for the backup:
 - `vite build`: pass (about 0.6s). `npm run build` also runs a database migrate; that step was not required to prove the bundle.
 - eslint on the project: 0 errors, 61 warnings. The warnings are older unused names in other files, not in this checkpoint's diff.
 - Orders stay locked. No live order was sent.
-- GitHub on `2dd9210`: Sourcery review SUCCESS. Codex left five notes on that commit (book time, funding-from-fill, stale seed, rollover sequence, unreadable sim file). Those five are fixed in the checkpoint after `2dd9210`. Sourcery has not graded the new commit until it finishes on GitHub.
+- Those checks were run on the code that is now inside `main` `9b94dd3`, before the merge. This documentation PR does not change that code.
+- GitHub on `2dd9210`: Sourcery review SUCCESS. Later review notes on the book path were fixed before the merge. A live midnight rollover has still not been watched. That path is covered by a unit test.
 
 ## Docs to trust
 
@@ -82,8 +85,10 @@ Also on the working disk, not a substitute for the backup:
 6. `docs/operations/RUNBOOK.md`
 7. `AGENTS.project.md`
 8. This file
+9. `docs/operations/INTELLIGENCE_AUDIT.md` — what is connected
+10. `docs/operations/PROBABILITY_MATRIX.md` — what each number means
 
-If a chat disagrees with these files, the files win.
+If a chat disagrees with these files, the files win. The audit and the probability note must not contradict this handoff. `main` is `9b94dd3`. PR #3 is merged.
 
 ## Do not resume these
 
@@ -94,12 +99,23 @@ If a chat disagrees with these files, the files win.
 
 ## Rollback
 
-`main` has not moved. To abandon the feature branch, close PR #3. Do not `reset` `main`. The last safe main commit is `a30d5a1c652a1e6b7cde2a2f59a2958e84101744`.
+`main` already contains PR #3 at `9b94dd38dc2bceba2c3c40790ba852a33142c8a9`. Do not close PR #3 to undo it. Do not `reset` `main`. The commit that `main` pointed at before this merge is history, not the current branch.
 
 ## Next job
 
-After the owner merges PR #3: keep `bun scripts/perps/collect.ts` running while the market is open. Build sniper candidates from that book. Compare the 5/13, 7/13, and 9/13 research gates on real outcomes. Do not invent fills. Do not turn on live orders. Do not spend research credits. Prediction limits stay separate from the proposed aggressive perps mandate.
+PR #3 is merged. Do not rebuild it.
+
+After the owner merges this documentation PR, Bot starts from the new `origin/main` and reads this file plus the audit and the probability note.
+
+First coding job, named SHADOW DECISION FUSION:
+
+- One row per scan, from files already on disk.
+- Fields: market, decision time, evidence that was actually available then, technical baseline, experimental research note, original rank versus revised rank, executable costs, and the outcome when it exists.
+- A missing or late file stays UNKNOWN. Do not invent a MiroFish percent. Do not invent agent votes. Do not start a paid swarm or a paid scrape.
+- A MiroFish report sentence is an uncalibrated claim. It is not a settlement probability and not a perps win probability.
+- Compare market-only, technical-only, and research-added ranks on the same clocks. Brier score only when a real outcome exists. Net expectancy only on real fills.
+- Both order locks stay on. The row must not be able to reach `approve()` or a perps send.
 
 ## Verdict
 
-Engineering checks that can be run here passed. PR #3 is ready for the owner to merge. It is not merged. A live midnight rollover has not been watched; that path is covered by a unit test. Win probability is still unknown, and that is not a merge blocker for this read-only infrastructure.
+PR #3 is merged. This pull request only corrects the documents. Prediction approval stays off. Perps sending stays locked. No strategy numbers were changed in this PR. Win probability is still unknown. That is a fact, not a document bug.
