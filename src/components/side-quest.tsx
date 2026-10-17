@@ -19,6 +19,7 @@ type Payload = {
   rows: Row[];
   seed: string | null;
   positions: number | null;
+  note: string;
   ledger: { preset: number | "live"; shownCash: number; rung: { name: string; from: number; to: number; progress: number }; flips: { ticker: string; status: string }[] };
 };
 
