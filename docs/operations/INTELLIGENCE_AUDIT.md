@@ -13,7 +13,7 @@ This is an inventory. It does not turn research into a live order.
 
 | Piece | State | Where | Can it send an order? | Does it change a decision today? |
 |---|---|---|---|---|
-| Kalshi 15-minute predictions | IMPLEMENTED_AND_CONNECTED | `src/lib/desk/evaluator.ts`, `settlement.ts`, `approval.ts`, `oms.ts` | LOCKED. `CALIBRATED_MODEL_APPROVED` is false | Settlement math runs. Approval refuses without a calibrator |
+| Kalshi 15-minute predictions | IMPLEMENTED_AND_CONNECTED | `src/lib/desk/evaluator.ts`, `settlement.ts`, `features.ts`, `oms.ts` | Yes, when the three switches are on and the day has room | Index-versus-strike chance, moved by at most 4 points, and only if the 1-minute structure agrees |
 | Kalshi side-quest board | IMPLEMENTED read-only rank | `src/lib/omni/board.ts`, `GET /api/live/omni`, Board tab | No. Locks stay on. A shadow row is not an order | Ranks 8¢–30¢ repricing targets and bracket-sum checks across sectors. Win probability stays UNKNOWN |
 | Kalshi perps | IMPLEMENTED_AND_CONNECTED as research | `src/lib/perps/candidates.ts`, `book-replay.ts`, `scripts/perps/collect.ts` | LOCKED. `PERPS_ORDERS_LOCKED` is true | Sniper gates can say NO_TRADE. They cannot send |
 | Official macro calendar | IMPLEMENTED_AND_CONNECTED to the sniper point | `src/lib/perps/intel.ts` → `macroClear` → `evaluateSniper` in `src/lib/desk/sniper.ts` | No | Yes, one point. A clear calendar can add the macro point toward 9 of 13. A blocked or missing calendar does not. This is not a news score |
@@ -28,7 +28,7 @@ This is an inventory. It does not turn research into a live order.
 | Polymarket | IMPLEMENTED read-only connector | `src/lib/scan/server.ts` loads markets and `loadPolyUs()` in `src/lib/scan/polyus.ts`. `/api/live/pmus` is an account probe | No send found | A market list is not a funded trade |
 | Solana / meme | IMPLEMENTED read-only tape | `loadDexTape()` in `src/lib/scan/dex.ts` | No wallet send found | A price tape is not a trade |
 | Technical score | IMPLEMENTED_AND_CONNECTED | `src/lib/desk/indicators.ts`, `src/lib/desk/sniper.ts` | No | 0–13 points. Not a probability. It cannot approve a 15-minute order by itself |
-| 15-minute probability | IMPLEMENTED, approval locked | `src/lib/desk/settlement.ts`, `calibration.ts` | Blocked | Index versus strike. The technical nudge cap `FEATURE_MAX_SHIFT` is 0, and that cap belongs only to `src/lib/desk/features.ts` |
+| 15-minute probability | IMPLEMENTED | `src/lib/desk/settlement.ts`, `features.ts`, `evaluator.ts` | Only through the 15-minute order path | The chance can move by at most 4 points, and `technicalSide` has to agree or the order is dropped |
 | Perps win probability | NOT a model | `src/lib/perps/prob-edge.ts` | Blocked | Scores rows it is given and still labels `modelProbability: "UNKNOWN"`. It does not estimate a win chance |
 | Nine research features | IMPLEMENTED_BUT_RESEARCH_ONLY | `src/lib/grid/features.ts` | No | Each weight is hardcoded 0. They are not `FEATURE_MAX_SHIFT` and they do not touch settlement |
 | Grok / Gemini | IMPLEMENTED_BUT_RESEARCH_ONLY | `src/lib/loop/maker.ts` | No | Paper notes. Not a send |
@@ -39,11 +39,11 @@ This is an inventory. It does not turn research into a live order.
 
 15-minute yes/no:
 
-1. `settlement.ts` makes a probability from the index versus the strike. Its only inputs are the prints, the strike, and volatility.
-2. `src/lib/desk/features.ts` could nudge that probability. `FEATURE_MAX_SHIFT` is 0, so the nudge is zero. Those four groups are technical. They are not the nine research features.
-3. `approval.ts` requires a calibrator and positive after-cost EV. No calibrator, no order. It takes no research argument.
-4. `oms.ts` also checks `CALIBRATED_MODEL_APPROVED`. That is false.
-5. A test forbids the order path from importing MiroFish, Spark, Firecrawl, or Alexandria.
+1. `settlement.ts` makes a probability from the index versus the strike. Its inputs are the prints, the strike, the time left, and volatility.
+2. `src/lib/desk/features.ts` moves that chance by at most 4 points. The four groups are trend (EMA 7/14/50), RSI plus the 5-minute return, the last candle, and the fib pocket. `technicalSide` then has to name the same side, using the 20-EMA, RSI, the candle, and that fib pocket. If it does not, the order is dropped.
+3. The sniper score blocks an order only when the other side has a full setup and this side does not. Missing 15-minute or 1-hour history does not invent a block.
+4. `oms.ts` sends when `CALIBRATED_MODEL_APPROVED` is true and the day still has room. The calibrator file is not required while `APPROVAL_POLICY_ENFORCED` is false.
+5. A test forbids the order path from importing MiroFish, Spark, Firecrawl, or Alexandria. Those do not pick the side.
 
 Perps:
 

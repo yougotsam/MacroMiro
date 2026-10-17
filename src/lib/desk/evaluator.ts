@@ -22,7 +22,7 @@ import {
   calibratorPath,
 } from "./config";
 import { approve, bucketFor, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
-import { features, featureShift, minuteBars, type FeatureSnapshot } from "./features";
+import { features, featureShift, minuteBars, technicalSide, type FeatureSnapshot } from "./features";
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
@@ -171,6 +171,19 @@ export class Evaluator {
     out.quotes = g.quotes;
     out.best = g.best;
     if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
+    const tech = technicalSide(feats, last.v, m.strike);
+    if (tech.side == null || tech.side !== g.best.side) {
+      out.shadow = g.best;
+      out.best = null;
+      return fail(`G2_structure_${tech.why.replace(/\s+/g, "_")}`);
+    }
+    const sniperSide = g.best.side === "yes" ? out.sniper?.long : out.sniper?.short;
+    const sniperOther = g.best.side === "yes" ? out.sniper?.short : out.sniper?.long;
+    if (sniperSide && sniperOther && sniperOther.eligible && !sniperSide.eligible) {
+      out.shadow = g.best;
+      out.best = null;
+      return fail("G2_sniper_opposes");
+    }
     // approval: calibrated P + conservative EV after fees and cushion at the executable price (approval.ts)
     out.approval = approve({ pYesRaw: out.p, calibrator: this.calibrator(now), candidate: g.best, tteSec: left, policy, cushion: APPROVAL_CUSHION });
     // Scheduled macro release, or calendar missing/stale/unparseable: no entry (fail closed).

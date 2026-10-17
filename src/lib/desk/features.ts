@@ -58,6 +58,7 @@ export type FeatureSnapshot = {
   bars: number;
   ema7: number | null;
   ema14: number | null;
+  ema20: number | null;
   ema50: number | null;
   rsi14: number | null;
   ret5mBps: number | null;
@@ -71,6 +72,7 @@ export function features(bars: Bar[]): FeatureSnapshot {
   const closes = bars.map((b) => b.c);
   const e7 = ema(closes, 7);
   const e14 = ema(closes, 14);
+  const e20 = ema(closes, 20);
   const e50 = ema(closes, 50);
   const r = rsi(closes, 14);
   const last = bars[bars.length - 1];
@@ -179,6 +181,7 @@ export function features(bars: Bar[]): FeatureSnapshot {
     bars: bars.length,
     ema7: e7,
     ema14: e14,
+    ema20: e20,
     ema50: e50,
     rsi14: r,
     ret5mBps: ret5,
@@ -192,4 +195,27 @@ export function features(bars: Bar[]): FeatureSnapshot {
 /** Feature shift in probability points, ≤ FEATURE_MAX_SHIFT, shrinking toward the extremes. */
 export function featureShift(pBase: number, score: number) {
   return FEATURE_MAX_SHIFT * Math.max(-1, Math.min(1, score)) * 4 * pBase * (1 - pBase);
+}
+
+/** The side the 1-minute structure allows. Null means sit. A settlement chance cannot enter against this. */
+export function technicalSide(f: FeatureSnapshot, spot: number, strike: number): { side: "yes" | "no" | null; why: string } {
+  const rsi = f.rsi14;
+  const ema20 = f.ema20;
+  const ema50 = f.ema50;
+  const bull = f.candle === "bull_engulf" || f.candle === "lower_wick";
+  const bear = f.candle === "bear_engulf" || f.candle === "upper_wick";
+  const above = spot > strike;
+  const below = spot < strike;
+  if (rsi != null && rsi < 30 && bull) return { side: "yes", why: `RSI bounce ${rsi.toFixed(0)} + ${f.candle}` };
+  if (rsi != null && rsi > 70 && bear) return { side: "no", why: `RSI fade ${rsi.toFixed(0)} + ${f.candle}` };
+  if (f.structure.includes("ote_long") && (bull || (ema20 != null && spot > ema20))) return { side: "yes", why: "fib pocket long" };
+  if (f.structure.includes("ote_short") && (bear || (ema20 != null && spot < ema20))) return { side: "no", why: "fib pocket short" };
+  const upTrend = ema20 != null && spot > ema20 && (ema50 == null || ema20 >= ema50) && above;
+  const downTrend = ema20 != null && spot < ema20 && (ema50 == null || ema20 <= ema50) && below;
+  if (upTrend && rsi != null && rsi >= 70) return { side: null, why: "RSI overbought, no continuation" };
+  if (downTrend && rsi != null && rsi <= 30) return { side: null, why: "RSI oversold, no continuation" };
+  if (upTrend) return { side: "yes", why: `20-EMA breakout RSI ${rsi == null ? "unread" : rsi.toFixed(0)}` };
+  if (downTrend) return { side: "no", why: `20-EMA breakdown RSI ${rsi == null ? "unread" : rsi.toFixed(0)}` };
+  if (rsi == null && ema20 == null) return { side: null, why: "indicators unread" };
+  return { side: null, why: "no structure" };
 }

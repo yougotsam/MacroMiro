@@ -14,7 +14,7 @@ Sources checked: the repo, MiroFish `report_agent.py`, OASIS arXiv 2411.11581, t
 | Perps chance | Not estimated. The scorer labels every report UNKNOWN | `src/lib/perps/prob-edge.ts` | No. Break-even is a cost identity, not a win rate |
 | Report claim | A labeled sentence scraped from a MiroFish story | `probabilityFromReport` in `src/lib/intel/mirofish.ts` | No. The order files are not allowed to import it |
 
-`FEATURE_MAX_SHIFT` is 0 and lives only in `src/lib/desk/features.ts`. It is the cap on a technical nudge to the 15-minute chance. The nine names in `src/lib/grid/features.ts` are a different list. Each of those weights is hardcoded 0. Turning one on would not turn the other on.
+`FEATURE_MAX_SHIFT` is 0.04 and lives in `src/lib/desk/features.ts`. The 1-minute score can move the 15-minute chance by at most 4 points. A trade still needs `technicalSide` to agree with that side. The nine names in `src/lib/grid/features.ts` are a different list. Each of those weights is hardcoded 0.
 
 ## What MiroFish really does
 
