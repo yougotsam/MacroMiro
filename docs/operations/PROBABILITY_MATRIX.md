@@ -81,6 +81,16 @@ Do not fold a report claim into the 15-minute chance or into a perps win probabi
 
 Brier score is only for a real probability against a real outcome. Net expectancy is only for real fills. One row proves the wire. It does not prove an edge.
 
+## Side-quest board
+
+`src/lib/omni/` reads open Kalshi events (tech, sports, culture, macro, crypto, perps) and ranks two price checks:
+
+- Repricing: yes ask from 8¢ to 30¢. The written target is twice that ask, floored at 45¢ and capped at 75¢. That multiple is target divided by entry. It is not a promise the book will move.
+- Bracket: if two or more yes asks on the same event sum to less than $1, the gap is flagged. The contract set may be incomplete, so this is a check, not a locked arbitrage.
+
+Every row sets `winProbability` to `UNKNOWN`. The disk file `flip-ledger.json` stores the chosen bankroll preset ($100, $200, $500, $2,500, or the live cash read) and shadow notes. It does not add profit. It does not change the approved −$15 / $3 15-minute limits. MiroFish gets a five-role seed for that question and is told not to emit a settlement probability. Live sends stay off.
+
+
 ## Next coding job
 
-SHADOW DECISION FUSION, from `main` after this documentation PR merges. Locks stay on. No paid swarm. No paid scrape unless the owner asks.
+SHADOW DECISION FUSION, from `main` after this documentation PR merges. Locks stay on. No paid swarm. No paid scrape unless the owner asks. The side-quest board above is already a read. It is not that fusion and it is not a live send.

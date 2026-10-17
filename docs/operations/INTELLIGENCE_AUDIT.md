@@ -14,7 +14,7 @@ This is an inventory. It does not turn research into a live order.
 | Piece | State | Where | Can it send an order? | Does it change a decision today? |
 |---|---|---|---|---|
 | Kalshi 15-minute predictions | IMPLEMENTED_AND_CONNECTED | `src/lib/desk/evaluator.ts`, `settlement.ts`, `approval.ts`, `oms.ts` | LOCKED. `CALIBRATED_MODEL_APPROVED` is false | Settlement math runs. Approval refuses without a calibrator |
-| Kalshi pair / 15-minute books | IMPLEMENTED_AND_CONNECTED as reads | `src/lib/scan/kalshi.ts` | No | Prices and books. Not a send |
+| Kalshi side-quest board | IMPLEMENTED read-only rank | `src/lib/omni/board.ts`, `GET /api/live/omni`, Board tab | No. Locks stay on. A shadow row is not an order | Ranks 8¢–30¢ repricing targets and bracket-sum checks across sectors. Win probability stays UNKNOWN |
 | Kalshi perps | IMPLEMENTED_AND_CONNECTED as research | `src/lib/perps/candidates.ts`, `book-replay.ts`, `scripts/perps/collect.ts` | LOCKED. `PERPS_ORDERS_LOCKED` is true | Sniper gates can say NO_TRADE. They cannot send |
 | Official macro calendar | IMPLEMENTED_AND_CONNECTED to the sniper point | `src/lib/perps/intel.ts` → `macroClear` → `evaluateSniper` in `src/lib/desk/sniper.ts` | No | Yes, one point. A clear calendar can add the macro point toward 9 of 13. A blocked or missing calendar does not. This is not a news score |
 | Firecrawl | IMPLEMENTED_BUT_RESEARCH_ONLY | The JSONL is read by `scripts/perps/intel-trace.ts`. `src/lib/perps/intel.ts` only receives the rows it is given | No | Not in the live selector. The 0.25 rank weight is used by that diagnostic script, not by `buildPerpsCandidate` |
