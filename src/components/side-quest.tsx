@@ -30,6 +30,7 @@ export function SideQuest() {
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
   const [pick, setPick] = useState<string | null>(null);
+  const [note, setNote] = useState("");
 
   async function load(ticker?: string) {
     const q = ticker ? `?ticker=${encodeURIComponent(ticker)}` : "";
@@ -41,6 +42,19 @@ export function SideQuest() {
   useEffect(() => {
     load().catch((e) => setErr(e instanceof Error ? e.message : "omni failed"));
   }, []);
+
+  async function markShadow(row: Row) {
+    setNote("");
+    const res = await fetch("/api/live/omni", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "shadow", ticker: row.ticker, question: row.question, mode: row.mode, side: "YES", entry: row.yesAsk, target: row.target, multiple: row.multiple }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string; sendsOrders?: boolean };
+    if (!res.ok) setNote(res.status === 403 ? "Shadow note refused. Desk token missing. No order was sent." : (body.error ?? `shadow ${res.status}`));
+    else setNote("Shadow note saved. No order was sent.");
+    await load(row.ticker);
+  }
 
   const rows = (data?.rows ?? []).filter((r) => filter === "all" || r.sector === filter || (filter === "crypto" && r.mode === "fifteen"));
 
@@ -63,6 +77,12 @@ export function SideQuest() {
           </button>
         ))}
       </div>
+      {rows[0] ? (
+        <button type="button" className="w-fit rounded bg-emerald-900 px-3 py-1 text-xs text-emerald-100" onClick={() => markShadow(rows[0]).catch((e) => setErr(String(e)))}>
+          Mark top row as a shadow note
+        </button>
+      ) : null}
+      {note ? <p className="text-xs text-zinc-300">{note}</p> : null}
       <div className="overflow-x-auto rounded border border-zinc-800">
         <table className="w-full text-left font-mono text-xs">
           <thead className="text-zinc-500">
