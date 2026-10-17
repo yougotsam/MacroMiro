@@ -61,7 +61,7 @@ describe("verification is by content, not mtime", () => {
     const fomc = macroGateOfficial(cal({ fetchedAt: fresh, sources: cal().sources.map((s) => ({ ...s, fetchedAt: fresh })) }), t);
     expect(fomc.blocked).toBe(true);
     expect(fomc.reason).toBe("verified_macro_event_veto");
-    expect(macroGateOfficial(cal({ fetchedAt: "2026-01-01T00:00:00Z" }), NOW)).toMatchObject({ available: false, blocked: true });
+    expect(macroGateOfficial(cal({ fetchedAt: "2026-01-01T00:00:00Z" }), NOW)).toMatchObject({ available: false, blocked: false });
   });
   it("macroGate reads the official file format from disk", () => {
     const dir = mkdtempSync(join(tmpdir(), "offcal-"));

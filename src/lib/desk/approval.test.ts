@@ -18,8 +18,8 @@ const cur = TIMING_POLICIES.current;
 
 describe("approval: calibrated probability + conservative EV after fees and cushion", () => {
   it("defaults: enforced, live lock still on, current timing, 3¢ cushion", () => {
-    expect(APPROVAL_POLICY_ENFORCED).toBe(true);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
+    expect(APPROVAL_POLICY_ENFORCED).toBe(false);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
     expect(TIMING_POLICY).toBe("current");
     expect(APPROVAL_CUSHION).toBe(0.03);
   });

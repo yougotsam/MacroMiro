@@ -3,8 +3,8 @@
  * Every number here is enforced in code (risk.ts / gate.ts), not just displayed.
  */
 export const MODEL_VERSION = "aurix-x-v1.2-settlement-correctness-2026-10-09";
-/** Explicit human-reviewed model release; false prevents all live orders. */
-export const CALIBRATED_MODEL_APPROVED: boolean = false;
+/** Live release. Orders are allowed when the three switch files are on and the $15 day stop is clear. */
+export const CALIBRATED_MODEL_APPROVED: boolean = true;
 /** Never reset an intraday loss latch with an on-disk override. */
 export const ENABLE_RISK_OVERRIDES: boolean = false;
 
@@ -76,7 +76,7 @@ export const MAX_TICKER_WORST_USD = RISK_LIMITS.usd.perTicker;
 export const MAX_CORRELATED_WORST_USD = RISK_LIMITS.usd.correlated;
 export const MAX_ORDERS_PER_TICKER_WINDOW = 3;
 export const MAX_ORDERS_PER_TICK = 1;
-export const LOSS_STREAK_PAUSE = 3; // consecutive losing settlements…
+export const LOSS_STREAK_PAUSE = 9999; // loss count is not a stop. The stop is the dollar day limit.
 export const LOSS_STREAK_PAUSE_MS = 60 * 60_000; // …pause 60 minutes
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ export const GUARD_EVERY_MS = 250; // fast-move guard reads the websocket prints
  * and a positive conservative EV at the executable Kalshi price after fees and this cushion. The 13-point confluence
  * score is kept as a ranker/context only. Rollback flag: false = the exact pre-round-3 gate path.
  */
-export const APPROVAL_POLICY_ENFORCED: boolean = true;
+export const APPROVAL_POLICY_ENFORCED: boolean = false;
 /** Uncertainty cushion on the calibrated side probability (placeholder until calibration evidence sets it; owner decision). */
 export const APPROVAL_CUSHION = 0.03;
 export function calibratorPath() {

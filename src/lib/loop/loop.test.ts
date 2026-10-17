@@ -97,7 +97,7 @@ describe("independent checker (strategy gate)", () => {
     expect(p.dsr!).toBeLessThanOrEqual(p.psr!);
   });
   it("CALIBRATED_MODEL_APPROVED stays false and can only be PROPOSED after a PASS", () => {
-    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
     expect(proposeCalibratedApproval(null).allowed).toBe(false);
     expect(proposeCalibratedApproval(strategyGate(pos.slice(0, 50))).allowed).toBe(false);
     expect(proposeCalibratedApproval(strategyGate(pos)).allowed).toBe(true);

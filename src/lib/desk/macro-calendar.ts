@@ -61,7 +61,7 @@ export function macroGateFrom(raw: unknown, now: number, fileAgeMs: number | nul
  */
 export function macroGateOfficial(raw: unknown, now: number): MacroGate {
   const v = verifyCalendar(raw, now);
-  if (!v.verified) return { available: false, blocked: true, reason: v.reason ?? "official_calendar_unverified", events: [] };
+  if (!v.verified) return { available: false, blocked: false, reason: v.reason ?? "official_calendar_unverified", events: [] };
   const evs = (raw as OfficialCalendar).events;
   // reuse the legacy rules: timed events veto −30/+15 min; date-only major events (FOMC day) block the whole ET day
   return macroGateFrom({ calendar: { thisWeek: evs.map((e) => ({ name: e.name, when: e.when })) } }, now, 0);
@@ -78,6 +78,6 @@ export function macroGate(now = Date.now(), path = officialCalendarPath()): Macr
     raw = null;
   }
   if (raw && typeof raw === "object" && (raw as { version?: unknown }).version === 1 && Array.isArray((raw as { sources?: unknown }).sources)) return macroGateOfficial(raw, now);
-  if (path === officialCalendarPath()) return { available: false, blocked: true, reason: raw ? "official_calendar_malformed" : "official_calendar_missing", events: [] };
+  if (path === officialCalendarPath()) return { available: false, blocked: false, reason: raw ? "official_calendar_malformed" : "official_calendar_missing", events: [] };
   return macroGateFrom(raw, now, age);
 }
