@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { evaluateSniper, type Candle } from "./sniper";
 import { flowFromBars, type FeatureSnapshot } from "./features";
-import { BarStore, bookImbalance, type PublicTrade } from "./market-data";
+import { BarStore, bookImbalance, fetchPublicTrades, type PublicTrade } from "./market-data";
 import { MIN_15, armResearch, barsForSniper, clearResearch, flowRefusal, missingSteps, putResearch, researchFor, warmResearch } from "./research-cache";
 
 function climb(n: number, stepMs: number): Candle[] {
@@ -71,6 +71,12 @@ describe("feature log", () => {
     expect(withVol.book).toBeNull();
     expect(withVol.why).toContain("no signed trades");
     expect(withVol.why).toContain("no book");
+    const eight = climb(8, 15 * 60_000).map((b, i) => ({ ...b, delta: i % 2 === 0 ? 1 : -0.25 }));
+    expect(flowFromBars(eight, "coinbase:BTC-USD", true, 1, null).cvd).toBeCloseTo(3);
+    const seven = eight.map((b, i) => (i === 3 ? { ...b, delta: undefined } : b));
+    const partial = flowFromBars(seven, "coinbase:BTC-USD", true, 1, null);
+    expect(partial.cvd).toBeNull();
+    expect(partial.why).toContain("signed 7/8");
   });
 });
 
@@ -127,6 +133,13 @@ describe("coinbase warm", () => {
     expect(researchFor("KXBTC15M")?.fresh).toBe(false);
     expect(bookImbalance({ bids: [["10", "3", 1]], asks: [["11", "1", 1]] })?.imbalance).toBeCloseTo(0.5);
     expect(bookImbalance({ bids: [["10", "0", 1]], asks: [["11", "0", 1]] })).toBeNull();
+    let pages = 0;
+    const kept = await fetchPublicTrades("BTC-USD", async () => {
+      pages += 1;
+      if (pages > 1) throw new Error("429");
+      return [{ trade_id: 9, side: "sell", size: "1", price: "1", time: "2026-10-20T00:00:00Z" }];
+    }, 0, 5, 0);
+    expect(kept).toHaveLength(1);
     clearResearch();
   });
 });

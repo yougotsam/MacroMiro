@@ -1,6 +1,7 @@
 /**
- * A series is shut out of one clock window only when that window's after-fee result is negative.
- * The sender does not read this. PR #9 stays shut.
+ * A series is shut out of one clock window only when that window's after-fee result is negative
+ * and at least 15 contracts have settled. The sender reads this and refuses the buy.
+ * The block lifts itself if the window stops losing. It does not raise a cap. PR #9 stays shut.
  */
 import { netEv, tteBucket, type DecisionRow } from "./scorecard";
 

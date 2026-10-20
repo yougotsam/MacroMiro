@@ -36,7 +36,7 @@ for (const [k, n] of [...reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0,
 console.log(`setup NONE ${none}  named ${named}  sniper never reached ${noSniper}`);
 console.log("HISTORY: index prints stay on disk and reload the last 2 hours. They still cannot build 60 closed 15-minute bars. Coinbase 15m and 1h candles are stored and, once long enough, are what the sniper scores. A gap is counted and not filled.");
 console.log("FLOW: a mapped product with a stale tape sits as G1_flow_stale. Gold and FX have no Coinbase product and are not blocked by that rule. A missing tape is null, not zero. The settlement price still uses the index.");
-console.log("SEND GATE: not changed. Caps not changed. PR #9 stays unmerged.");
+console.log("SEND GATE: dollar caps not changed. PR #9 stays unmerged. A window the scorecard has already shown losing (15 or more contracts, after-fee EV below zero) is refused. Gold's last 90 seconds is that window today. The refusal lifts itself if the window stops losing.");
 
 const pointNames = ["structure", "liquidity", "flow", "momentum", "regime", "macro", "trigger"] as const;
 const pointSum = Object.fromEntries(pointNames.map((k) => [k, { s: 0, n: 0 }])) as Record<(typeof pointNames)[number], { s: number; n: number }>;

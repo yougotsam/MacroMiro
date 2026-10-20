@@ -30,6 +30,7 @@ import { Oms } from "./oms";
 import { RiskEngine, dayWorstOf, switches, type AccountSnapshot } from "./risk";
 import { roomBudget } from "./sizing";
 import { armResearch, warmResearch } from "./research-cache";
+import { refreshWindowBlocks } from "./window-block";
 
 export type { SeriesEval } from "./evaluator";
 import { Evaluator, decisionRowOf, type SeriesEval } from "./evaluator";
@@ -83,6 +84,7 @@ export class Engine {
     this.feeds.start();
     await warmResearch().catch((e) => log("research bars", e instanceof Error ? e.message.slice(0, 160) : e));
     armResearch(true);
+    try { refreshWindowBlocks(); } catch { /* no log yet: nothing is blocked on a guess */ }
     await this.oms.reconcilePending().catch(() => 0);
     log("engine started", MODEL_VERSION, MODEL_REV, "live", switches.live(), "begin", switches.begin(), "arm", switches.arm());
   }
@@ -237,7 +239,10 @@ export class Engine {
         this.feeds.flush();
         this.feeds.prune(now);
       }
-      if (tickId % 300 === 0) void warmResearch().catch((e) => log("research bars", e instanceof Error ? e.message.slice(0, 120) : e));
+      if (tickId % 300 === 0) {
+        void warmResearch().catch((e) => log("research bars", e instanceof Error ? e.message.slice(0, 120) : e));
+        try { refreshWindowBlocks(); } catch { /* keep the last set */ }
+      }
       if (now - this.ex.at > 10_000) {
         const ex = await exchangeStatus().catch(() => null);
         this.ex = { tradingActive: Boolean(ex?.tradingActive), shard0: Boolean(ex?.shard0), at: ex ? Date.now() : this.ex.at };

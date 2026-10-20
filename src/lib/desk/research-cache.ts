@@ -18,6 +18,9 @@ import type { Candle } from "./sniper";
 export const MIN_15 = 60;
 export const MIN_1H = 205;
 const FRESH_MS = 20 * 60_000;
+/** CVD reads the last 8 closed 15m bars, and the oldest of those must be fully covered. One page of trades is about five minutes of bitcoin. */
+const TAPE_MS = 9 * 15 * 60_000;
+const TAPE_PAGES = 120;
 
 export type ResearchSnap = {
   m15: Candle[];
@@ -114,7 +117,7 @@ export async function warmResearch(
   const trades = deps.trades ?? fetchPublicTrades;
   const book = deps.book ?? fetchPublicBook;
   const store = deps.store ?? new BarStore();
-  const tapeSince = now - 9 * 15 * 60_000;
+  const tapeSince = now - TAPE_MS;
   try {
     for (const series of SERIES) {
       const product = RESEARCH_PRODUCT[series];
@@ -126,7 +129,7 @@ export async function warmResearch(
         const [c15, c60, tape, top] = await Promise.all([
           candles(product, 15),
           candles(product, 60),
-          trades(product, undefined, tapeSince, 40, 50).catch(() => [] as PublicTrade[]),
+          trades(product, undefined, tapeSince, TAPE_PAGES, 40).catch(() => [] as PublicTrade[]),
           book(product).catch(() => null),
         ]);
         const signed = attachDelta(c15, tape, 15);
@@ -135,13 +138,15 @@ export async function warmResearch(
         const m15 = store.read(product, 15, now).bars;
         const h1 = store.read(product, 60, now).bars;
         const fresh = freshEnough(m15, h1, now);
+        const signedN = m15.slice(-8).filter((b) => typeof b.delta === "number" && Number.isFinite(b.delta)).length;
+        const coverage = `signed ${signedN}/8`;
         putResearch(series, {
           m15,
           h1,
           source: `coinbase:${product}`,
           at: now,
           fresh,
-          why: fresh ? null : `bars 15m=${m15.length} 1h=${h1.length}`,
+          why: fresh ? (signedN >= 8 ? null : coverage) : `bars 15m=${m15.length} 1h=${h1.length} ${coverage}`,
           ofi: ofiOf(tape),
           book: top,
         });

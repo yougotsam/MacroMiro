@@ -168,7 +168,12 @@ export async function fetchPublicTrades(product: string, get: Fetch = publicGet,
   const out: PublicTrade[] = [];
   let after: number | null = null;
   for (let page = 0; page < maxPages; page += 1) {
-    const rows = await get(`${PUBLIC_HOST}/products/${product}/trades?limit=1000${after != null ? `&after=${after}` : ""}`);
+    let rows: unknown;
+    try {
+      rows = await get(`${PUBLIC_HOST}/products/${product}/trades?limit=1000${after != null ? `&after=${after}` : ""}`);
+    } catch {
+      break; // keep the pages already in hand; a later failure must not throw the tape away
+    }
     if (!Array.isArray(rows)) throw new Error("trades: not an array");
     const batch = rows as PublicTrade[];
     if (!batch.length) break;

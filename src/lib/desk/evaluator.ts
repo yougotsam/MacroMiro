@@ -30,6 +30,7 @@ import { intelVerdict } from "./intel-gate";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, sniperCanEnter, type Evidence } from "./sniper";
 import { barsForSniper, flowRefusal, researchFor } from "./research-cache";
+import { windowRefusal } from "./window-block";
 import { type MoveGuard, makerWindowOk, minPriceFor, shockOf, type GuardState } from "./guard";
 import type { Market } from "./kalshi-read";
 import type { Decision } from "./ledger";
@@ -179,6 +180,12 @@ export class Evaluator {
     out.quotes = g.quotes;
     out.best = g.best;
     if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
+    const blockedWindow = windowRefusal(series, left);
+    if (blockedWindow) {
+      out.shadow = g.best;
+      out.best = null;
+      return fail(blockedWindow);
+    }
     const tech = technicalSide(feats, last.v, m.strike);
     const sniperSide = g.best.side === "yes" ? out.sniper?.long : out.sniper?.short;
     // The 1-minute list said nothing. A sniper price setup on the same side is another way in, not a second lock.

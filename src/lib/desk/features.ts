@@ -263,11 +263,13 @@ export function flowFromBars(
 ): FlowVote {
   if (!bars?.length) return { rvol: null, cvd: null, vwap: null, ofi, book, source, stale: true, why: "no bars" };
   const vol = rvol(bars);
-  const delta = cvd(bars.slice(-8));
+  const tail = bars.slice(-8);
+  const delta = cvd(tail);
   const session = vwap(bars.slice(-20));
+  const signedN = tail.filter((b) => typeof b.delta === "number" && Number.isFinite(b.delta)).length;
   const gaps: string[] = [];
   if (vol == null) gaps.push("no traded volume");
-  if (delta == null) gaps.push("no signed trades");
+  if (delta == null) gaps.push(signedN ? `signed ${signedN}/8` : "no signed trades");
   if (book == null) gaps.push("no book");
   if (!fresh) gaps.push("stale");
   return { rvol: vol, cvd: delta, vwap: session, ofi, book, source, stale: !fresh || vol == null, why: gaps.length ? gaps.join(", ") : null };
