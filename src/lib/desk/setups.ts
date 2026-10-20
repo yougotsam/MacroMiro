@@ -1,6 +1,6 @@
 /**
- * Named SHADOW setups from the sniper modules (Phase 1d). Research only: no setup feeds the live probability, the
- * gate or the approval rule (enforced by research-isolation tests). Each setup is measured for
+ * Named setups from the sniper module. The score does not change the settlement chance.
+ * A named price setup can allow a live entry when the 1-minute list is quiet. It cannot cancel one.
  *   predictive value  — does the outcome beat what the settlement-only model already said? residual = y_dir − p_dir
  *   trading value     — taker entry in the setup direction at the executable ask, after the event fee, within depth
  * Features that were unavailable (no volume source, not enough bars) are never filled in: an indicator row whose

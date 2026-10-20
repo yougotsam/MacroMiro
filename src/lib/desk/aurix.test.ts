@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { cryptoProb, goldProb } from "./settlement";
 import { nextGridBid, scoreSides } from "./gate";
-import { evaluateSniper, resampleComplete, fibPocket, vwap, orderBlockCandidate, type Candle } from "./sniper";
+import { evaluateSniper, resampleComplete, fibPocket, sniperCanEnter, vwap, orderBlockCandidate, type Candle, type Evidence } from "./sniper";
 import { scheduledVeto } from "./intelligence";
 import { CALIBRATED_MODEL_APPROVED, DAILY_STOP_USD } from "./config";
 
@@ -79,6 +79,17 @@ describe("AURIX-X genuine price/flow evidence",()=>{
     expect(result.eligible).toBe(false);
     expect(result.missing).toContain("60 complete 15m bars");
     expect(result.missing).not.toContain("205 complete 1h bars");
+  });
+  it("a price setup can enter without traded volume, and it cannot enter from the wrong half or from nothing", () => {
+    const base: Evidence = {
+      direction: "long", setup: "SWEEP_REVERSAL", score: 4, families: 2,
+      points: { structure: 1, liquidity: 2, flow: 0, momentum: 1, regime: 0, macro: 0, trigger: 0 },
+      tags: ["liquidity_sweep_reclaim"], missing: ["real exchange volume", "signed trade flow"], eligible: false,
+    };
+    expect(sniperCanEnter(base)).toBe(true);
+    expect(sniperCanEnter({ ...base, setup: "NONE", points: { ...base.points, liquidity: 0 } })).toBe(false);
+    expect(sniperCanEnter({ ...base, missing: [...base.missing, "wrong premium/discount location"] })).toBe(false);
+    expect(sniperCanEnter(null)).toBe(false);
   });
   it("maps bullish 61.8 percent retracement to DISCOUNT, not premium", () => {
     expect(fibPocket(38.2,0,100,"long")?.inside).toBe(true);

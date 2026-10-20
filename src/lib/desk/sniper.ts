@@ -253,3 +253,16 @@ export function evaluateSniper(b15:Candle[],b1h:Candle[],dir:Direction,macroClea
       !missing.includes("wrong premium/discount location") &&
       !missing.includes("real exchange volume") && !missing.includes("signed trade flow")};
 }
+
+/**
+ * Can this price setup open a ticket?
+ * `eligible` stays false without real traded volume. The settlement index does not have that volume,
+ * so the live desk uses the price setup instead: a named setup plus a liquidity tag, and not in the wrong half of the range.
+ * This can allow a trade. It cannot cancel one.
+ */
+export function sniperCanEnter(e: Evidence | null | undefined): boolean {
+  if (!e || e.setup === "NONE") return false;
+  if (e.points.liquidity <= 0) return false;
+  if (e.missing.includes("wrong premium/discount location")) return false;
+  return true;
+}

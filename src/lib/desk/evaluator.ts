@@ -28,7 +28,7 @@ import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
 import { intelVerdict } from "./intel-gate";
 import { macroGate, type MacroGate } from "./macro-calendar";
-import { resampleComplete, evaluateSniper, type Evidence } from "./sniper";
+import { resampleComplete, evaluateSniper, sniperCanEnter, type Evidence } from "./sniper";
 import { type MoveGuard, makerWindowOk, minPriceFor, shockOf, type GuardState } from "./guard";
 import type { Market } from "./kalshi-read";
 import type { Decision } from "./ledger";
@@ -173,6 +173,12 @@ export class Evaluator {
     out.best = g.best;
     if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
     const tech = technicalSide(feats, last.v, m.strike);
+    const sniperSide = g.best.side === "yes" ? out.sniper?.long : out.sniper?.short;
+    // The 1-minute list said nothing. A sniper price setup on the same side is another way in, not a second lock.
+    if (tech.side == null && sniperCanEnter(sniperSide)) {
+      tech.side = g.best.side;
+      tech.why = `sniper ${sniperSide?.setup ?? "setup"}`;
+    }
     if (tech.side) tech.why = `${tech.why} · ${sessionTag(now)}`;
     if (tech.side == null || tech.side !== g.best.side) {
       out.shadow = g.best;
@@ -190,13 +196,6 @@ export class Evaluator {
       out.shadow = g.best;
       out.best = null;
       return fail(`G2_${intel.why}`);
-    }
-    const sniperSide = g.best.side === "yes" ? out.sniper?.long : out.sniper?.short;
-    const sniperOther = g.best.side === "yes" ? out.sniper?.short : out.sniper?.long;
-    if (sniperSide && sniperOther && sniperOther.eligible && !sniperSide.eligible) {
-      out.shadow = g.best;
-      out.best = null;
-      return fail("G2_sniper_opposes");
     }
     // approval: calibrated P + conservative EV after fees and cushion at the executable price (approval.ts)
     out.approval = approve({ pYesRaw: out.p, calibrator: this.calibrator(now), candidate: g.best, tteSec: left, policy, cushion: APPROVAL_CUSHION });
