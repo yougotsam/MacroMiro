@@ -9,13 +9,19 @@ import { dataDir, type Series } from "./config";
 import type { Candle } from "./sniper";
 
 export const PUBLIC_HOST = "https://api.exchange.coinbase.com";
-/** Gold (KXGOLD15M) has no public spot-exchange volume source here: unsupported, never proxied. */
+/** Spot products with a public Coinbase book. Null means this ticket has no Coinbase volume source. Never invent one. */
 export const RESEARCH_PRODUCT: Record<Series, string | null> = {
   KXBTC15M: "BTC-USD",
   KXETH15M: "ETH-USD",
   KXSOL15M: "SOL-USD",
   KXXRP15M: "XRP-USD",
+  KXDOGE15M: "DOGE-USD",
   KXGOLD15M: null,
+  KXSILVER15M: null,
+  KXWTI15M: null,
+  KXGBPUSD15M: null,
+  KXEURUSD15M: null,
+  KXUSDJPY15M: null,
 };
 export const EMA_WARMUP_BARS = 200;
 export type Interval = 1 | 5 | 15 | 60;
