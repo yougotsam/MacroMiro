@@ -6,6 +6,7 @@
  * Cancels (risk-reducing) are allowed without a risk check.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { KALSHI_HOST, kalshiDelete, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
 import { eventCancelPath } from "@/lib/scan/kalshi-order-status";
 import { CALIBRATED_MODEL_APPROVED, ORDER_SHARD, TICKER_RE, dataDir } from "./config";
@@ -14,6 +15,30 @@ import type { AccountSnapshot, OrderIntent, RiskEngine } from "./risk";
 import type { Evidence, RecoveryQueue } from "./recovery";
 
 export const ORDER_PATH = "/trade-api/v2/portfolio/events/orders";
+export const TRANSFER_PATH = "/trade-api/v2/portfolio/intra_exchange_instance_transfer";
+
+/** One pile of dollars. Kalshi stores it on two engines. The order spends the sum. */
+export function spendableCash(s: { shard2Cash?: number; shard0Cash?: number }) {
+  return (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0);
+}
+
+export function cashOnShard(s: { shard2Cash?: number; shard0Cash?: number }, shard: number) {
+  if (shard === 0) return s.shard0Cash ?? 0;
+  if (shard === 2) return s.shard2Cash ?? 0;
+  return 0;
+}
+
+/** Move `dollars` between Kalshi engines. Amount is centicents ($1 = 10,000). */
+export function transferBody(dollars: number, from: number, to: number, id: string) {
+  return {
+    amount: Math.ceil(dollars * 10_000 - 1e-9),
+    client_transfer_id: id,
+    source_exchange_shard: from,
+    destination_exchange_shard: to,
+    source_subaccount: 0,
+    destination_subaccount: 0,
+  };
+}
 
 export type JournalRow = {
   ts: string;
@@ -213,6 +238,20 @@ export class Oms {
     if (!(intent.price > 0 && intent.price < 1) || !Number.isInteger(intent.count) || intent.count < 1) return { ok: false, why: "limit price / whole count required" };
     const verdict = this.risk.check(intent, snapshot);
     if (!verdict.ok) return { ok: false, why: `risk: ${verdict.why}` };
+    const dest = intent.exchangeIndex ?? ORDER_SHARD;
+    if (snapshot && cashOnShard(snapshot, dest) + 1e-9 < verdict.orderWorst) {
+      const from = dest === 2 ? 0 : 2;
+      if (cashOnShard(snapshot, from) + 1e-9 < verdict.orderWorst) return { ok: false, why: "cash is split and neither engine holds this order" };
+      let moved: PostResult;
+      try {
+        moved = await this.transport(TRANSFER_PATH, transferBody(verdict.orderWorst, from, dest, randomUUID()));
+      } catch (e) {
+        return { ok: false, why: `cash move failed ${e instanceof Error ? e.message.slice(0, 120) : "network"}` };
+      }
+      if (moved.status !== 200 && moved.status !== 201 && moved.status !== 204) {
+        return { ok: false, why: `cash move rejected ${moved.status} ${moved.text.slice(0, 140)}` };
+      }
+    }
     const cid = cidFor(intent.ticker, intent.side, this.nextSeq(intent.ticker, intent.side));
     this.risk.consume(intent);
     // persist BEFORE send

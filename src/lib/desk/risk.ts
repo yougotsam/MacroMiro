@@ -225,9 +225,8 @@ export class RiskEngine {
     if (!Number.isFinite(corr) || corr > L.correlated + 1e-9) return no(`correlated ${corrKey} ${corr.toFixed(2)} > ${L.correlated}`, dayWorst, projected);
     if ((s.ordersPerTicker[o.ticker] ?? 0) >= MAX_ORDERS_PER_TICKER_WINDOW) return no(`ticker order cap ${MAX_ORDERS_PER_TICKER_WINDOW}`, dayWorst, projected);
     if ((this.tickCount.get(o.tickId) ?? 0) >= MAX_ORDERS_PER_TICK) return no("one order per tick", dayWorst, projected);
-    const board = o.exchangeIndex === 0 ? (s.shard0Cash ?? 0) : s.shard2Cash;
-    const boardName = o.exchangeIndex === 0 ? "shard 0" : "shard 2";
-    if (board < orderWorst) return no(`${boardName} cash ${board.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
+    const cash = (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0);
+    if (cash < orderWorst) return no(`cash ${cash.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
     return { ok: true, why: "risk ok", dayWorst, projected, orderWorst };
   }
 

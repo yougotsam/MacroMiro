@@ -247,10 +247,7 @@ export class Engine {
         SERIES.map(async (s) => {
           const m = await this.market(s, t0);
           const [book, fee] = await Promise.all([m ? orderbook(m.ticker).catch(() => null) : Promise.resolve(null), this.fee(m, t0)]);
-          const board = m?.exchangeIndex === 0 ? (this.snapshot?.shard0Cash ?? 0) : (this.snapshot?.shard2Cash ?? 0);
-          const boardOk = m?.exchangeIndex === 0 ? this.ex.shard0 : true;
-          const seriesBudget = Math.min(budget, board);
-          return { e: this.evaluate(s, m, book, fee, Date.now(), exOk && boardOk, seriesBudget), fee };
+          return { e: this.evaluate(s, m, book, fee, Date.now(), exOk, budget), fee };
         }),
       );
       await this.manageResting(evals.map((x) => x.e), Date.now());

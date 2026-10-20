@@ -9,7 +9,7 @@ export const KB: KbDoc[] = [
 
 Bitcoin, Ethereum, Solana, and XRP can be bought. They settle on the CF Benchmarks 60-second average.
 Gold can be bought. It settles on the Pyth gold print.
-Pound, euro, and yen can be bought: KXGBPUSD15M, KXEURUSD15M, KXUSDJPY15M. They settle on Pyth FX.GBP/USD, FX.EUR/USD, and FX.USD/JPY. Those three trade on a different cash board. If that board is empty, they are scanned and they sit.
+Pound, euro, and yen can be bought: KXGBPUSD15M, KXEURUSD15M, KXUSDJPY15M. They settle on Pyth FX.GBP/USD, FX.EUR/USD, and FX.USD/JPY. They spend the same dollars as crypto and gold.
 A perp price does not settle the ticket. One quiet market does not freeze the others.
 
 Every order is a resting bid under the ask. A filled ticket is held to the clock. Price range: 4¢–72¢. Nothing above 72¢. Clock: 5s after open to 30s before close. A trade needs a pullback, not a price that is already past the average. One open ticket per contract. The perpetual book is a separate Kalshi margin order and it is not sending. The live rule is the desk code. This page only repeats it.`,
