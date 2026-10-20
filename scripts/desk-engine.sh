@@ -4,9 +4,21 @@
 # Logs: /workspace/desk/logs/engine.log. Orders need kalshi_live=1, kalshi_begin=1, desk_arm=1 and the risk gate.
 cd /workspace || exit 1
 export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
-# /usr/local/bin/bun is a sh wrapper that forks the real binary; run the binary directly so signals and exit codes are the engine's.
-BUN="$(ls /usr/local/lib/pnpm/5/.pnpm/bun@*/node_modules/bun/bin/bun.exe 2>/dev/null | tail -1)"
-[ -x "$BUN" ] || BUN=bun
+# /usr/bin/bun is a 0-byte stub in this environment. Use a real binary or the engine never starts and the watchdog pulse never refreshes, which refuses every order.
+pick_bun() {
+  local c
+  for c in \
+    /usr/lib/node_modules/bun/node_modules/@oven/bun-linux-x64/bin/bun \
+    /usr/lib/node_modules/bun/node_modules/@oven/bun-linux-x64-baseline/bin/bun
+  do
+    if [ -x "$c" ] && [ -s "$c" ]; then
+      echo "$c"
+      return
+    fi
+  done
+  command -v bun
+}
+BUN="$(pick_bun)"
 while true; do
   echo "$(date -Is) supervisor: starting desk engine"
   "$BUN" scripts/desk-engine.ts

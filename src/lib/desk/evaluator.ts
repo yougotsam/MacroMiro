@@ -26,6 +26,7 @@ import { features, featureShift, minuteBars, technicalSide, type FeatureSnapshot
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
+import { intelVerdict } from "./intel-gate";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, type Evidence } from "./sniper";
 import { type MoveGuard, makerWindowOk, minPriceFor, shockOf, type GuardState } from "./guard";
@@ -176,6 +177,12 @@ export class Evaluator {
       out.shadow = g.best;
       out.best = null;
       return fail(`G2_structure_${tech.why.replace(/\s+/g, "_")}`);
+    }
+    const intel = intelVerdict(series, g.best.side, now);
+    if (!intel.ok) {
+      out.shadow = g.best;
+      out.best = null;
+      return fail(`G2_${intel.why}`);
     }
     const sniperSide = g.best.side === "yes" ? out.sniper?.long : out.sniper?.short;
     const sniperOther = g.best.side === "yes" ? out.sniper?.short : out.sniper?.long;

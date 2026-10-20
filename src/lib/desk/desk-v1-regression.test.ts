@@ -606,6 +606,7 @@ describe("size to room", () => {
   it("POLICY (round 3): budget = min($3, room to −$15, room under $9 exposure); under one contract → skip", async () => {
     const { roomBudget } = await import("./sizing");
     expect(roomBudget(snap())).toBe(3);
+    expect(roomBudget(snap({ shard2Cash: 2.51 }))).toBeCloseTo(2.51, 4);
     expect(roomBudget(snap({ realizedToday: -12.16 }))).toBeCloseTo(2.84, 6);
     expect(roomBudget(snap({ realizedToday: 5, openWorst: 3, restWorst: 4.5 }))).toBeCloseTo(1.5, 6); // exposure room 1.5 < daily room 2.5
     expect(roomBudget(snap({ realizedToday: -15 }))).toBe(0);
