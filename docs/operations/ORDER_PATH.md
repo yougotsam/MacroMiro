@@ -27,7 +27,7 @@ A quote is not an order. It still has to pass, in this order:
 5. Watchdog pulse is fresh.
 6. Account snapshot is fresh and the exchange is open.
 7. Today's worst case is still above −$15. The stop is dollars, not a count of losses. A new ET day clears the prior day's latch.
-8. Price is 4¢–72¢. Anything above 72¢ is a favorite and is refused. Being past the 20-minute average is not an entry at any price. A trade needs a pullback: an RSI bounce or fade with a candle, a 62%–79% Fibonacci pocket, or the price back inside a gap. The chart can nudge the chance by at most 4 points. It cannot flip the side.
+8. Price is 4¢–72¢. Anything above 72¢ is a favorite and is refused. Being past the 20-minute average is not an entry at any price. A fib pocket also needs a wick or a gap. The other entries are an RSI bounce or fade with a candle, or the price back inside a gap. The chart can nudge the chance by at most 4 points. It cannot flip the side.
 9. One ticker ≤ $3, same-direction crypto ≤ $4, everything open ≤ $9.
 10. The structure side agrees with the priced side. A line cross with no structure is a sit.
 

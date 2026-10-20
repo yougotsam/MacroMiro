@@ -209,8 +209,14 @@ export function technicalSide(f: FeatureSnapshot, spot: number, strike: number):
   const below = spot < strike;
   if (rsi != null && rsi < 30 && bull) return { side: "yes", why: `RSI bounce ${rsi.toFixed(0)} + ${f.candle}` };
   if (rsi != null && rsi > 70 && bear) return { side: "no", why: `RSI fade ${rsi.toFixed(0)} + ${f.candle}` };
-  if (f.structure.includes("ote_long") && (bull || (ema20 != null && spot > ema20))) return { side: "yes", why: "fib pocket long" };
-  if (f.structure.includes("ote_short") && (bear || (ema20 != null && spot < ema20))) return { side: "no", why: "fib pocket short" };
+  if (f.structure.includes("ote_long")) {
+    if (bull || f.structure.includes("bull_fvg")) return { side: "yes", why: "fib pocket long" };
+    return { side: null, why: "fib pocket needs a reaction" };
+  }
+  if (f.structure.includes("ote_short")) {
+    if (bear || f.structure.includes("bear_fvg")) return { side: "no", why: "fib pocket short" };
+    return { side: null, why: "fib pocket needs a reaction" };
+  }
   if (f.structure.includes("bull_fvg") && above) return { side: "yes", why: "price back inside bull gap" };
   if (f.structure.includes("bear_fvg") && below) return { side: "no", why: "price back inside bear gap" };
   if (rsi == null && ema20 == null) return { side: null, why: "indicators unread" };

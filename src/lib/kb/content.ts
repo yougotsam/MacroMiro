@@ -19,9 +19,9 @@ Every order is a resting bid under the ask. A filled ticket is held to the clock
   {
     id: "entry",
     title: "Entry",
-    body: `The only written rule is docs/STRATEGY.md. This page repeats it. It does not add a second rule.
+    body: `The live rule is the desk. This page repeats it.
 
-The day lean does not pick the side. Price sitting above the 20-minute average is not a trade. YES needs a pullback: RSI under 30 with a bullish wick, a 62%–79% fib pocket, or the price back inside a bull gap. NO is the mirror, with RSI over 70. Missing those sits. A missing book does not block. Zero volume does not sit. The spread width does not sit.
+The day lean does not pick the side. Price sitting above the 20-minute average is not a trade. YES needs a pullback: RSI under 30 with a bullish wick, a 62%–79% fib pocket plus a wick or a gap, or the price back inside a bull gap. NO is the mirror, with RSI over 70. A fib pocket with only the average under it sits. Missing those sits. A missing book does not block. Zero volume does not sit. The spread width does not sit.
 
 Price range: 4¢–72¢. Clock: 5s after open to 30s before close. Both the bid and the ask have to be posted. Size is $1, $2, or $3. One ticket per contract. The day stops at $15 down. A count of losing trades does not stop it. A filled ticket is held to the clock. Resting orders are pulled 30 seconds before settlement.
 

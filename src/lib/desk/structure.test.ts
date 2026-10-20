@@ -31,6 +31,17 @@ describe("structure must agree before a side is allowed", () => {
     expect(s.side).toBeNull();
   });
 
+  it("a fib pocket with only the average under price is not a trade", () => {
+    const s = technicalSide(frame({ structure: "ote_long", candle: "none" }), 105, 100);
+    expect(s.side).toBeNull();
+    expect(s.why).toBe("fib pocket needs a reaction");
+  });
+
+  it("a fib pocket with a bullish wick is yes", () => {
+    const s = technicalSide(frame({ structure: "ote_long", candle: "lower_wick" }), 105, 100);
+    expect(s.side).toBe("yes");
+    expect(s.why).toBe("fib pocket long");
+  });
   it("an RSI bounce with a bullish wick is yes even below the line", () => {
     const s = technicalSide(frame({ rsi14: 28, candle: "lower_wick", ema20: 110 }), 90, 100);
     expect(s.side).toBe("yes");
