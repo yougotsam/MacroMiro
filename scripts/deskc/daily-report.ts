@@ -34,8 +34,8 @@ for (const d of decisions) {
 console.log("WHY A TICKET SAT");
 for (const [k, n] of [...reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)) console.log(`  ${n}  ${k}`);
 console.log(`setup NONE ${none}  named ${named}  sniper never reached ${noSniper}`);
-console.log("HISTORY: index prints stay on disk and reload the last 2 hours. They still cannot build 60 closed 15-minute bars. Coinbase 15m and 1h candles are stored and, once long enough, are what the sniper scores. A gap is counted and not filled.");
-console.log("FLOW: a mapped product with a stale tape sits as G1_flow_stale. Gold and FX have no Coinbase product and are not blocked by that rule. A missing tape is null, not zero. The settlement price still uses the index.");
+console.log("HISTORY: settlement-index prints on disk build closed 15m and 1h bars for gold, silver, oil, and FX. A 15m bar exists only when all 15 minutes printed. A short series is logged as 15m index bars N/60; gaps not filled, and it does not name a setup. Coinbase still scores crypto once 60 stored bars exist. A gap is counted and not filled.");
+console.log("FLOW: a mapped product with a stale tape sits as G1_flow_stale. Gold, silver, oil, and FX log unavailable: no venue tape until a proxy clears the correlation gate and beats Tier A on Brier. A missing tape is null, not zero. The settlement price still uses the index.");
 console.log("SEND GATE: dollar caps not changed. PR #9 stays unmerged. A window the scorecard has already shown losing (15 or more contracts, after-fee EV below zero) is refused. Gold's last 90 seconds is that window today. The refusal lifts itself if the window stops losing.");
 
 const pointNames = ["structure", "liquidity", "flow", "momentum", "regime", "macro", "trigger"] as const;
@@ -44,7 +44,7 @@ const voteSum = { trend: { s: 0, n: 0 }, momentum: { s: 0, n: 0 }, structure: { 
 let earlyReturn = 0;
 for (const d of decisions) {
   for (const side of [d.confluence?.long, d.confluence?.short]) {
-    if (side?.missing?.includes("60 complete 15m bars")) earlyReturn += 1;
+    if (side?.missing?.some((m) => m === "60 complete 15m bars" || m.startsWith("15m index bars "))) earlyReturn += 1;
     const pts = side?.points;
     if (!pts) continue;
     for (const k of pointNames) {
@@ -67,7 +67,7 @@ for (const d of decisions) {
 const mean = (x: { s: number; n: number }) => (x.n ? (x.s / x.n).toFixed(4) : "n/a");
 console.log("GROUP MEANS (sniper points, both sides)");
 for (const k of pointNames) console.log(`  ${k}  mean ${mean(pointSum[k])}  n ${pointSum[k].n}`);
-console.log(`sides that stored the 60-bar missing tag: ${earlyReturn}. Older rows did not store points or that tag. setup NONE above is that early return until this writer is the one on disk.`);
+console.log(`sides that stored a short-history veto: ${earlyReturn}. Older rows used "60 complete 15m bars". A blind series now names 15m index bars N/60; gaps not filled.`);
 console.log(`CHART VOTES  trend ${mean(voteSum.trend)} n=${voteSum.trend.n}  momentum ${mean(voteSum.momentum)} n=${voteSum.momentum.n}  structure ${mean(voteSum.structure)} n=${voteSum.structure.n}  candle ${mean(voteSum.candle)} n=${voteSum.candle.n}  rvol ${mean(voteSum.rvol)} n=${voteSum.rvol.n}  cvd ${mean(voteSum.cvd)} n=${voteSum.cvd.n}`);
 
 const joined = scoreableDecisions(decisions, outcomes);
