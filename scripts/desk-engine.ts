@@ -2,6 +2,7 @@
  * Desk engine entry (run with bun). Exactly one instance may run: a PID lock in the data dir.
  *   bun scripts/desk-engine.ts            → trade loop (orders only if kalshi_live=1, kalshi_begin=1, desk_arm=1 and risk passes)
  */
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { GUARD_EVERY_MS, TICK_MS as DEFAULT_TICK_MS, dataDir } from "../src/lib/desk/config";
 import { Engine } from "../src/lib/desk/engine";
@@ -41,6 +42,8 @@ for (const sig of ["SIGINT", "SIGTERM"] as const)
     process.exit(0);
   });
 await engine.start();
+const spark = spawn(process.execPath, ["scripts/spark-keep.ts"], { cwd: "/workspace", detached: true, stdio: "ignore" });
+spark.unref();
 const TICK_MS = Number(process.env.DESK_TICK_MS ?? DEFAULT_TICK_MS);
 setInterval(() => void engine.tick(), TICK_MS);
 setInterval(() => void engine.guardTick(), GUARD_EVERY_MS);

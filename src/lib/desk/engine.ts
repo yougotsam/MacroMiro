@@ -311,7 +311,7 @@ export class Engine {
           settlementModel: CALIBRATED_MODEL_APPROVED ? "reviewed" : "unapproved / shadow only",
           microstructure: "not integrated: distinct signed-trade and true venue-volume feeds required",
           higherTimeframes: "not integrated: persistent 15m and 1h spot/futures OHLCV required",
-          externalContext: "not read by the engine; only the scheduled macro calendar can block entries",
+          externalContext: "read after structure. A fresh Spark or MiroFish direction can refuse the other side. A stale or unclear brief does not sit the desk.",
         },
         snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt, override: this.snapshot.override ?? null, roomToStop: Number((dayWorstOf(this.snapshot) - DAILY_STOP_USD).toFixed(4)) } : null,
         resting: [...this.known.values()],

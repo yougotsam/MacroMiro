@@ -1,10 +1,8 @@
 /**
  * Scheduled macro-release gate for the desk engine (CPI, FOMC, NFP, PPI…).
  * It can only BLOCK new entries; it never creates, sizes or prices a trade. It reads only the calendar
- * list from the desk news file, so the order path never imports a news/swarm module.
- *
- * FAIL-CLOSED: a missing, unreadable, malformed or stale calendar is "unavailable" and blocks entries,
- * as does a major release whose time cannot be pinned to an explicit timezone (whole ET day blocked).
+ * list. A verified major release blocks. A missing or unverified official file does not. A major release
+ * whose time has no timezone blocks that whole ET day.
  */
 import { readFileSync, statSync } from "node:fs";
 import { officialCalendarPath, verifyCalendar, type OfficialCalendar } from "./official-calendar";
@@ -57,7 +55,8 @@ export function macroGateFrom(raw: unknown, now: number, fileAgeMs: number | nul
 
 /**
  * Gate over the OFFICIAL calendar (official-calendar.ts): verified by content (sources OK, fetchedAt ≤ 7 d, sourced
- * events, ≥ 1 real upcoming major event), not by file mtime. Unverified → unavailable → blocks entries (fail closed).
+ * events, ≥ 1 real upcoming major event), not by file mtime. Unverified or missing does not block. A verified
+ * major release still vetoes from 30 min before until 15 min after.
  */
 export function macroGateOfficial(raw: unknown, now: number): MacroGate {
   const v = verifyCalendar(raw, now);

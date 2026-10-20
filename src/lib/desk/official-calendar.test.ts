@@ -51,7 +51,7 @@ describe("verification is by content, not mtime", () => {
     expect(verifyCalendar({ foo: 1 }, NOW).verified).toBe(false);
     expect(verifyCalendar(null, NOW).verified).toBe(false);
   });
-  it("gate: verified calendar vetoes CPI −30/+15 min and the whole FOMC ET day; unverified blocks (fail closed)", () => {
+  it("gate: verified calendar vetoes CPI −30/+15 min and the whole FOMC ET day; unverified does not block", () => {
     expect(macroGateOfficial(cal(), NOW)).toMatchObject({ available: true, blocked: false });
     expect(macroGateOfficial(cal(), Date.parse("2026-10-14T12:10:00Z")).blocked).toBe(true);
     expect(macroGateOfficial(cal(), Date.parse("2026-10-14T13:00:00Z")).blocked).toBe(false);

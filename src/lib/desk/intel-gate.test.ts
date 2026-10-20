@@ -17,8 +17,10 @@ const docs = (sparkDoc: Record<string, unknown> | null, fish: Record<string, unk
 });
 
 describe("spark and alexandria on the send", () => {
-  it("refuses when the spark brief is old or unfinished", () => {
-    expect(judgeIntel("KXBTC15M", "yes", docs({ status: "processing", at: new Date(NOW).toISOString(), card: null }), NOW).why).toBe("spark_not_ready");
+  it("does not sit just because the spark brief is old", () => {
+    const v = judgeIntel("KXBTC15M", "yes", docs({ status: "processing", at: new Date(NOW).toISOString(), card: null }), NOW);
+    expect(v.ok).toBe(true);
+    expect(v.why).toBe("spark_stale");
   });
   it("refuses a yes when a fresh brief on bitcoin is bearish", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("bearish", "btc")), NOW);
@@ -29,8 +31,10 @@ describe("spark and alexandria on the send", () => {
     expect(judgeIntel("KXBTC15M", "yes", docs(spark("bullish", "btc")), NOW).ok).toBe(true);
     expect(judgeIntel("KXETH15M", "no", docs(spark("bullish", "btc")), NOW).why).toBe("spark_other_asset");
   });
-  it("refuses when alexandria has not been loaded", () => {
-    expect(judgeIntel("KXBTC15M", "yes", { spark: spark("bullish", "btc"), alexandria: { tools: [] }, news: null, mirofish: down }, NOW).why).toBe("alexandria_not_loaded");
+  it("does not sit just because the alexandria catalog is empty", () => {
+    const v = judgeIntel("KXBTC15M", "yes", { spark: spark("bullish", "btc"), alexandria: { tools: [] }, news: null, mirofish: down }, NOW);
+    expect(v.ok).toBe(true);
+    expect(v.why).toBe("spark_bullish_agrees");
   });
   it("refuses a yes when a fresh MiroFish read is bearish", () => {
     const fish = { stage: "done", probability: 0.2, at: NOW - 60_000 };

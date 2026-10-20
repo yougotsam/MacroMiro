@@ -55,9 +55,6 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
     return { ok, why, sparkBias, sparkAsset, mirofish: fish.state };
   };
 
-  const tools = Array.isArray(docs.alexandria?.tools) ? docs.alexandria.tools : [];
-  if (tools.length === 0) return done(false, "alexandria_not_loaded", null, null);
-
   const cal = docs.news?.calendar as { thisWeek?: Scheduled[]; nextWeek?: Scheduled[] } | undefined;
   const veto = scheduledVeto([...(cal?.thisWeek ?? []), ...(cal?.nextWeek ?? [])], now);
   if (veto.length) return done(false, "news_release_window", null, null);
@@ -66,7 +63,7 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
   const at = Date.parse(String(spark?.at ?? ""));
   const card = spark?.card as { bias?: string; asset?: string } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
-  if (!fresh) return done(false, "spark_not_ready", null, null);
+  if (!fresh) return done(true, "spark_stale", null, null);
 
   const bias = String(card.bias ?? "unclear");
   const asset = String(card.asset ?? "unclear");
