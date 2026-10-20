@@ -61,7 +61,7 @@ export class Engine {
   evaluator = new Evaluator(this.feeds, this.guard);
   private markets = new Map<string, { m: Market | null; at: number }>();
   private fees = new Map<string, { info: FeeInfo; at: number }>();
-  private ex = { tradingActive: false, at: 0 };
+  private ex = { tradingActive: false, shard0: false, at: 0 };
   private busy = false;
   private guardBusy = false;
   private tickId = 0;
@@ -236,7 +236,7 @@ export class Engine {
       }
       if (now - this.ex.at > 10_000) {
         const ex = await exchangeStatus().catch(() => null);
-        this.ex = { tradingActive: Boolean(ex?.tradingActive), at: ex ? Date.now() : this.ex.at };
+        this.ex = { tradingActive: Boolean(ex?.tradingActive), shard0: Boolean(ex?.shard0), at: ex ? Date.now() : this.ex.at };
       }
       const exOk = this.ex.tradingActive && now - this.ex.at < 15_000;
       if (tickId % 5 === 0) await this.oms.reconcilePending(now).catch(() => 0);
@@ -247,7 +247,10 @@ export class Engine {
         SERIES.map(async (s) => {
           const m = await this.market(s, t0);
           const [book, fee] = await Promise.all([m ? orderbook(m.ticker).catch(() => null) : Promise.resolve(null), this.fee(m, t0)]);
-          return { e: this.evaluate(s, m, book, fee, Date.now(), exOk, budget), fee };
+          const board = m?.exchangeIndex === 0 ? (this.snapshot?.shard0Cash ?? 0) : (this.snapshot?.shard2Cash ?? 0);
+          const boardOk = m?.exchangeIndex === 0 ? this.ex.shard0 : true;
+          const seriesBudget = Math.min(budget, board);
+          return { e: this.evaluate(s, m, book, fee, Date.now(), exOk && boardOk, seriesBudget), fee };
         }),
       );
       await this.manageResting(evals.map((x) => x.e), Date.now());
@@ -283,7 +286,7 @@ export class Engine {
           this.ledger.write(this.decisionRow({ ...x.e, failed: `G2_fast_move_cooldown_${g.dir}` }, "NO_TRADE", x.fee, now2), now2);
           continue;
         }
-        const intent = { product: "event" as const, ticker: x.e.market!.ticker, side: b.side, mode: b.mode, price: b.price, count: b.count, fee: b.fee, tickId };
+        const intent = { product: "event" as const, ticker: x.e.market!.ticker, side: b.side, mode: b.mode, price: b.price, count: b.count, fee: b.fee, tickId, exchangeIndex: x.e.market!.exchangeIndex };
         const res = await this.oms.submit(intent, this.snapshot);
         if (res.cid) this.dirty = true; // anything that reached the OMS journal forces a fresh snapshot next tick
         if (res.ok) {

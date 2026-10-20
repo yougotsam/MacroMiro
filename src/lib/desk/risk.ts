@@ -42,6 +42,8 @@ export type AccountSnapshot = {
   /** unconfirmed OMS sends (timeout, not yet found) count as worst case too */
   pendingWorst: number;
   shard2Cash: number;
+  /** FX board. GBP, EUR and JPY settle on exchange index 0. Zero means those markets sit. */
+  shard0Cash: number;
   settledToday: Settled[];
   /** desk orders already sent per ticker (Kalshi + local journal, max of both) */
   ordersPerTicker: Record<string, number>;
@@ -65,7 +67,7 @@ export type OrderIntent = {
   price: number;
   count: number;
   fee: number;
-  tickId: number;
+  exchangeIndex?: number;
 };
 
 export type RiskDecision = { ok: boolean; why: string; dayWorst: number; projected: number; orderWorst: number };
@@ -223,7 +225,9 @@ export class RiskEngine {
     if (!Number.isFinite(corr) || corr > L.correlated + 1e-9) return no(`correlated ${corrKey} ${corr.toFixed(2)} > ${L.correlated}`, dayWorst, projected);
     if ((s.ordersPerTicker[o.ticker] ?? 0) >= MAX_ORDERS_PER_TICKER_WINDOW) return no(`ticker order cap ${MAX_ORDERS_PER_TICKER_WINDOW}`, dayWorst, projected);
     if ((this.tickCount.get(o.tickId) ?? 0) >= MAX_ORDERS_PER_TICK) return no("one order per tick", dayWorst, projected);
-    if (s.shard2Cash < orderWorst) return no(`shard 2 cash ${s.shard2Cash.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
+    const board = o.exchangeIndex === 0 ? (s.shard0Cash ?? 0) : s.shard2Cash;
+    const boardName = o.exchangeIndex === 0 ? "shard 0" : "shard 2";
+    if (board < orderWorst) return no(`${boardName} cash ${board.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
     return { ok: true, why: "risk ok", dayWorst, projected, orderWorst };
   }
 

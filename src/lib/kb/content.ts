@@ -5,14 +5,12 @@ export const KB: KbDoc[] = [
   {
     id: "rule",
     title: "Rule",
-    body: `Every pass scans four 15-minute Kalshi tickets.
+    body: `Every pass scans eight 15-minute Kalshi tickets.
 
-Bitcoin KXBTC15M can be bought. The price is the BRTI 60-second average on the Kalshi websocket.
-Ethereum KXETH15M can be bought. The price is ETHUSD_RTI on that same socket.
-Solana KXSOL15M can be bought. The price is SOLUSD_RTI on that same socket.
-XRP KXXRP15M can be bought. The price is XRPUSD_RTI on that same socket.
-Gold KXGOLD15M can be bought. The price is the finished Pyth 1-minute close.
-A perp price does not settle the ticket. If the official socket is down, a perp mark no older than 2 seconds can pick the side. One quiet coin does not freeze the others.
+Bitcoin, Ethereum, Solana, and XRP can be bought. They settle on the CF Benchmarks 60-second average.
+Gold can be bought. It settles on the Pyth gold print.
+Pound, euro, and yen can be bought: KXGBPUSD15M, KXEURUSD15M, KXUSDJPY15M. They settle on Pyth FX.GBP/USD, FX.EUR/USD, and FX.USD/JPY. Those three trade on a different cash board. If that board is empty, they are scanned and they sit.
+A perp price does not settle the ticket. One quiet market does not freeze the others.
 
 Every order is a resting bid under the ask. A filled ticket is held to the clock. Price range: 4¢–72¢. Nothing above 72¢. Clock: 5s after open to 30s before close. A trade needs a pullback, not a price that is already past the average. One open ticket per contract. The perpetual book is a separate Kalshi margin order and it is not sending. The live rule is the desk code. This page only repeats it.`,
   },

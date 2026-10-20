@@ -70,7 +70,7 @@ export function orderBody(intent: OrderIntent, cid: string) {
     post_only: intent.mode === "maker",
     self_trade_prevention_type: "taker_at_cross",
     cancel_order_on_pause: true,
-    exchange_index: ORDER_SHARD,
+    exchange_index: intent.exchangeIndex ?? ORDER_SHARD,
   } as Record<string, unknown>;
 }
 

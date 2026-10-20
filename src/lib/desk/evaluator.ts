@@ -90,7 +90,7 @@ export class Evaluator {
     out.macro = macro;
     if (!m) return fail("G1_no_open_market");
     if (m.strikeType !== "greater_or_equal") return fail("G1_strike_type");
-    if (m.exchangeIndex !== 2 || m.priceRanges.length === 0) return fail("G1_wrong_shard_or_price_grid");
+    if ((m.exchangeIndex !== 0 && m.exchangeIndex !== 2) || m.priceRanges.length === 0) return fail("G1_wrong_shard_or_price_grid");
     const ruleOk = ref.kind === "rti60" ? m.rules.includes(ref.index.replace("USD_RTI", "USDRTI")) || m.rules.includes(ref.index) : /pyth|gold/i.test(m.rules) || m.rules.toLowerCase().includes("gold");
     if (!ruleOk) return fail("G1_rules_mismatch");
     const left = (m.closeMs - now) / 1000;

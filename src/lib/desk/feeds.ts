@@ -2,7 +2,7 @@
  * Settlement-grade feeds over ONE authenticated Kalshi WebSocket (api.elections.kalshi.com — the
  * external-api-ws host refuses this box, which is why the old desk's RTI feed looked "unauthorized"/stale).
  *   cfbenchmarks_value: BRTI, ETHUSD_RTI, SOLUSD_RTI, XRPUSD_RTI — one-second prints (msg.data.value @ msg.data.time)
- *   pyth_value: Metal.Index.1OZGOLD/USD — KXGOLD15M's settlement source
+ *   pyth_value: gold plus GBP, EUR and JPY. These are the Kalshi settlement symbols, not the market tickers.
  * Bootstrap: last hour of 1-second RTI values from the CF Benchmarks REST passthrough.
  * Recorder: every print is appended to <data>/prints/<day>.jsonl for replay/calibration.
  */
@@ -15,6 +15,7 @@ import { etDay } from "./time";
 const WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2";
 export const RTI = ["BRTI", "ETHUSD_RTI", "SOLUSD_RTI", "XRPUSD_RTI"] as const;
 export const GOLD = "Metal.Index.1OZGOLD/USD";
+export const PYTH = [GOLD, "FX.GBP/USD", "FX.EUR/USD", "FX.USD/JPY"] as const;
 const KEEP_MS = 2 * 3600_000;
 
 type Buf = { bySec: Map<number, number>; lastTs: number; lastRecv: number };
@@ -37,7 +38,7 @@ export class Feeds {
   errors = 0;
 
   constructor(private record = true) {
-    for (const k of [...RTI, GOLD]) this.bufs.set(k, { bySec: new Map(), lastTs: 0, lastRecv: 0 });
+    for (const k of [...RTI, ...PYTH]) this.bufs.set(k, { bySec: new Map(), lastTs: 0, lastRecv: 0 });
   }
 
   push(index: string, tMs: number, v: number, recv = Date.now()) {
@@ -178,7 +179,7 @@ export class Feeds {
       this.backoff = 500;
       this.lastMsgAt = Date.now();
       ws.send(JSON.stringify({ id: 1, cmd: "subscribe", params: { channels: ["cfbenchmarks_value"], index_ids: [...RTI] } }));
-      ws.send(JSON.stringify({ id: 2, cmd: "subscribe", params: { channels: ["pyth_value"], underlying_tickers: [GOLD] } }));
+      ws.send(JSON.stringify({ id: 2, cmd: "subscribe", params: { channels: ["pyth_value"], underlying_tickers: [...PYTH] } }));
     };
     ws.onmessage = (ev) => {
       let m: { type?: string; msg?: Record<string, unknown> };

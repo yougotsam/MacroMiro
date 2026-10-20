@@ -162,4 +162,7 @@ export const SIGMA_FLOOR: Record<string, number> = {
   SOLUSD_RTI: 3e-5,
   XRPUSD_RTI: 3e-5,
   "Metal.Index.1OZGOLD/USD": 4e-6,
+  "FX.GBP/USD": 8e-6,
+  "FX.EUR/USD": 8e-6,
+  "FX.USD/JPY": 8e-6,
 };

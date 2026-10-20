@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { SERIES } from "./config";
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -81,7 +82,7 @@ describe("collector loop with mocked feeds (no network)", () => {
     await c.tick();
     const f = readdirSync(dir).find((x) => x.startsWith("observations-"))!;
     const rows = readFileSync(join(dir, f), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(rows.length).toBe(5);
+    expect(rows.length).toBe(SERIES.length);
     for (const r of rows) {
       expect(r.failed_gate).toBe("G1_index_stale"); // no index prints in this test → rejected with the exact gate
       expect(r.rejected).toBe(true);
@@ -90,15 +91,15 @@ describe("collector loop with mocked feeds (no network)", () => {
       expect(r.threshold.strike).toBe(100);
       expect(r.expiry_bucket).toBe("5-10m");
     }
-    expect(c.status.completeQuoteTickers).toBe(5);
-    expect(c.status.failedGates.G1_index_stale).toBe(5);
+    expect(c.status.completeQuoteTickers).toBe(SERIES.length);
+    expect(c.status.failedGates.G1_index_stale).toBe(SERIES.length);
   });
   it("a missing fee or one-sided book is not a complete executable quote", async () => {
     const dir = mkdtempSync(join(tmpdir(), "obs2-"));
     const c = new Collector(dir, new Feeds(false), new MoveGuard(), deps({ eventFee: async () => { throw new Error("down"); }, orderbookRaw: async () => ({ orderbook_fp: { yes_dollars: [["0.40", "10"]] } }) }));
     await c.tick();
     expect(c.status.completeQuoteTickers).toBe(0);
-    expect(c.status.uniqueTickers).toBe(5);
+    expect(c.status.uniqueTickers).toBe(SERIES.length);
   });
   it("after close it records Kalshi's published result and expiration value once", async () => {
     const dir = mkdtempSync(join(tmpdir(), "obs3-"));
@@ -108,7 +109,7 @@ describe("collector loop with mocked feeds (no network)", () => {
     await c.tick(close + 120_000);
     const f = readdirSync(dir).filter((x) => x.startsWith("outcomes-"));
     const rows = f.flatMap((x) => readFileSync(join(dir, x), "utf8").trim().split("\n")).map((l) => JSON.parse(l));
-    expect(rows.length).toBe(5);
+    expect(rows.length).toBe(SERIES.length);
     expect(rows[0]).toMatchObject({ result: "yes", value: 101.2 });
   });
   it("indicators: gold has no traded-volume source → volume/flow features reported unavailable", async () => {

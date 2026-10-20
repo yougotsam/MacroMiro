@@ -348,6 +348,8 @@ describe("round 3 risk limits: −$15 day, $9 total, $3 per ticker, $4 same-dire
     expect(correlationKey("KXXRP15M-26OCT081215-15", "up")).toBe("crypto|up");
     expect(correlationKey("KXETH15M-26OCT081200-00", "down")).toBe("crypto|down");
     expect(correlationKey("KXGOLD15M-26OCT081200-00", "up")).toBe("gold|up");
+    expect(correlationKey("KXGBPUSD15M-26OCT200015-30", "up")).toBe("fx|up");
+    expect(correlationKey("KXUSDJPY15M-26OCT200015-30", "down")).toBe("jpy|down");
   });
 
   it("snapshot: open, resting and ambiguous sends are summed per correlated group and per ticker", () => {

@@ -443,6 +443,9 @@ describe("account snapshot (Kalshi records → day P/L)", () => {
     expect(dayWorstOf(s)).toBeCloseTo(s.realizedToday - 2.06 - s.restWorst - 0.5, 6);
     expect(s.etDay).toBe("2026-10-08");
     expect(TICKER_RE.test("KXGOLD15M-26OCT081200-00")).toBe(true);
+    expect(TICKER_RE.test("KXGBPUSD15M-26OCT200015-30")).toBe(true);
+    expect(TICKER_RE.test("KXEURUSD15M-26OCT200015-30")).toBe(true);
+    expect(TICKER_RE.test("KXUSDJPY15M-26OCT200015-30")).toBe(true);
     expect(DAILY_STOP_USD).toBe(-15); // POLICY round 3 (Sameer 2026-10-09): −15 (aurix-x had −5)
   });
   it("ET day starts at 00:00 America/New_York", () => {

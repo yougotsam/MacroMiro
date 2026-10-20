@@ -51,7 +51,7 @@ export async function openMarket(series: string): Promise<Market | null> {
           Number.isFinite(p.step) && p.step > 0 && p.end > p.start),
     }))
     .filter((m) => m.openMs <= now && m.closeMs > now && Number.isFinite(m.strike) &&
-      m.strike > 0 && m.eventTicker.length > 0 && m.exchangeIndex === 2 && m.priceRanges.length > 0)
+      m.strike > 0 && m.eventTicker.length > 0 && (m.exchangeIndex === 0 || m.exchangeIndex === 2) && m.priceRanges.length > 0)
     .sort((a, b) => a.closeMs - b.closeMs);
   return ms[0] ?? null;
 }
@@ -69,12 +69,15 @@ export async function orderbook(ticker: string): Promise<Book> {
   return { yesBid: top(d.orderbook_fp?.yes_dollars), noBid: top(d.orderbook_fp?.no_dollars), ts };
 }
 
-export async function exchangeStatus(): Promise<{ tradingActive: boolean; shard2: boolean; raw: unknown }> {
+export async function exchangeStatus(): Promise<{ tradingActive: boolean; shard2: boolean; shard0: boolean; raw: unknown }> {
   const d = await pub<{ trading_active?: boolean; exchange_active?: boolean; exchange_index_statuses?: Array<{ exchange_index: number; trading_active: boolean; exchange_active: boolean }> }>(`/exchange/status`);
-  const s2 = d.exchange_index_statuses?.find((x) => x.exchange_index === 2);
-  // fail closed: shard 2 (Crypto & Commodities) must be explicitly present and active
-  const shard2 = s2 ? Boolean(s2.trading_active && s2.exchange_active) : false;
-  return { tradingActive: Boolean(d.exchange_active) && shard2, shard2, raw: d };
+  const on = (n: number) => {
+    const s = d.exchange_index_statuses?.find((x) => x.exchange_index === n);
+    return s ? Boolean(s.trading_active && s.exchange_active) : false;
+  };
+  const shard2 = on(2);
+  const shard0 = on(0);
+  return { tradingActive: Boolean(d.exchange_active) && shard2, shard2, shard0, raw: d };
 }
 
 export async function seriesFee(series: string) {
@@ -217,6 +220,7 @@ export function buildSnapshot(input: {
   resting: KOrder[];
   ordersToday: KOrder[];
   shard2Cash: number;
+  shard0Cash?: number;
   exchangeTradingActive: boolean;
   exchangeCheckedAt: number;
   /** OMS sends (persisted intents). Counted only while Kalshi doesn't list the client_order_id yet. */
@@ -304,8 +308,8 @@ export function buildSnapshot(input: {
     ordersPerTicker[o.ticker] = (ordersPerTicker[o.ticker] ?? 0) + 1;
   }
   for (const [t, n] of Object.entries(input.localOrdersPerTicker ?? {})) ordersPerTicker[t] = Math.max(ordersPerTicker[t] ?? 0, n);
-  if (![realized, openWorst, restWorst, pendingWorst, input.shard2Cash].every(Number.isFinite) ||
-      input.shard2Cash < 0) throw new Error("invalid account risk totals");
+  if (![realized, openWorst, restWorst, pendingWorst, input.shard2Cash, input.shard0Cash ?? 0].every(Number.isFinite) ||
+      input.shard2Cash < 0 || (input.shard0Cash ?? 0) < 0) throw new Error("invalid account risk totals");
   return {
     fetchedAt: input.now,
     etDay: etDay(input.now),
@@ -314,6 +318,7 @@ export function buildSnapshot(input: {
     restWorst: Number(restWorst.toFixed(4)),
     pendingWorst: Number(pendingWorst.toFixed(4)),
     shard2Cash: input.shard2Cash,
+    shard0Cash: input.shard0Cash ?? 0,
     settledToday,
     ordersPerTicker,
     correlated,
@@ -339,6 +344,7 @@ export async function fetchSnapshot(ex: { tradingActive: boolean; at: number }, 
     kalshiGet<{ balance?: number; portfolio_value?: number; balance_breakdown?: Array<{ balance?: string; exchange_index?: number }> }>("/trade-api/v2/portfolio/balance"),
   ]);
   const shard2Cash = Number(bal.data.balance_breakdown?.find((b) => b.exchange_index === 2)?.balance ?? 0);
+  const shard0Cash = Number(bal.data.balance_breakdown?.find((b) => b.exchange_index === 0)?.balance ?? 0);
   void SERIES_SET;
   void DAILY_STOP_USD;
   const snap = buildSnapshot({
@@ -348,6 +354,7 @@ export async function fetchSnapshot(ex: { tradingActive: boolean; at: number }, 
     resting,
     ordersToday,
     shard2Cash,
+    shard0Cash,
     exchangeTradingActive: ex.tradingActive,
     exchangeCheckedAt: ex.at,
     pendingIntents: local.pendingIntents,

@@ -8,10 +8,10 @@ export const CALIBRATED_MODEL_APPROVED: boolean = true;
 /** Never reset an intraday loss latch with an on-disk override. */
 export const ENABLE_RISK_OVERRIDES: boolean = false;
 
-export const SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXGOLD15M"] as const;
+export const SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXGOLD15M", "KXGBPUSD15M", "KXEURUSD15M", "KXUSDJPY15M"] as const;
 export type Series = (typeof SERIES)[number];
-export const TICKER_RE = /^KX(?:BTC|ETH|SOL|XRP|GOLD)15M-[0-9A-Z]+-[0-9A-Z]+$/;
-export const ORDER_SHARD = 2; // all 5 series trade on exchange index 2 (Crypto & Commodities)
+export const TICKER_RE = /^KX(?:BTC|ETH|SOL|XRP|GOLD|GBPUSD|EURUSD|USDJPY)15M-[0-9A-Z]+-[0-9A-Z]+$/;
+export const ORDER_SHARD = 2; // crypto and gold. GBP, EUR and JPY are exchange index 0. The order uses the market's own index.
 
 /** Settlement reference per series (from GET /markets rules + SETTLEMENT-RULES.md). */
 export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string; dp: number }> = {
@@ -20,6 +20,9 @@ export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string
   KXSOL15M: { kind: "rti60", index: "SOLUSD_RTI", dp: 4 },
   KXXRP15M: { kind: "rti60", index: "XRPUSD_RTI", dp: 4 },
   KXGOLD15M: { kind: "pyth1m", index: "Metal.Index.1OZGOLD/USD", dp: 2 },
+  KXGBPUSD15M: { kind: "pyth1m", index: "FX.GBP/USD", dp: 5 },
+  KXEURUSD15M: { kind: "pyth1m", index: "FX.EUR/USD", dp: 5 },
+  KXUSDJPY15M: { kind: "pyth1m", index: "FX.USD/JPY", dp: 3 },
 };
 
 // ── Risk (hard) ──────────────────────────────────────────────────────────────
