@@ -120,6 +120,11 @@ export class Engine {
     this.known.delete(r.orderId);
     const st = await this.oms.cancel(r.orderId, r.ticker, r.cid, why).catch(() => 0);
     const now = Date.now();
+    if (st === 208) {
+      if (e) this.ledger.write(this.decisionRow({ ...e, failed: null }, "BUY", null, now, { cid: r.cid, orderId: r.orderId, status: "filled before cancel", why }), now);
+      log("FILL", r.ticker, r.side, r.price, "already filled", why);
+      return;
+    }
     if (e) this.ledger.write(this.decisionRow({ ...e, failed: why }, "CANCEL", null, now, { cid: r.cid, orderId: r.orderId, status: `cancel http ${st}` }), now);
     log("CANCEL", r.ticker, r.side, r.price, why, st);
   }

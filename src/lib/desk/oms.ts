@@ -227,10 +227,20 @@ export class Oms {
     }
     if (res.status === 200 || res.status === 201) {
       const orderId = String(res.body.order_id ?? "");
-      const fill = Number(res.body.fill_count ?? 0);
+      let fill = Number(res.body.fill_count ?? 0);
       const remaining = Number(res.body.remaining_count ?? 0);
-      const status = intent.mode === "taker" ? (fill > 0 ? "executed" : "canceled") : remaining > 0 ? "resting" : fill > 0 ? "executed" : "canceled";
+      let status = intent.mode === "taker" ? (fill > 0 ? "executed" : "canceled") : remaining > 0 ? "resting" : fill > 0 ? "executed" : "canceled";
       this.write({ cid, stage: "sent", ticker: intent.ticker, orderId, status, fill });
+      // A maker reply can say "resting, 0 filled" and the book can fill it in the next tenth of a second.
+      if (status === "resting") {
+        const hit = (await this.lookup([cid]).catch(() => [])).find((o) => o.client_order_id === cid);
+        const got = Number(hit?.fill_count_fp ?? 0);
+        if (hit && got > 0) {
+          fill = got;
+          status = hit.status || "executed";
+          this.write({ cid, stage: "found", ticker: intent.ticker, orderId, status, fill, note: "filled after the send reply" });
+        }
+      }
       return { ok: true, why: "sent", cid, orderId, status, fill };
     }
     if (res.status >= 500 || res.status === 0 || res.status === 429) {
@@ -314,7 +324,16 @@ export class Oms {
   }
 
   async cancel(orderId: string, ticker: string, cid: string, why: string) {
-    // the real path is always the signed event-order DELETE; only a constructor-validated mock replaces it
+    try {
+      const hit = (await this.lookup([cid])).find((o) => o.order_id === orderId || o.client_order_id === cid);
+      const fill = Number(hit?.fill_count_fp ?? 0);
+      if (hit && (hit.status === "executed" || fill > 0)) {
+        this.write({ cid, stage: "found", ticker, orderId, status: hit.status, fill, note: `already filled, cancel skipped · ${why}` });
+        return 208;
+      }
+    } catch {
+      /* if the lookup fails, still try the cancel */
+    }
     const r = this.del ? await this.del(eventCancelPath(orderId, ticker)) : await kalshiDelete(eventCancelPath(orderId, ticker));
     this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${r.status}` });
     return r.status;
