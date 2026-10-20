@@ -178,8 +178,7 @@ export class Evaluator {
       out.best = null;
       return fail(`G2_structure_${tech.why.replace(/\s+/g, "_")}`);
     }
-    // "Price is above the 20-minute average" is true whenever price is already far past the line.
-    // That is not a setup. Above 60¢ it does not get to approve the trade. A bounce, fade, fib pocket, or candle still can, and nothing above 72¢ can.
+    // Above 60¢, "price is past the 20-minute average" is not a setup. A bounce, fade, fib pocket, or a return into a gap can still pass. Nothing above 72¢ can.
     if (tech.why.startsWith("20-EMA") && g.best.price > 0.6) {
       out.shadow = g.best;
       out.best = null;

@@ -263,13 +263,15 @@ describe("probability validation (report-only)", () => {
     expect(takerReplay([{ ...o, noBidSize: 0.6 }], (x) => x.p).trades).toBe(0); // under one contract displayed
     expect(takerReplay([{ ...o, noBidSize: null }], (x) => x.p).skipped.depthUnknown).toBe(1);
   });
-  it("Codex P1 price bands: asks under 4¢, over 93¢, or under 5¢ in the last minute are never booked", () => {
+  it("Codex P1 price bands: asks under 4¢, over 72¢, or under 5¢ in the last minute are never booked", () => {
     const low = mk(1, 0.2, 1, { yesBid: 0.02, yesAsk: 0.035, tte: 300 });
     expect(PRICE_MIN).toBeGreaterThan(0.035);
     expect(takerReplay([low], (x) => x.p).trades).toBe(0);
     const lastMin = mk(2, 0.2, 1, { yesBid: 0.03, yesAsk: 0.045, tte: 40 });
     expect(takerReplay([lastMin], (x) => x.p).trades).toBe(0);
     expect(takerReplay([{ ...lastMin, tte: 300 }], (x) => x.p).trades).toBe(1); // same quote, 5 min out: inside the band
+    const favorite = mk(4, 0.9, 1, { yesBid: 0.78, yesAsk: 0.8 });
+    expect(takerReplay([favorite], (x) => x.p).trades).toBe(0);
     const high = mk(3, 0.999, 1, { yesBid: 0.94, yesAsk: 0.95 });
     expect(takerReplay([high], (x) => x.p).trades).toBe(0);
   });
