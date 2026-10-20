@@ -1,7 +1,7 @@
 /**
- * Firecrawl Spark brief + Alexandria catalog + the desk news calendar, read from the files those
- * pipelines already write. This module does not call the network and does not turn a model percent
- * into a settlement chance. A fresh Spark bias can only agree or refuse the side already chosen.
+ * Firecrawl Spark brief, Alexandria catalog, MiroFish last run, and the desk news calendar.
+ * Read from the files those pipelines already write. No network call. A model percent is not the
+ * settlement chance. A fresh directional read can only agree with the side already chosen, or refuse it.
  */
 import { readFileSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
@@ -14,6 +14,7 @@ export type IntelDocs = {
   spark: Record<string, unknown> | null;
   alexandria: Record<string, unknown> | null;
   news: Record<string, unknown> | null;
+  mirofish: Record<string, unknown> | null;
 };
 
 export type IntelVerdict = {
@@ -21,6 +22,7 @@ export type IntelVerdict = {
   why: string;
   sparkBias: string | null;
   sparkAsset: string | null;
+  mirofish: string;
 };
 
 function covers(series: Series, asset: string): boolean {
@@ -30,28 +32,49 @@ function covers(series: Series, asset: string): boolean {
   return false;
 }
 
-/** Pure. `now` is the clock. Spark `at` is an ISO time. */
+function miroRead(m: Record<string, unknown> | null, now: number): { state: string; side: "yes" | "no" | null } {
+  if (!m) return { state: "missing", side: null };
+  const stage = String(m.stage ?? "");
+  if (!stage || stage.startsWith("error") || stage === "unavailable") return { state: "down", side: null };
+  const at = Number(m.at);
+  if (!Number.isFinite(at) || at > now + 60_000 || now - at >= FRESH_MS) return { state: "stale", side: null };
+  const p = Number(m.probability);
+  if (!Number.isFinite(p) || p < 0 || p > 1) return { state: "no_direction", side: null };
+  if (p >= 0.55) return { state: "bullish", side: "yes" };
+  if (p <= 0.45) return { state: "bearish", side: "no" };
+  return { state: "flat", side: null };
+}
+
+/** Pure. `now` is the clock. Spark `at` is an ISO time. MiroFish `at` is epoch milliseconds. */
 export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, now: number): IntelVerdict {
+  const fish = miroRead(docs.mirofish, now);
+  const done = (ok: boolean, why: string, sparkBias: string | null, sparkAsset: string | null): IntelVerdict => {
+    if (ok && fish.side && fish.side !== side) {
+      return { ok: false, why: `mirofish_${fish.state}_opposes_${side}`, sparkBias, sparkAsset, mirofish: fish.state };
+    }
+    return { ok, why, sparkBias, sparkAsset, mirofish: fish.state };
+  };
+
   const tools = Array.isArray(docs.alexandria?.tools) ? docs.alexandria.tools : [];
-  if (tools.length === 0) return { ok: false, why: "alexandria_not_loaded", sparkBias: null, sparkAsset: null };
+  if (tools.length === 0) return done(false, "alexandria_not_loaded", null, null);
 
   const cal = docs.news?.calendar as { thisWeek?: Scheduled[]; nextWeek?: Scheduled[] } | undefined;
   const veto = scheduledVeto([...(cal?.thisWeek ?? []), ...(cal?.nextWeek ?? [])], now);
-  if (veto.length) return { ok: false, why: "news_release_window", sparkBias: null, sparkAsset: null };
+  if (veto.length) return done(false, "news_release_window", null, null);
 
   const spark = docs.spark;
   const at = Date.parse(String(spark?.at ?? ""));
   const card = spark?.card as { bias?: string; asset?: string } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
-  if (!fresh) return { ok: false, why: "spark_not_ready", sparkBias: null, sparkAsset: null };
+  if (!fresh) return done(false, "spark_not_ready", null, null);
 
   const bias = String(card.bias ?? "unclear");
   const asset = String(card.asset ?? "unclear");
-  if (bias !== "bullish" && bias !== "bearish") return { ok: true, why: "spark_unclear", sparkBias: bias, sparkAsset: asset };
-  if (!covers(series, asset)) return { ok: true, why: "spark_other_asset", sparkBias: bias, sparkAsset: asset };
+  if (bias !== "bullish" && bias !== "bearish") return done(true, "spark_unclear", bias, asset);
+  if (!covers(series, asset)) return done(true, "spark_other_asset", bias, asset);
   const want = bias === "bullish" ? "yes" : "no";
-  if (side !== want) return { ok: false, why: `spark_${bias}_opposes_${side}`, sparkBias: bias, sparkAsset: asset };
-  return { ok: true, why: `spark_${bias}_agrees`, sparkBias: bias, sparkAsset: asset };
+  if (side !== want) return done(false, `spark_${bias}_opposes_${side}`, bias, asset);
+  return done(true, `spark_${bias}_agrees`, bias, asset);
 }
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -71,6 +94,7 @@ export function intelVerdict(series: Series, side: "yes" | "no", now = Date.now(
       spark: readJson(`${DATA_ROOT}/spark-latest.json`),
       alexandria: readJson(`${DATA_ROOT}/alexandria-latest.json`),
       news: readJson(`${DATA_ROOT}/desk-news.json`),
+      mirofish: readJson(`${DATA_ROOT}/mirofish-latest.json`),
     },
     now,
   );

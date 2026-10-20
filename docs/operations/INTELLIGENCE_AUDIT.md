@@ -43,7 +43,7 @@ This is an inventory. It does not turn research into a live order.
 2. `src/lib/desk/features.ts` moves that chance by at most 4 points. The four groups are trend (EMA 7/14/50), RSI plus the 5-minute return, the last candle, and the fib pocket. `technicalSide` then has to name the same side, using the 20-EMA, RSI, the candle, and that fib pocket. If it does not, the order is dropped.
 3. The sniper score blocks an order only when the other side has a full setup and this side does not. Missing 15-minute or 1-hour history does not invent a block.
 4. `oms.ts` sends when `CALIBRATED_MODEL_APPROVED` is true and the day still has room. The calibrator file is not required while `APPROVAL_POLICY_ENFORCED` is false.
-5. A test forbids the order path from importing MiroFish, Spark, Firecrawl, or Alexandria. Those do not pick the side.
+5. The send reads Spark, Alexandria, and the last MiroFish file in `src/lib/desk/intel-gate.ts`. It does not import the Firecrawl client. A fresh bullish or bearish Spark brief, or a fresh MiroFish probability at or beyond 55/45, must match the side or the order is refused. An unclear brief does not invent a side. A MiroFish error does not invent a side. Neither number replaces the settlement chance.
 
 Perps:
 
@@ -58,7 +58,7 @@ Kept. Not a calibrated chance that gold or bitcoin goes up.
 
 `probabilityFromReport()` keeps a labeled report sentence (`Probability:` or `概率`) and nothing else. Upstream `report_agent.py` writes a story. It does not count agent votes. OASIS (arXiv 2411.11581) studies herd behavior, not a Brier score. A public October 2026 swarm run moved more when the seed wording changed than when the model changed. Those markets were not settled when this note was written, so that run is not a scorecard.
 
-Our code then drops the number before any order context. `usableForSettlement` is the value `false`. Do not invent votes for old runs. Do not start a paid simulation from this audit.
+The settlement chance is still made in `settlement.ts`. The send then reads `data/mirofish-latest.json`. A fresh completed run with a probability at or above 0.55 or at or below 0.45 must match the side, or the order is refused. `usableForSettlement` stays false: that number is not the chance the contract pays. A down swarm does not invent a side. Do not invent votes for old runs.
 
 ## One real research row
 

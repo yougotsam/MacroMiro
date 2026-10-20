@@ -8,21 +8,39 @@ const spark = (bias: string, asset: string, at = "2026-10-19T22:00:00.000Z") => 
   at,
   card: { bias, asset },
 });
+const down = { stage: "error: not running", probability: null, at: NOW };
+const docs = (sparkDoc: Record<string, unknown> | null, fish: Record<string, unknown> | null = down) => ({
+  spark: sparkDoc,
+  alexandria: alex,
+  news: null,
+  mirofish: fish,
+});
 
 describe("spark and alexandria on the send", () => {
   it("refuses when the spark brief is old or unfinished", () => {
-    expect(judgeIntel("KXBTC15M", "yes", { spark: { status: "processing", at: new Date(NOW).toISOString(), card: null }, alexandria: alex, news: null }, NOW).why).toBe("spark_not_ready");
+    expect(judgeIntel("KXBTC15M", "yes", docs({ status: "processing", at: new Date(NOW).toISOString(), card: null }), NOW).why).toBe("spark_not_ready");
   });
   it("refuses a yes when a fresh brief on bitcoin is bearish", () => {
-    const v = judgeIntel("KXBTC15M", "yes", { spark: spark("bearish", "btc"), alexandria: alex, news: null }, NOW);
+    const v = judgeIntel("KXBTC15M", "yes", docs(spark("bearish", "btc")), NOW);
     expect(v.ok).toBe(false);
     expect(v.why).toBe("spark_bearish_opposes_yes");
   });
   it("allows the matching side and leaves an unnamed market alone", () => {
-    expect(judgeIntel("KXBTC15M", "yes", { spark: spark("bullish", "btc"), alexandria: alex, news: null }, NOW).ok).toBe(true);
-    expect(judgeIntel("KXETH15M", "no", { spark: spark("bullish", "btc"), alexandria: alex, news: null }, NOW).why).toBe("spark_other_asset");
+    expect(judgeIntel("KXBTC15M", "yes", docs(spark("bullish", "btc")), NOW).ok).toBe(true);
+    expect(judgeIntel("KXETH15M", "no", docs(spark("bullish", "btc")), NOW).why).toBe("spark_other_asset");
   });
   it("refuses when alexandria has not been loaded", () => {
-    expect(judgeIntel("KXBTC15M", "yes", { spark: spark("bullish", "btc"), alexandria: { tools: [] }, news: null }, NOW).why).toBe("alexandria_not_loaded");
+    expect(judgeIntel("KXBTC15M", "yes", { spark: spark("bullish", "btc"), alexandria: { tools: [] }, news: null, mirofish: down }, NOW).why).toBe("alexandria_not_loaded");
+  });
+  it("refuses a yes when a fresh MiroFish read is bearish", () => {
+    const fish = { stage: "done", probability: 0.2, at: NOW - 60_000 };
+    const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear"), fish), NOW);
+    expect(v.ok).toBe(false);
+    expect(v.why).toBe("mirofish_bearish_opposes_yes");
+  });
+  it("does not invent a side when MiroFish is down", () => {
+    const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear")), NOW);
+    expect(v.ok).toBe(true);
+    expect(v.mirofish).toBe("down");
   });
 });

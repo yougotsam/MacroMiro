@@ -40,7 +40,8 @@ These are on `main`. They are not on another branch. They write files. The send 
 - Alexandria must have its tool list loaded (`data/alexandria-latest.json`). An empty list refuses the order.
 - Spark must be a completed Firecrawl brief newer than 6 hours (`data/spark-latest.json`). A processing or old brief refuses the order (`spark_not_ready`).
 - A fresh bullish or bearish brief must match the side on the asset it names (bitcoin and/or gold). The other four markets are not forced to that asset's direction.
-- A headline percent is not the settlement chance. MiroFish is a separate program. Its last file says it is not running. It is not used as the chance.
+- MiroFish is read from `data/mirofish-latest.json` on the same check. A fresh completed run at or above 55% or at or below 45% must match the side. If the file says the swarm is not running, that does not invent a side and it does not block. The settlement chance is still the index versus the strike. MiroFish does not replace it.
+- The Spark card in this commit is a completed brief. Its direction is unclear, so it does not force yes or no. A brief older than 6 hours refuses the order until a new one is written.
 
 The research spend switch lives in `data/operating-mode.json`. `FULL_STANDBY` blocks a new Spark job. `RESEARCH_PAPER` with `legacy_spark_brief` allows one.
 
