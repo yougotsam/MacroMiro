@@ -106,7 +106,7 @@ export function runGraph(opts: {
       continue;
     }
     if (clock.late && clock.dur === 5 && /bitcoin|btc/i.test(m.question)) {
-      const lateScan = m.yes >= 0.52 && m.yes <= 0.93;
+      const lateScan = m.yes >= 0.52 && m.yes <= 0.72;
       rows.push(
         row(
           venue,

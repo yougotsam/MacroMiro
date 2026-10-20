@@ -367,10 +367,10 @@ describe("execution gate: YES and NO scored separately", () => {
   const table: Array<{ name: string; p: number; pBase?: number; b: Book; side: "yes" | "no" | null; mode?: "maker" | "taker"; price?: number; failed?: string }> = [
     { name: "P 0.70, YES 60/65 → YES maker 61¢", p: 0.7, b: book(0.6, 0.35), side: "yes", mode: "maker", price: 0.61 },
     { name: "P 0.30, mirror → NO maker 61¢", p: 0.3, b: book(0.35, 0.6), side: "no", mode: "maker", price: 0.61 },
-    { name: "favorite: P 0.95, YES 88/90 → YES maker 89¢", p: 0.95, b: book(0.88, 0.1), side: "yes", mode: "maker", price: 0.89 },
+    { name: "favorite: P 0.95, YES 88/90 → no trade above 72¢", p: 0.95, b: book(0.88, 0.1), side: null, failed: "no_edge_or_band" },
     { name: "P 0.50 fair book 49/51 → no trade", p: 0.5, b: book(0.49, 0.49), side: null, failed: "no_edge" },
     { name: "features alone cannot create a trade", p: 0.7, pBase: 0.6, b: book(0.63, 0.35), side: null },
-    { name: "above the 93¢ band → no trade", p: 0.99, b: book(0.95, 0.04), side: null, failed: "no_edge_or_band" },
+    { name: "above the 72¢ band → no trade", p: 0.99, b: book(0.95, 0.04), side: null, failed: "no_edge_or_band" },
   ];
   for (const c of table) {
     it(c.name, () => {
@@ -402,7 +402,7 @@ describe("execution gate: YES and NO scored separately", () => {
   });
   it("feature shift is bounded to ±4pp", () => {
     for (const p of [0.05, 0.3, 0.5, 0.8]) for (const s of [-3, -1, 0.4, 1, 5]) expect(Math.abs(featureShift(p, s))).toBeLessThanOrEqual(0.04 + 1e-12);
-    expect(PRICE_MAX).toBe(0.93);
+    expect(PRICE_MAX).toBe(0.72);
     expect(sizeFor(0.5, true, fee)).toBe(6);
   });
 });

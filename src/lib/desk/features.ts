@@ -151,13 +151,14 @@ export function features(bars: Bar[]): FeatureSnapshot {
         }
       }
     }
-    // most recent unfilled 3-bar fair value gap
+    // A fair value gap counts only when price has come back inside it. Being above a bull gap is a chase, not an entry.
     for (let i = w.length - 1; i >= 2; i -= 1) {
       const a = w[i - 2];
       const c = w[i];
       if (c.l > a.h) {
         const filled = w.slice(i + 1).some((b) => b.l <= a.h);
-        if (!filled && last.c > a.h) {
+        const inside = last.c >= a.h && last.c <= c.l;
+        if (!filled && inside) {
           structure += 0.25;
           structTag += "+bull_fvg";
         }
@@ -165,7 +166,8 @@ export function features(bars: Bar[]): FeatureSnapshot {
       }
       if (c.h < a.l) {
         const filled = w.slice(i + 1).some((b) => b.h >= a.l);
-        if (!filled && last.c < a.l) {
+        const inside = last.c <= a.l && last.c >= c.h;
+        if (!filled && inside) {
           structure -= 0.25;
           structTag += "+bear_fvg";
         }
@@ -210,6 +212,8 @@ export function technicalSide(f: FeatureSnapshot, spot: number, strike: number):
   if (rsi != null && rsi > 70 && bear) return { side: "no", why: `RSI fade ${rsi.toFixed(0)} + ${f.candle}` };
   if (f.structure.includes("ote_long") && (bull || (ema20 != null && spot > ema20))) return { side: "yes", why: "fib pocket long" };
   if (f.structure.includes("ote_short") && (bear || (ema20 != null && spot < ema20))) return { side: "no", why: "fib pocket short" };
+  if (f.structure.includes("bull_fvg") && above) return { side: "yes", why: "price back inside bull gap" };
+  if (f.structure.includes("bear_fvg") && below) return { side: "no", why: "price back inside bear gap" };
   const upTrend = ema20 != null && spot > ema20 && (ema50 == null || ema20 >= ema50) && above;
   const downTrend = ema20 != null && spot < ema20 && (ema50 == null || ema20 <= ema50) && below;
   if (upTrend && rsi != null && rsi >= 70) return { side: null, why: "RSI overbought, no continuation" };

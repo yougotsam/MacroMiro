@@ -20,9 +20,10 @@ function frame(over: Partial<FeatureSnapshot> = {}): FeatureSnapshot {
 }
 
 describe("structure must agree before a side is allowed", () => {
-  it("a 20-EMA break above the strike is yes", () => {
+  it("a 20-EMA break above the strike is only a location, not a paid setup by itself", () => {
     const s = technicalSide(frame(), 105, 100);
     expect(s.side).toBe("yes");
+    expect(s.why.startsWith("20-EMA")).toBe(true);
   });
 
   it("overbought RSI blocks the breakout", () => {

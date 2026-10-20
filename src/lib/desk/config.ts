@@ -82,11 +82,11 @@ export const LOSS_STREAK_PAUSE_MS = 60 * 60_000; // …pause 60 minutes
 // ── Gate ─────────────────────────────────────────────────────────────────────
 export const UNCERTAINTY = 0.02; // subtracted from P on every side
 export const PRICE_MIN = 0.04;
-export const PRICE_MAX = 0.93;
+export const PRICE_MAX = 0.72; // a bought contract above 72¢ is a favorite. Those won often and lost money after fees.
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;
 export const BASE_MIN_EDGE = 0.01; // the settlement model alone (no features) must show this much on the chosen side/price
-export const FEATURE_MAX_SHIFT = 0.04; // technical score may move the chance by at most 4 points, and only at a 50/50
+export const FEATURE_MAX_SHIFT = 0.04; // the chart may move the chance by at most 4 points. It cannot flip a 90% settlement. Favorites are refused by PRICE_MAX instead.
 export const P_CLAMP = 0.98; // never claim more certainty than this
 export const MIN_SECONDS_LEFT = 3;
 
