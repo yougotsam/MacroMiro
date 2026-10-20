@@ -40,7 +40,7 @@ This is an inventory. It does not turn research into a live order.
 15-minute yes/no:
 
 1. `settlement.ts` makes a probability from the index versus the strike. Its inputs are the prints, the strike, the time left, and volatility.
-2. `src/lib/desk/features.ts` moves that chance by at most 4 points. It cannot flip the side. `technicalSide` can block. A 20-minute-average agreement cannot approve a contract above 60¢. Nothing above 72¢ is bought. A gap counts only when price is back inside it.
+2. `src/lib/desk/features.ts` moves that chance by at most 4 points. It cannot flip the side. A moving-average location cannot approve a trade at any price. `technicalSide` allows a side only for an RSI bounce or fade with a candle, a 62%–79% fib pocket, or a return into a gap. Nothing above 72¢ is bought.
 3. The sniper score blocks an order only when the other side has a full setup and this side does not. Missing 15-minute or 1-hour history does not invent a block.
 4. `oms.ts` sends when `CALIBRATED_MODEL_APPROVED` is true and the day still has room. The calibrator file is not required while `APPROVAL_POLICY_ENFORCED` is false.
 5. The send reads Spark and the last MiroFish file in `src/lib/desk/intel-gate.ts`. It does not import the Firecrawl client. A fresh bullish or bearish Spark brief on that asset, or a fresh MiroFish probability at or beyond 55/45, must match the side or the order is refused. A stale, missing, or unclear brief does not sit the desk. A MiroFish error does not invent a side. Neither number replaces the settlement chance. `scripts/spark-keep.ts` refreshes the brief on its own clock.

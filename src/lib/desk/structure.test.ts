@@ -20,16 +20,15 @@ function frame(over: Partial<FeatureSnapshot> = {}): FeatureSnapshot {
 }
 
 describe("structure must agree before a side is allowed", () => {
-  it("a 20-EMA break above the strike is only a location, not a paid setup by itself", () => {
+  it("price above the 20-minute average is not a trade", () => {
     const s = technicalSide(frame(), 105, 100);
-    expect(s.side).toBe("yes");
-    expect(s.why.startsWith("20-EMA")).toBe(true);
+    expect(s.side).toBeNull();
+    expect(s.why).toBe("no structure");
   });
 
-  it("overbought RSI blocks the breakout", () => {
+  it("an overbought reading without a pullback is not a trade", () => {
     const s = technicalSide(frame({ rsi14: 74 }), 105, 100);
     expect(s.side).toBeNull();
-    expect(s.why).toContain("overbought");
   });
 
   it("an RSI bounce with a bullish wick is yes even below the line", () => {

@@ -119,7 +119,7 @@ export function features(bars: Bar[]): FeatureSnapshot {
       candleTag = "upper_wick";
     }
   }
-  // STRUCTURE: fib OTE (0.618–0.705) of the last 30-bar leg + FVG + order-block touch (deterministic)
+  // STRUCTURE: ICT OTE is the 62%–79% retrace of the last 30-bar leg. 70.5% is inside that band. A gap counts only on a return into it.
   let structure: number | null = null;
   let structTag = "none";
   if (bars.length >= 20 && last) {
@@ -137,15 +137,15 @@ export function features(bars: Bar[]): FeatureSnapshot {
     if (leg > 0) {
       if (loI < hiI) {
         const r618 = hi - 0.618 * leg;
-        const r705 = hi - 0.705 * leg;
-        if (last.c <= r618 && last.c >= r705) {
+        const r79 = hi - 0.79 * leg;
+        if (last.c <= r618 && last.c >= r79) {
           structure += 0.5;
           structTag = "ote_long";
         }
       } else if (hiI < loI) {
         const r618 = lo + 0.618 * leg;
-        const r705 = lo + 0.705 * leg;
-        if (last.c >= r618 && last.c <= r705) {
+        const r79 = lo + 0.79 * leg;
+        if (last.c >= r618 && last.c <= r79) {
           structure -= 0.5;
           structTag = "ote_short";
         }
@@ -203,7 +203,6 @@ export function featureShift(pBase: number, score: number) {
 export function technicalSide(f: FeatureSnapshot, spot: number, strike: number): { side: "yes" | "no" | null; why: string } {
   const rsi = f.rsi14;
   const ema20 = f.ema20;
-  const ema50 = f.ema50;
   const bull = f.candle === "bull_engulf" || f.candle === "lower_wick";
   const bear = f.candle === "bear_engulf" || f.candle === "upper_wick";
   const above = spot > strike;
@@ -214,12 +213,6 @@ export function technicalSide(f: FeatureSnapshot, spot: number, strike: number):
   if (f.structure.includes("ote_short") && (bear || (ema20 != null && spot < ema20))) return { side: "no", why: "fib pocket short" };
   if (f.structure.includes("bull_fvg") && above) return { side: "yes", why: "price back inside bull gap" };
   if (f.structure.includes("bear_fvg") && below) return { side: "no", why: "price back inside bear gap" };
-  const upTrend = ema20 != null && spot > ema20 && (ema50 == null || ema20 >= ema50) && above;
-  const downTrend = ema20 != null && spot < ema20 && (ema50 == null || ema20 <= ema50) && below;
-  if (upTrend && rsi != null && rsi >= 70) return { side: null, why: "RSI overbought, no continuation" };
-  if (downTrend && rsi != null && rsi <= 30) return { side: null, why: "RSI oversold, no continuation" };
-  if (upTrend) return { side: "yes", why: `20-EMA breakout RSI ${rsi == null ? "unread" : rsi.toFixed(0)}` };
-  if (downTrend) return { side: "no", why: `20-EMA breakdown RSI ${rsi == null ? "unread" : rsi.toFixed(0)}` };
   if (rsi == null && ema20 == null) return { side: null, why: "indicators unread" };
   return { side: null, why: "no structure" };
 }

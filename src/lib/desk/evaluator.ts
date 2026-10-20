@@ -178,8 +178,8 @@ export class Evaluator {
       out.best = null;
       return fail(`G2_structure_${tech.why.replace(/\s+/g, "_")}`);
     }
-    // Above 60¢, "price is past the 20-minute average" is not a setup. A bounce, fade, fib pocket, or a return into a gap can still pass. Nothing above 72¢ can.
-    if (tech.why.startsWith("20-EMA") && g.best.price > 0.6) {
+    // A moving-average location is not an entry at any price. ICT enters on a pullback, not because price is already past the average.
+    if (tech.why.startsWith("20-EMA")) {
       out.shadow = g.best;
       out.best = null;
       return fail("G2_structure_ema_chase");
