@@ -22,10 +22,10 @@ describe("spark and alexandria on the send", () => {
     expect(v.ok).toBe(true);
     expect(v.why).toBe("spark_stale");
   });
-  it("refuses a yes when a fresh brief on bitcoin is bearish", () => {
+  it("does not sit a yes when a fresh brief on bitcoin is bearish", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("bearish", "btc")), NOW);
-    expect(v.ok).toBe(false);
-    expect(v.why).toBe("spark_bearish_opposes_yes");
+    expect(v.ok).toBe(true);
+    expect(v.why).toBe("spark_bearish_noted");
   });
   it("allows the matching side and leaves an unnamed market alone", () => {
     expect(judgeIntel("KXBTC15M", "yes", docs(spark("bullish", "btc")), NOW).ok).toBe(true);
@@ -36,11 +36,11 @@ describe("spark and alexandria on the send", () => {
     expect(v.ok).toBe(true);
     expect(v.why).toBe("spark_bullish_agrees");
   });
-  it("refuses a yes when a fresh MiroFish read is bearish", () => {
+  it("does not sit a yes when a fresh MiroFish read is bearish", () => {
     const fish = { stage: "done", probability: 0.2, at: NOW - 60_000 };
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear"), fish), NOW);
-    expect(v.ok).toBe(false);
-    expect(v.why).toBe("mirofish_bearish_opposes_yes");
+    expect(v.ok).toBe(true);
+    expect(v.why).toContain("mirofish_noted");
   });
   it("does not invent a side when MiroFish is down", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear")), NOW);

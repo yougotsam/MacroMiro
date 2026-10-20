@@ -40,8 +40,8 @@ These are on `main`. They are not on another branch. They write files. The send 
 
 - Alexandria is a tool catalog. An empty catalog does not refuse an order.
 - A stale, missing, or unclear Spark brief does not refuse an order. The price scan does not wait on it.
-- A fresh bullish or bearish brief must match the side on the asset it names (bitcoin and/or gold). The other four markets are not forced to that asset's direction.
-- MiroFish is read from `data/mirofish-latest.json` on the same check. A fresh completed run at or above 55% or at or below 45% must match the side. If the file says the swarm is not running, that does not invent a side and it does not block. The settlement chance is still the index versus the strike. MiroFish does not replace it.
+- A Spark brief is written onto the reason. A bearish brief does not cancel a yes. A scheduled CPI, jobs, or Fed print does not sit the book either. Spark was built to read the news, not to turn the desk off.
+- MiroFish is read from `data/mirofish-latest.json`. A fresh number is a note. It does not cancel, and it is not the settlement chance. If the file says the swarm is not running, that does not invent a side.
 - `scripts/spark-keep.ts` is started with the engine. It asks for a new brief at most every 6 hours, and only when research spend is allowed. You do not check the expiry.
 
 Five weeks of Bitcoin 15-minute windows (29 Aug–27 Sep 2026, 2,764 windows) paid within about one point of the contract price. A bot that bought 95–99¢ favorites in the last 90 seconds lost 0.22¢ per contract after fees. A 92% model on a 90¢ ticket is a sit. That is the fee, not a bug.

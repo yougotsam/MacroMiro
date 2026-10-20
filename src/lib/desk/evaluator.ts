@@ -199,12 +199,7 @@ export class Evaluator {
     }
     // approval: calibrated P + conservative EV after fees and cushion at the executable price (approval.ts)
     out.approval = approve({ pYesRaw: out.p, calibrator: this.calibrator(now), candidate: g.best, tteSec: left, policy, cushion: APPROVAL_CUSHION });
-    // Scheduled macro release, or calendar missing/stale/unparseable: no entry (fail closed).
-    if (macro.blocked) {
-      out.shadow = out.best;
-      out.best = null;
-      return fail(`G0_${macro.reason ?? "macro_calendar_unavailable"}`);
-    }
+    // A CPI or jobs print is on out.macro. It does not sit the ticket. Spark is an input, not an off switch.
     if (APPROVAL_POLICY_ENFORCED && !out.approval.ok) {
       out.shadow = out.best;
       out.best = null;

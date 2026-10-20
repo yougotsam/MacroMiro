@@ -1,7 +1,8 @@
 # MacroMiro — AURIX-X Kalshi Desk
 
-**Current trading state: RESEARCH / SHADOW ONLY.** A model-approval constant in
-`src/lib/desk/config.ts` is `false`, so the production OMS refuses all live submissions.
+**Current trading state: LIVE 15-minute tickets.** `CALIBRATED_MODEL_APPROVED` in
+`src/lib/desk/config.ts` is `true`. The desk sends when the switches are on and the risk checks pass.
+Perpetual orders stay off.
 
 **Single authoritative trading strategy:** [docs/STRATEGY.md](docs/STRATEGY.md).
 **Repair, test limitations, release criteria:** [docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md](docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md).

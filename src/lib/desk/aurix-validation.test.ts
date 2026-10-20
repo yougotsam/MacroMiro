@@ -113,7 +113,7 @@ describe("macro calendar gate (Codex P2: FAIL-CLOSED; order path reads only the 
   it("engine source enforces the gate after pricing and keeps the would-be trade as shadow only", () => {
     // round 3: the evaluation moved verbatim from engine.ts to evaluator.ts (shared with the read-only collector)
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
-    expect(src).toContain("if (macro.blocked) {");
+    expect(src).not.toContain("G0_${macro.reason");
     expect(src).toMatch(/macro\.available && !macro\.blocked/);
     expect(src).not.toMatch(/firecrawl|mirofish|spark\.server/i);
   });

@@ -23,7 +23,7 @@ Amount is centicents. A blank `source` is a 400. This was proven with a $0.50 mo
 Price 4¢–72¢. Day stop −$15. One ticker ≤ $3. Same-direction crypto ≤ $4. Everything open ≤ $9.
 Do not raise those numbers in a drive-by. If open risk is already near $9, a currency ticket sits on `no_room` even when the cash move works.
 A line cross is not an entry. Ways in: RSI wick, fib pocket with a wick or a gap, sweep, demand or supply, price back inside a gap, or a sniper price setup. The sniper cannot cancel a trade.
-Spark and a scheduled news print can veto. A missing MiroFish run cannot. Alexandria is a catalog, not a side.
+Spark and a scheduled news print are notes. They do not cancel a ticket. A missing MiroFish run cannot. Alexandria is a catalog, not a side.
 
 ## Do not
 

@@ -1,7 +1,7 @@
 # AURIX-X / MACROMIRO — 15-minute rulebook v1.1
 Date: 2026-10-09 | Scope: Kalshi 15m BTC/ETH/SOL/XRP/gold outcomes, separate perps
 SUPERSEDED as the product spec by `docs/product/PRD.md` (2026-10-14). This file stays as the 15-minute rulebook only. If it disagrees with the PRD, the system map, the strategy registry, the venue matrix, or the risk mandate, those win.
-STATUS: RESEARCH / SHADOW. **CALIBRATED_MODEL_APPROVED=false** blocks all live orders.
+STATUS: LIVE 15-minute tickets. **CALIBRATED_MODEL_APPROVED=true** in `src/lib/desk/config.ts`. Perpetual orders stay off. This line used to say the desk was shadow-only. That was stale.
 Code truth: `src/lib/desk/engine.ts` (research decision engine), `gate.ts` (quote evaluation),
 `oms.ts` (sole signed order writer), `risk.ts` (mandatory permission), `config.ts`.
 The prior handoff references `src/lib/scan/edge.ts`, a file that does not exist in this ZIP; this retired reference must NOT guide execution.

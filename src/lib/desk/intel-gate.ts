@@ -1,7 +1,7 @@
 /**
  * Firecrawl Spark brief, Alexandria catalog, MiroFish last run, and the desk news calendar.
  * Read from the files those pipelines already write. No network call. A model percent is not the
- * settlement chance. A fresh directional read can only agree with the side already chosen, or refuse it.
+ * settlement chance. A fresh read is written on the reason. It does not cancel the ticket.
  */
 import { readFileSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
@@ -49,15 +49,15 @@ function miroRead(m: Record<string, unknown> | null, now: number): { state: stri
 export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, now: number): IntelVerdict {
   const fish = miroRead(docs.mirofish, now);
   const done = (ok: boolean, why: string, sparkBias: string | null, sparkAsset: string | null): IntelVerdict => {
-    if (ok && fish.side && fish.side !== side) {
-      return { ok: false, why: `mirofish_${fish.state}_opposes_${side}`, sparkBias, sparkAsset, mirofish: fish.state };
+    if (fish.side && fish.side !== side) {
+      return { ok: true, why: `${why}+mirofish_noted`, sparkBias, sparkAsset, mirofish: fish.state };
     }
     return { ok, why, sparkBias, sparkAsset, mirofish: fish.state };
   };
 
   const cal = docs.news?.calendar as { thisWeek?: Scheduled[]; nextWeek?: Scheduled[] } | undefined;
   const veto = scheduledVeto([...(cal?.thisWeek ?? []), ...(cal?.nextWeek ?? [])], now);
-  if (veto.length) return done(false, "news_release_window", null, null);
+  if (veto.length) return done(true, "news_release_noted", null, null);
 
   const spark = docs.spark;
   const at = Date.parse(String(spark?.at ?? ""));
@@ -70,7 +70,7 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
   if (bias !== "bullish" && bias !== "bearish") return done(true, "spark_unclear", bias, asset);
   if (!covers(series, asset)) return done(true, "spark_other_asset", bias, asset);
   const want = bias === "bullish" ? "yes" : "no";
-  if (side !== want) return done(false, `spark_${bias}_opposes_${side}`, bias, asset);
+  if (side !== want) return done(true, `spark_${bias}_noted`, bias, asset);
   return done(true, `spark_${bias}_agrees`, bias, asset);
 }
 
