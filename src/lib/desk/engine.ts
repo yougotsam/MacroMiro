@@ -29,7 +29,7 @@ import { DecisionLedger, type Decision } from "./ledger";
 import { Oms } from "./oms";
 import { RiskEngine, dayWorstOf, switches, type AccountSnapshot } from "./risk";
 import { roomBudget } from "./sizing";
-import { armResearch, warmResearch } from "./research-cache";
+import { armResearch, researchFor, warmResearch } from "./research-cache";
 import { refreshWindowBlocks } from "./window-block";
 
 export type { SeriesEval } from "./evaluator";
@@ -84,7 +84,11 @@ export class Engine {
     this.feeds.start();
     await warmResearch().catch((e) => log("research bars", e instanceof Error ? e.message.slice(0, 160) : e));
     armResearch(true);
-    try { refreshWindowBlocks(); } catch { /* no log yet: nothing is blocked on a guess */ }
+    const btc = researchFor("KXBTC15M");
+    log("research", btc?.source ?? "none", "15m", btc?.m15.length ?? 0, "1h", btc?.h1.length ?? 0, "fresh", Boolean(btc?.fresh), btc?.why ?? "");
+    let blocks: string[] = [];
+    try { blocks = refreshWindowBlocks(); } catch { /* no log yet: nothing is blocked on a guess */ }
+    log("window blocks", blocks.join(" ") || "none");
     await this.oms.reconcilePending().catch(() => 0);
     log("engine started", MODEL_VERSION, MODEL_REV, "live", switches.live(), "begin", switches.begin(), "arm", switches.arm());
   }
