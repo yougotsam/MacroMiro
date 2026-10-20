@@ -15,7 +15,13 @@ export const RESEARCH_PRODUCT: Record<Series, string | null> = {
   KXETH15M: "ETH-USD",
   KXSOL15M: "SOL-USD",
   KXXRP15M: "XRP-USD",
+  KXDOGE15M: "DOGE-USD",
   KXGOLD15M: null,
+  KXSILVER15M: null,
+  KXWTI15M: null,
+  KXGBPUSD15M: null,
+  KXEURUSD15M: null,
+  KXUSDJPY15M: null,
 };
 export const EMA_WARMUP_BARS = 200;
 export type Interval = 1 | 5 | 15 | 60;
@@ -127,7 +133,30 @@ const publicGet: Fetch = async (url) => {
   return r.json();
 };
 
-/** Read-only GET of up to 300 bars. */
+export type BookTop = { bid: number; ask: number; bidSz: number; askSz: number; imbalance: number };
+
+/** Top of book. Null when either side is missing. Never a zero standing in for a missing book. */
+export function bookImbalance(raw: unknown): BookTop | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as { bids?: unknown; asks?: unknown };
+  const bid = Array.isArray(o.bids) ? o.bids[0] : null;
+  const ask = Array.isArray(o.asks) ? o.asks[0] : null;
+  if (!Array.isArray(bid) || !Array.isArray(ask)) return null;
+  const bidPx = Number(bid[0]);
+  const askPx = Number(ask[0]);
+  const bidSz = Number(bid[1]);
+  const askSz = Number(ask[1]);
+  if (![bidPx, askPx, bidSz, askSz].every((n) => Number.isFinite(n)) || bidPx <= 0 || askPx <= 0 || bidSz < 0 || askSz < 0) return null;
+  const den = bidSz + askSz;
+  if (!(den > 0)) return null;
+  return { bid: bidPx, ask: askPx, bidSz, askSz, imbalance: (bidSz - askSz) / den };
+}
+
+/** Read-only top of book. Level 1 is the best bid and ask only. */
+export async function fetchPublicBook(product: string, get: Fetch = publicGet): Promise<BookTop | null> {
+  if (!/^[A-Z]{2,6}-USD$/.test(product)) throw new Error("product");
+  return bookImbalance(await get(`${PUBLIC_HOST}/products/${product}/book?level=1`));
+}
 export async function fetchPublicCandles(product: string, minutes: Interval, get: Fetch = publicGet): Promise<Candle[]> {
   if (!/^[A-Z]{2,6}-USD$/.test(product)) throw new Error("product");
   return parseCoinbaseCandles(await get(`${PUBLIC_HOST}/products/${product}/candles?granularity=${minutes * 60}`));
@@ -177,10 +206,14 @@ export class BarStore {
     }
     return validateBars(rows, minutes, now);
   }
-  /** Appends only complete bars not already stored. Returns how many were added. */
+  /** Appends complete bars not already stored. A later signed delta may fill a bar that was stored without one. Returns how many lines were added. */
   merge(product: string, minutes: Interval, fresh: Candle[], now = Date.now()): number {
-    const have = new Set(this.read(product, minutes, now).bars.map((b) => b.t));
-    const add = validateBars(fresh, minutes, now).bars.filter((b) => !have.has(b.t));
+    const existing = new Map(this.read(product, minutes, now).bars.map((b) => [b.t, b]));
+    const add = validateBars(fresh, minutes, now).bars.filter((b) => {
+      const prev = existing.get(b.t);
+      if (!prev) return true;
+      return prev.delta == null && b.delta != null && Number.isFinite(b.delta);
+    });
     if (add.length) appendFileSync(this.file(product, minutes), add.map((b) => JSON.stringify(b)).join("\n") + "\n");
     return add.length;
   }

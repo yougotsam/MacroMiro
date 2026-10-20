@@ -17,9 +17,17 @@ export type RawDecision = {
   index_age_ms?: number;
   book_age_ms?: number;
   best?: { mode?: string } | null;
-  confluence?: { long?: { setup?: string }; short?: { setup?: string } };
+  confluence?: {
+    long?: { setup?: string; points?: Record<string, number>; missing?: string[] };
+    short?: { setup?: string; points?: Record<string, number>; missing?: string[] };
+  };
   close?: string;
-  features?: { trend?: number | null; momentum?: number | null; group_votes?: { trend?: number | null; momentum?: number | null; structure?: number | null; candle?: number | null } };
+  features?: {
+    trend?: number | null;
+    momentum?: number | null;
+    group_votes?: { trend?: number | null; momentum?: number | null; structure?: number | null; candle?: number | null };
+    flow?: { rvol?: number | null; cvd?: number | null };
+  };
 };
 
 export function toScoreRow(o: RawDecision, result: "yes" | "no" | undefined): DecisionRow | null {

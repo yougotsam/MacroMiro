@@ -22,13 +22,14 @@ import {
   calibratorPath,
 } from "./config";
 import { approve, bucketFor, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
-import { features, featureShift, minuteBars, sessionTag, technicalSide, type FeatureSnapshot } from "./features";
+import { features, featureShift, flowFromBars, minuteBars, sessionTag, technicalSide, type FeatureSnapshot } from "./features";
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
 import { intelVerdict } from "./intel-gate";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, sniperCanEnter, type Evidence } from "./sniper";
+import { barsForSniper, flowRefusal, researchFor } from "./research-cache";
 import { type MoveGuard, makerWindowOk, minPriceFor, shockOf, type GuardState } from "./guard";
 import type { Market } from "./kalshi-read";
 import type { Decision } from "./ledger";
@@ -102,8 +103,8 @@ export class Evaluator {
     out.spot = last.v;
     if (!book) return fail("G1_no_book");
     if (book.ts > now + 500 || now - book.ts > BOOK_MAX_AGE_MS) return fail("G1_book_stale");
-    // One hour of index prints cannot build the 60 complete 15-minute bars the sniper requires, so its score stays 0.
-    // Coinbase candles stay out of this path: a named setup is allowed to open a ticket.
+    // One hour of index prints cannot build 60 closed 15-minute bars. Stored Coinbase
+    // candles are used for the sniper when they are long enough. They do not enter the settlement price.
     const prints = this.feeds.prints(ref.index, now - 3600_000);
     const bars = minuteBars(prints, now);
     const lastBar = bars[bars.length - 1];
@@ -141,15 +142,19 @@ export class Evaluator {
     const shift = featureShift(pBase, feats.score);
     out.pBase = pBase;
     out.feats = feats;
-    // Current CF index 1m candles do not have real exchange volume. These are
-    // RESEARCH observations only; unavailable 1h/flow conditions remain missing.
+    // The settlement chance above uses the index only. The sniper below uses stored Coinbase bars when they exist.
     const researchBars = bars.map((b) => ({ ...b, t: b.t * 60_000 }));
-    const b15 = resampleComplete(researchBars, 15);
-    const b1h = resampleComplete(researchBars, 60);
+    const index15 = resampleComplete(researchBars, 15);
+    const index1h = resampleComplete(researchBars, 60);
+    const chosen = barsForSniper(series, index15, index1h);
+    const stored = researchFor(series);
+    if (out.feats) out.feats = { ...out.feats, flow: flowFromBars(stored?.m15 ?? null, stored?.source ?? null, Boolean(stored?.fresh), stored?.ofi ?? null, stored?.book ?? null) };
     out.sniper = {
-      long: evaluateSniper(b15, b1h, "long", macro.available && !macro.blocked),
-      short: evaluateSniper(b15, b1h, "short", macro.available && !macro.blocked),
+      long: evaluateSniper(chosen.m15, chosen.h1, "long", macro.available && !macro.blocked),
+      short: evaluateSniper(chosen.m15, chosen.h1, "short", macro.available && !macro.blocked),
     };
+    const flowBlock = flowRefusal(series);
+    if (flowBlock) return fail(flowBlock);
     out.shift = shift;
     out.p = clampP(pBase + shift);
     // execution guard
@@ -247,7 +252,7 @@ export function decisionRowOf(e: SeriesEval, action: Decision["action"], fee: Fe
     shadow_best: e.shadow ? { side: e.shadow.side, mode: e.shadow.mode, price: e.shadow.price, count: e.shadow.count, fee: e.shadow.fee, edge: Number(e.shadow.edge.toFixed(4)), edge_base: Number(e.shadow.edgeBase.toFixed(4)) } : null,
     action,
     failed_gate: e.failed,
-    features: e.feats ? { ...e.feats.groups, group_votes: e.feats.groups, score: e.feats.score, ema7: e.feats.ema7, ema14: e.feats.ema14, ema50: e.feats.ema50, rsi14: e.feats.rsi14, candle: e.feats.candle, structure: e.feats.structure } : null,
+    features: e.feats ? { ...e.feats.groups, group_votes: e.feats.groups, flow: e.feats.flow, score: e.feats.score, ema7: e.feats.ema7, ema14: e.feats.ema14, ema50: e.feats.ema50, rsi14: e.feats.rsi14, candle: e.feats.candle, structure: e.feats.structure } : null,
     model: `${MODEL_VERSION}+${MODEL_REV}`,
     order,
     approval: e.approval ? { ok: e.approval.ok, why: e.approval.why, p_cal: e.approval.pCal, ev_per_contract: e.approval.evPerContract, cushion: e.approval.cushion } : null,

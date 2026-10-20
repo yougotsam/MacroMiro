@@ -29,6 +29,7 @@ import { DecisionLedger, type Decision } from "./ledger";
 import { Oms } from "./oms";
 import { RiskEngine, dayWorstOf, switches, type AccountSnapshot } from "./risk";
 import { roomBudget } from "./sizing";
+import { armResearch, warmResearch } from "./research-cache";
 
 export type { SeriesEval } from "./evaluator";
 import { Evaluator, decisionRowOf, type SeriesEval } from "./evaluator";
@@ -80,6 +81,8 @@ export class Engine {
     mkdirSync(dataDir(), { recursive: true });
     await this.feeds.bootstrap();
     this.feeds.start();
+    await warmResearch().catch((e) => log("research bars", e instanceof Error ? e.message.slice(0, 160) : e));
+    armResearch(true);
     await this.oms.reconcilePending().catch(() => 0);
     log("engine started", MODEL_VERSION, MODEL_REV, "live", switches.live(), "begin", switches.begin(), "arm", switches.arm());
   }
@@ -234,6 +237,7 @@ export class Engine {
         this.feeds.flush();
         this.feeds.prune(now);
       }
+      if (tickId % 300 === 0) void warmResearch().catch((e) => log("research bars", e instanceof Error ? e.message.slice(0, 120) : e));
       if (now - this.ex.at > 10_000) {
         const ex = await exchangeStatus().catch(() => null);
         this.ex = { tradingActive: Boolean(ex?.tradingActive), shard0: Boolean(ex?.shard0), at: ex ? Date.now() : this.ex.at };
@@ -314,8 +318,8 @@ export class Engine {
         macro: macroGate(now2),
         strategyReadiness: {
           settlementModel: CALIBRATED_MODEL_APPROVED ? "reviewed" : "unapproved / shadow only",
-          microstructure: "not integrated: distinct signed-trade and true venue-volume feeds required",
-          higherTimeframes: "not integrated: persistent 15m and 1h spot/futures OHLCV required",
+          microstructure: "coinbase signed trades and top of book; a missing tape stays null",
+          higherTimeframes: "coinbase 15m and 1h when stored long enough; settlement still uses the index",
           externalContext: "read after structure. A fresh Spark or MiroFish direction can refuse the other side. A stale or unclear brief does not sit the desk.",
         },
         snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt, override: this.snapshot.override ?? null, roomToStop: Number((dayWorstOf(this.snapshot) - DAILY_STOP_USD).toFixed(4)) } : null,

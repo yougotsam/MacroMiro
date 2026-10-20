@@ -42,8 +42,8 @@ export type AccountSnapshot = {
   /** unconfirmed OMS sends (timeout, not yet found) count as worst case too */
   pendingWorst: number;
   shard2Cash: number;
-  /** FX board. GBP, EUR and JPY settle on exchange index 0. Zero means those markets sit. */
-  shard0Cash: number;
+  /** FX board. GBP, EUR and JPY settle on exchange index 0. Missing or zero means those markets sit. */
+  shard0Cash?: number;
   settledToday: Settled[];
   /** desk orders already sent per ticker (Kalshi + local journal, max of both) */
   ordersPerTicker: Record<string, number>;
@@ -67,6 +67,7 @@ export type OrderIntent = {
   price: number;
   count: number;
   fee: number;
+  tickId: number;
   exchangeIndex?: number;
 };
 

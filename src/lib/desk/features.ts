@@ -5,6 +5,7 @@
  */
 import { FEATURE_MAX_SHIFT } from "./config";
 import type { Print } from "./settlement";
+import { cvd, rvol, vwap, type Candle } from "./sniper";
 
 export type Bar = { t: number; o: number; h: number; l: number; c: number };
 
@@ -65,7 +66,20 @@ export type FeatureSnapshot = {
   candle: string;
   structure: string;
   groups: { trend: number | null; momentum: number | null; structure: number | null; candle: number | null };
+  /** Exchange flow. Null means the tape was not there. It is never stored as zero. */
+  flow: FlowVote | null;
   score: number; // mean of available groups, [-1, 1], + = YES-leaning
+};
+
+export type FlowVote = {
+  rvol: number | null;
+  cvd: number | null;
+  vwap: number | null;
+  ofi: number | null;
+  book: { bid: number; ask: number; imbalance: number } | null;
+  source: string | null;
+  stale: boolean;
+  why: string | null;
 };
 
 export function features(bars: Bar[]): FeatureSnapshot {
@@ -229,6 +243,7 @@ export function features(bars: Bar[]): FeatureSnapshot {
     candle: candleTag,
     structure: structTag,
     groups,
+    flow: null,
     score,
   };
 }
@@ -236,6 +251,26 @@ export function features(bars: Bar[]): FeatureSnapshot {
 /** Feature shift in probability points, ≤ FEATURE_MAX_SHIFT, shrinking toward the extremes. */
 export function featureShift(pBase: number, score: number) {
   return FEATURE_MAX_SHIFT * Math.max(-1, Math.min(1, score)) * 4 * pBase * (1 - pBase);
+}
+
+/** RVOL, CVD, VWAP, signed imbalance, and the top of book. A missing tape is null, not zero. */
+export function flowFromBars(
+  bars: Candle[] | null,
+  source: string | null,
+  fresh: boolean,
+  ofi: number | null,
+  book: FlowVote["book"] = null,
+): FlowVote {
+  if (!bars?.length) return { rvol: null, cvd: null, vwap: null, ofi, book, source, stale: true, why: "no bars" };
+  const vol = rvol(bars);
+  const delta = cvd(bars.slice(-8));
+  const session = vwap(bars.slice(-20));
+  const gaps: string[] = [];
+  if (vol == null) gaps.push("no traded volume");
+  if (delta == null) gaps.push("no signed trades");
+  if (book == null) gaps.push("no book");
+  if (!fresh) gaps.push("stale");
+  return { rvol: vol, cvd: delta, vwap: session, ofi, book, source, stale: !fresh || vol == null, why: gaps.length ? gaps.join(", ") : null };
 }
 
 /** The side the 1-minute structure allows. Null means sit. A settlement chance cannot enter against this. */

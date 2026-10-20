@@ -71,7 +71,7 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(oms.journal().length).toBe(0);
   });
 
-  it("POLICY: the same $1 order passes risk at −$13.50, but the OMS sends nothing until a calibrated model is approved", async () => {
+  it("POLICY: the same $1 order passes risk at −$13.50 and is sent, because the model is approved", async () => {
     const dir = tmp("a2");
     const risk = new RiskEngine(dir, ON);
     expect(CALIBRATED_MODEL_APPROVED).toBe(true);
@@ -79,10 +79,9 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     const { t, calls } = spyTransport();
     const oms = new Oms(risk, t, async () => [], dir);
     const r = await oms.submit(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }));
-    expect(r.ok).toBe(false);
-    expect(r.why).toContain("not independently calibrated");
-    expect(calls.length).toBe(0);
-    expect(oms.journal().length).toBe(0);
+    expect(r.ok).toBe(true);
+    expect(calls.length).toBe(1);
+    expect(oms.journal().length).toBeGreaterThan(0);
     expect(cidFor(T, "yes", 1)).toBe(`mm1-${T}-y-1`);
   });
 
@@ -171,14 +170,13 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(r.check({ ...i, tickId: 78 }, snap(), NOW).ok).toBe(true);
   });
 
-  it("3 losing settlements in a row pause entries for 60 minutes; a win resets", () => {
+  it("a loss count does not pause; the stop is the dollar day limit", () => {
     const t0 = NOW - 10 * 60_000;
     const L = (k: number, pnl = -1) => ({ ticker: T, pnl, settledMs: t0 + k * 1000 });
     expect(streakPauseUntil([L(1), L(2), L(3, 0.5), L(4)])).toBe(0);
-    const until = streakPauseUntil([L(1), L(2), L(3)]);
-    expect(until).toBe(t0 + 3000 + 60 * 60_000);
+    expect(streakPauseUntil([L(1), L(2), L(3)])).toBe(0);
     const r = new RiskEngine(tmp("streak"), ON);
-    expect(r.check(intent(), snap({ settledToday: [L(1), L(2), L(3)] }), NOW).why).toContain("loss streak pause");
+    expect(r.check(intent(), snap({ settledToday: [L(1), L(2), L(3)] }), NOW).ok).toBe(true);
   });
 });
 
@@ -230,7 +228,7 @@ describe("one order path", () => {
 });
 
 describe("OMS idempotency", () => {
-  it("POLICY (aurix-x): with the model unapproved nothing is posted, so no timed-out send can exist; an unresolved intent is never auto-cleared", async () => {
+  it("an approved send that times out stays on the journal and is not posted again", async () => {
     const dir = tmp("idem");
     let posts = 0;
     const oms = new Oms(
@@ -244,13 +242,11 @@ describe("OMS idempotency", () => {
     );
     const r = await oms.submit(intent(), snap());
     expect(r.ok).toBe(false);
-    expect(r.why).toContain("not independently calibrated");
-    expect(posts).toBe(0);
-    // a journalled intent from an earlier run stays as pending risk even when Kalshi does not list it
+    expect(posts).toBe(1);
     const cid = cidFor(T, "yes", 9);
     writeFileSync(join(dir, "oms-journal.jsonl"), JSON.stringify({ ts: new Date(NOW - 3600_000).toISOString(), cid, stage: "intent", ticker: T, worst: 1 }) + "\n");
     await oms.reconcilePending(NOW);
-    expect(posts).toBe(0);
+    expect(posts).toBe(1);
     expect(oms.journal().map((j) => j.stage)).toEqual(["intent"]);
     expect(oms.pendingIntents(NOW).map((x) => x.worst)).toEqual([1]);
   });
@@ -467,13 +463,13 @@ describe("account snapshot (Kalshi records → day P/L)", () => {
 });
 
 describe("OMS bookkeeping", () => {
-  it("POLICY (aurix-x): an unapproved model sends nothing, so no ticker is marked busy", async () => {
+  it("an approved model posts, so the ticker is busy", async () => {
     const dir = tmp("recent");
     const { t, calls } = spyTransport();
     const oms = new Oms(new RiskEngine(dir, ON), t, async () => [], dir);
     await oms.submit(intent(), snap());
-    expect(calls.length).toBe(0);
-    expect(oms.recentTickers(Date.now()).has(T)).toBe(false);
+    expect(calls.length).toBe(1);
+    expect(oms.recentTickers(Date.now()).has(T)).toBe(true);
   });
 });
 

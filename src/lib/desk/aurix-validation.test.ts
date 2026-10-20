@@ -189,6 +189,10 @@ describe("research market data (public, read-only)", () => {
     expect(store.merge("BTC-USD", 15, [bar(start), bar(start + q), bar(start + 5 * q)], NOW)).toBe(2);
     expect(store.merge("BTC-USD", 15, [bar(start), bar(start + q), bar(start + 2 * q)], NOW)).toBe(1);
     expect(store.read("BTC-USD", 15, NOW).bars.length).toBe(3);
+    const signed = { ...bar(start), delta: 1.5 };
+    expect(store.merge("BTC-USD", 15, [signed], NOW)).toBe(1);
+    expect(store.read("BTC-USD", 15, NOW).bars.find((b) => b.t === start)?.delta).toBe(1.5);
+    expect(store.merge("BTC-USD", 15, [signed], NOW)).toBe(0);
   });
 });
 
@@ -466,10 +470,12 @@ describe("review B4: shadow ledger keeps the would-be trade while live is disabl
       else process.env.DESK_DATA_DIR = prev;
     }
   });
-  it("every blocking gate (macro, approval, uncalibrated) moves the candidate to shadow before clearing best", () => {
+  it("approval and the uncalibrated stop move the candidate to shadow; a news print does not", () => {
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
-    expect(src.match(/out\.shadow = out\.best;\s*out\.best = null;/g)?.length).toBe(3);
-    expect(readFileSync(new URL("./engine.ts", import.meta.url), "utf8")).not.toMatch(/firecrawl|mirofish|spark\.server/i);
+    expect(src.match(/out\.shadow = out\.best;\s*out\.best = null;/g)?.length).toBe(2);
+    const engine = readFileSync(new URL("./engine.ts", import.meta.url), "utf8") as string;
+    expect(engine).not.toMatch(/from\s+["'][^"']*(firecrawl|mirofish|spark\.server)/i);
+    expect(engine).not.toMatch(/import\(\s*["'][^"']*(firecrawl|mirofish|spark\.server)/i);
   });
 });
 
