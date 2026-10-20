@@ -153,7 +153,17 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(r.check(intent({ ticker: "KXLLM1-26OCT12-OPEN" }), snap(), NOW).ok).toBe(false);
     expect(r.check(intent(), snap({ shard2Cash: 0.5 }), NOW).why).toContain("cash 0.50");
     expect(r.check(intent({ ticker: "KXGBPUSD15M-26OCT200015-30", exchangeIndex: 0, price: 0.4, count: 2, tickId: 3 }), snap({ shard2Cash: 10, shard0Cash: 0 }), NOW).ok).toBe(true);
-    expect(transferBody(1.5, 2, 0, "3c90c3cc-0d44-4b50-8888-8dd25736052a").amount).toBe(15000);
+    const id = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
+    expect(transferBody(1.5, 2, 0, id)).toEqual({
+      amount: 15000,
+      client_transfer_id: id,
+      source: "event_contract",
+      destination: "event_contract",
+      source_exchange_shard: 2,
+      destination_exchange_shard: 0,
+      source_subaccount: 0,
+      destination_subaccount: 0,
+    });
     const i = intent({ tickId: 77 });
     expect(r.check(i, snap(), NOW).ok).toBe(true);
     r.consume(i);

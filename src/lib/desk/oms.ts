@@ -28,11 +28,13 @@ export function cashOnShard(s: { shard2Cash?: number; shard0Cash?: number }, sha
   return 0;
 }
 
-/** Move `dollars` between Kalshi engines. Amount is centicents ($1 = 10,000). */
+/** Move `dollars` between Kalshi engines. Amount is centicents ($1 = 10,000). Both sides are event contracts. The shard number is which board. */
 export function transferBody(dollars: number, from: number, to: number, id: string) {
   return {
     amount: Math.ceil(dollars * 10_000 - 1e-9),
     client_transfer_id: id,
+    source: "event_contract",
+    destination: "event_contract",
     source_exchange_shard: from,
     destination_exchange_shard: to,
     source_subaccount: 0,
