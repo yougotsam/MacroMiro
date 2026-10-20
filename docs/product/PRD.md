@@ -29,7 +29,7 @@ FULL_STANDBY (no paid research; collectors labelled separately) · OBSERVE (read
 ## Phases and acceptance
 - **2A (this PR):** a read-only perps adapter (metadata, books, trades, candles, mark/reference, funding, status, fees, price bands) and the perps candidate engine. One real trace. The order adapter is LOCKED OFF. **Done 2026-10-12** (see STRATEGY_REGISTRY).
 - **2B (2026-10-13, built):** WS perps collector (`scripts/perps/collect.ts`), locked perps OMS (`src/lib/perps/oms.ts`), causal-replay simulator sharing signal/sizing/management code (`sim.ts`), AGGRESSIVE_EXPERIMENTAL v1 profile (`mandate.ts`, `margin.ts`), intel fusion with experimental weight (`intel.ts`), read-only pair scanner. Result: no config shows edge yet. Still open: an always-on worker, demo keys for order tests, a Brier scorecard.
-- **2C:** owner-approved perps mandate, demo-order/kill-switch tests, then a request for LIMITED_LIVE.
+- **2C:** owner-approved perps mandate, demo-order/kill-switch tests, then a request for LIMITED_LIVE. 2026-10-20 candle replay (not a fill, see `docs/strategies/EVIDENCE_GATE.md`): no config is net positive across the five markets. The only positive cell is gold aggr7 taker, +$41.65 on 21 proxies. The three 2C boxes above are still open.
 
 ## Hard boundaries
 No real orders, deposits, transfers, hosting purchases, recurring paid research, new repo or merge without a separate explicit owner approval. Never delete historical trading data.

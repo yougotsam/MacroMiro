@@ -19,7 +19,20 @@ Percent-of-account mode stays off. `pctModeInterlock` returns no unless an eligi
 
 ## Phase 2C, still required before LIMITED_LIVE
 
-From `docs/product/PRD.md`. This pull request does not check these boxes.
+Paper replay run 2026-10-20T09:25:51Z. Profile `aggressive-experimental/v1`, still PROPOSED. Script `scripts/perps/sim.ts 145`. Markets: BTC, ETH, gold, SOL, XRP. Configs: strict9 and aggr7, maker and taker, risk 10/15/20/25%, plus aggr7+intel at 15%. Costs charged inside the replay: the venue fee tier, funding prints that settle during the hold, 2 ticks of slippage, and one half-spread taken from the 2026-10-15 collector book (not the book at the decision). File `data/perps/sim-1792488351114.json`. Every row is labeled `CANDLE_ONLY_NOT_EXECUTABLE`. A candle is not a fill. No live order was sent. The perps order lock was not opened. The 15-minute caps were not touched.
+
+Venue history actually returned: BTC, ETH, SOL, and XRP 1-minute candles from 2026-06-03 through 2026-10-20 (about 145 days). Gold from 2026-09-10 (the market is newer). Zero and inverted prints were dropped. The loader does not apply a full-sample 20% median band. That band uses later prices and, on this tape, would have deleted September and October. The candidate's own short-window check is unchanged.
+
+- strict9 fired 0 times on every market.
+- SOL and XRP fired 0 times. After zero prints were dropped, 9,921 SOL and 10,950 XRP fifteen-minute buckets were incomplete, so the setup never armed. That is a missing tape, not a tested loss.
+- BTC aggr7 maker: 332 candle-proxy trades, net −$392.14 (gross −$59.40, fees $333.49, funding $0.76). Taker: 340 trades, net −$470.65.
+- ETH aggr7 maker: 121 trades, net −$178.31. Taker: 132 trades, net −$294.86.
+- Gold aggr7 maker: 20 trades, net −$6.71. Gold aggr7 taker: 21 trades (2026-09-30 to 2026-10-20), net +$41.65 after $12.10 of fees. Funding on those 21 holds was $0. Gold's venue history is one print a day, and none of those prints fell inside a hold. Max drawdown on that cell was 9.6% of the $500 start.
+- Risk 10%, 15%, 20%, and 25% produced the same contracts on every market. A tighter cap bound first. Those four rows are one result, not four.
+- The intel calendar is used only after it was fetched (2026-10-17T11:13:35Z). It did not add or remove a trade.
+- Across the five markets, every config sums to $0 or worse. aggr7 maker sums to −$577.16. aggr7 taker sums to −$723.86. The gold taker cell is the only positive cell. It is 21 candle proxies on one market. Win probability is UNKNOWN. Fourteen of those 21 proxies finished green. That is not a probability the next one wins.
+
+These boxes stay open. This replay does not check them.
 
 - An owner-approved perps mandate. The aggressive profile is still proposed. The conservative one was rejected.
 - Demo-order and kill-switch tests against the locked perps order manager.
