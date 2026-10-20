@@ -27,9 +27,10 @@ A quote is not an order. It still has to pass, in this order:
 5. Watchdog pulse is fresh.
 6. Account snapshot is fresh and the exchange is open.
 7. Today's worst case is still above −$15. The stop is dollars, not a count of losses. A new ET day clears the prior day's latch.
-8. Price is 4¢–72¢. Anything above 72¢ is a favorite and is refused. Being past the 20-minute average is not an entry at any price. A fib pocket also needs a wick or a gap. The other entries are an RSI bounce or fade with a candle, or the price back inside a gap. The chart can nudge the chance by at most 4 points. It cannot flip the side.
-9. One ticker ≤ $3, same-direction crypto ≤ $4, everything open ≤ $9.
+8. Price is 4¢–72¢. Anything above 72¢ is a favorite and is refused. Being past the 20-minute average is not an entry at any price. A trade can come from an RSI wick, a fib pocket with a wick or a gap, a liquidity sweep, a demand or supply candle, price back inside a gap, or a sniper price setup on that same side. The sniper cannot cancel one. The chart can nudge the chance by at most 4 points. It cannot flip the side.
+9. One ticker ≤ $3, same-direction crypto ≤ $4, everything open ≤ $9. If that room is under one contract, the currency markets sit on `no_room` before any order is sent.
 10. The structure side agrees with the priced side. A line cross with no structure is a sit.
+11. A currency ticket files on shard 0. If that board is short, the order moves event-contract cash from shard 2 first. The body must name `source` and `destination` as `event_contract`. A blank source is a 400 and the order is not sent.
 
 Perps orders are locked. They are not sent on this path.
 
@@ -49,4 +50,6 @@ The research spend switch lives in `data/operating-mode.json`. `FULL_STANDBY` bl
 
 ## Last live read
 
-Free cash on the crypto board was 19¢, with $2.32 already tied in an open contract. A normal ticket does not fit until that contract settles. A model chance near 90% with no leftover cents after the fee is a sit (`G2_no_edge_or_band`), not a send.
+2026-10-20 06:09 UTC. A $0.50 event-contract move from shard 2 to shard 0 returned 200 and then `complete`. Shard 0 went from $0.20 to $0.70. Shard 2 went from $2.09 to $1.59. The currency cash move works.
+
+The currency tickets were still not sent. Open risk was $8.71 of the $9 cap, so the room left was $0.29, which is under one contract. Pound was also a 97¢ favorite, which is outside the 72¢ band. That is the cap, not a broken currency order.
