@@ -350,8 +350,9 @@ never:   build an app for a greeting/number/question; invent imagine_* calls;
          ask the user to run commands; delete or abandon /workspace/startup.sh
 ```
 
-## Sniper Desk V1 (paper only)
-- Strategy: Kalshi 15-minute BTC/ETH/SOL/XRP/gold settlement model, 13-pt sniper confluence (Coinbase 15m/1h), 8 named setups, and an EV after Kalshi fees at the executable ask. The probability stays EXPERIMENTAL until an owner-approved calibrator exists.
+## Sniper Desk (live 15-minute tickets)
+- Status: `CALIBRATED_MODEL_APPROVED=true`. `APPROVAL_POLICY_ENFORCED=false`, so the pre-round-3 gate is the active path. The round-3 calibrator is proposed and not enforced. Model `aurix-x-v1.2-settlement-correctness-2026-10-09`.
+- Strategy: Kalshi 15-minute BTC/ETH/SOL/XRP/DOGE/gold/silver/oil/GBP/EUR/JPY. The settlement chance is the index versus the strike. A sweep, fib pocket, demand candle, or sniper price setup can allow an entry. The chart nudge is capped at 4 points.
 - Commands: `npm run dev` (UI at /paper), `npm run paper` / `npm run paper:loop`, `bun scripts/paper/confluence-diag.ts`, `bun scripts/paper/recover-outcomes.ts`, `bun scripts/ops/no-orders-check.ts`, `bun scripts/ops/mode.ts status`. Collector: `scripts/desk-observe.ts`, which is GET-only. Run one instance only.
 - Risk (approved): −$15 daily stop, $9 total, $3 per ticker, $4 same-direction correlated crypto. Never change these, `CALIBRATED_MODEL_APPROVED`, or the switch files. Never run `/workspace/startup.sh`. Paid Firecrawl needs an open operator round (`scripts/ops/round.ts`).
 - Guide: docs/LAUNCH_GUIDE.md.

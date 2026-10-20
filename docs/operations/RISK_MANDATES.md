@@ -1,6 +1,6 @@
 # Risk mandates (per venue)
 ## Kalshi 15m YES/NO: APPROVED by owner (enforced in `src/lib/desk/config.ts` + `risk.ts`)
-Daily stop −$15 · max open risk $9 · max $3 per order · max $4 per ticker · correlated-exposure cap · price band · snapshot stale after 20 s · max 3 orders per ticker window, 1 per tick. Live sending also needs `CALIBRATED_MODEL_APPROVED=true` (currently **false**) plus the operator mode.
+Daily stop −$15 · max open risk $9 · max $3 per order · max $3 per ticker · max $4 same-direction crypto · price band · snapshot stale after 20 s · max 3 orders per ticker window, 1 per tick. Live sending needs `CALIBRATED_MODEL_APPROVED=true` (currently **true**) plus the operator switches.
 
 ## Kalshi perps CONSERVATIVE v1 (2026-10-12): REJECTED BY OWNER, SUPERSEDED
 Kept only as a record. The $100 equity/notional caps, 3× leverage, $1 per trade, −$5/day, −$15/week, 2 positions,
