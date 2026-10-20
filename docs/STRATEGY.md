@@ -1,10 +1,9 @@
 # AURIX-X / MACROMIRO — 15-minute rulebook v1.1
 Date: 2026-10-09 | Scope: Kalshi 15m BTC/ETH/SOL/XRP/gold outcomes, separate perps
 SUPERSEDED as the product spec by `docs/product/PRD.md` (2026-10-14). This file stays as the 15-minute rulebook only. If it disagrees with the PRD, the system map, the strategy registry, the venue matrix, or the risk mandate, those win.
-STATUS: LIVE 15-minute tickets. **CALIBRATED_MODEL_APPROVED=true** in `src/lib/desk/config.ts`. Perpetual orders stay off. This line used to say the desk was shadow-only. That was stale.
-Code truth: `src/lib/desk/engine.ts` (research decision engine), `gate.ts` (quote evaluation),
-`oms.ts` (sole signed order writer), `risk.ts` (mandatory permission), `config.ts`.
-The prior handoff references `src/lib/scan/edge.ts`, a file that does not exist in this ZIP; this retired reference must NOT guide execution.
+STATUS: LIVE 15-minute tickets. **CALIBRATED_MODEL_APPROVED=true** in `src/lib/desk/config.ts`. **APPROVAL_POLICY_ENFORCED=false**. The pre-round-3 gate path is the ACTIVE path. The round-3 calibrator policy (calibrator file, APPROVAL_CUSHION, conservative EV) is PROPOSED / NOT ENFORCED. Perpetual orders stay off. **DAILY_STOP_USD=-15**. Model `aurix-x-v1.2-settlement-correctness-2026-10-09`.
+Code truth: `src/lib/desk/engine.ts`, `gate.ts`, `oms.ts`, `risk.ts`, `config.ts`.
+RETIRED: src/lib/scan/edge.ts does not exist. Do not recreate it and do not treat it as the ticket function.
 The original handoff/main-branch notes are archived in docs/archive. Current loss limits (including the approved −$15 Kalshi daily stop) live in docs/operations/RISK_MANDATES.md. Canonical product spec: docs/product/PRD.md.
 
 ## ONE STRATEGY, TWO PRODUCT ENGINES
@@ -77,10 +76,10 @@ Classify NO_TRADE explicitly: market paused, unknown settlement, index stale, mi
 
 ## NEWS / FUNDAMENTAL STACK
 Spark2 parses sourced events (time, consensus, actual, surprise, direction candidates, uncertainty). Alexandria stores observed event-to-asset and regime response, leakage-free train/validation/test splits, and calibrated probabilities. Neither LLM may directly authorize trading.
-Default major scheduled macro veto: new trades 30m before and until at least 15m after release, subject to spread/vol normalizing. Crypto exchange outages and oracle/source anomalies hard veto. News model relevance is asset- and horizon-specific.
+Default major scheduled print: recorded on the decision. It does not cancel a ticket. Crypto exchange outages and oracle/source anomalies still hard-stop a send. News model relevance is asset- and horizon-specific. Neither LLM may directly authorize trading.
 
 ## RISK / ALLOCATION
-Live is disabled until human approval and unit/integration/shadow tests. Research cap for the previously cited ~$36 account: $3/order, $9 aggregate planned worst loss, -$5 daily new-risk latch; these are changeable only in a reviewed config release. Split same-underlying opportunities into ONE aggregate risk budget.
+Live 15-minute tickets are on. The enforced day stop is **DAILY_STOP_USD=-15**, not a -$5 latch. Caps in force: $3 per order, $9 open worst, $3 per ticker, $4 same-direction crypto. These change only in a reviewed config release. The old -$5 latch is not the live rule.
 Optional high-risk promotion is a separate reviewed release and must be justified by demonstrated net edge and real fills, not a 13/13 score. Avoid grid, martingale, uncapped leverage. Pending unknown orders keep maximum-loss reserves until reconciled.
 STOP persists across restarts. An override file must not be allowed to silently rebase losses. Perps require an independent margin/liquidation/stop policy.
 
