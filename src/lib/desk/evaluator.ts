@@ -102,6 +102,8 @@ export class Evaluator {
     out.spot = last.v;
     if (!book) return fail("G1_no_book");
     if (book.ts > now + 500 || now - book.ts > BOOK_MAX_AGE_MS) return fail("G1_book_stale");
+    // One hour of index prints cannot build the 60 complete 15-minute bars the sniper requires, so its score stays 0.
+    // Coinbase candles stay out of this path: a named setup is allowed to open a ticket.
     const prints = this.feeds.prints(ref.index, now - 3600_000);
     const bars = minuteBars(prints, now);
     const lastBar = bars[bars.length - 1];
@@ -215,6 +217,13 @@ export class Evaluator {
   }
 }
 
+export function confluenceLog(sniper: { long: Evidence; short: Evidence } | null) {
+  if (!sniper) return null;
+  const side = (e: Evidence) => ({ score: e.score, setup: e.setup, eligible: e.eligible, points: e.points, missing: e.missing });
+  const block = sniper.long.missing[0] ?? sniper.short.missing[0] ?? null;
+  return { long: side(sniper.long), short: side(sniper.short), block };
+}
+
 export function decisionRowOf(e: SeriesEval, action: Decision["action"], fee: FeeInfo | null, now: number, order?: Decision["order"]): Decision {
   return {
     ts: new Date(now).toISOString(),
@@ -238,12 +247,12 @@ export function decisionRowOf(e: SeriesEval, action: Decision["action"], fee: Fe
     shadow_best: e.shadow ? { side: e.shadow.side, mode: e.shadow.mode, price: e.shadow.price, count: e.shadow.count, fee: e.shadow.fee, edge: Number(e.shadow.edge.toFixed(4)), edge_base: Number(e.shadow.edgeBase.toFixed(4)) } : null,
     action,
     failed_gate: e.failed,
-    features: e.feats ? { ...e.feats.groups, score: e.feats.score, ema7: e.feats.ema7, ema14: e.feats.ema14, ema50: e.feats.ema50, rsi14: e.feats.rsi14, candle: e.feats.candle, structure: e.feats.structure } : null,
+    features: e.feats ? { ...e.feats.groups, group_votes: e.feats.groups, score: e.feats.score, ema7: e.feats.ema7, ema14: e.feats.ema14, ema50: e.feats.ema50, rsi14: e.feats.rsi14, candle: e.feats.candle, structure: e.feats.structure } : null,
     model: `${MODEL_VERSION}+${MODEL_REV}`,
     order,
     approval: e.approval ? { ok: e.approval.ok, why: e.approval.why, p_cal: e.approval.pCal, ev_per_contract: e.approval.evPerContract, cushion: e.approval.cushion } : null,
     timing: e.timing,
-    confluence: e.sniper ? { long: { score: e.sniper.long.score, setup: e.sniper.long.setup, eligible: e.sniper.long.eligible }, short: { score: e.sniper.short.score, setup: e.sniper.short.setup, eligible: e.sniper.short.eligible } } : null,
+    confluence: confluenceLog(e.sniper),
     guard: { shock: Number(e.shock.toFixed(4)), maker_min_edge: Number(e.makerMinEdge.toFixed(4)), lock_frac: Number(e.lockFrac.toFixed(3)), move_z: Number(e.guard.z.toFixed(2)), cooling: e.guard.cooling, maker_ok: e.makerOk, budget: e.budget, min_price: e.minPrice },
   };
 }

@@ -11,12 +11,15 @@ export type RawDecision = {
   series?: string;
   tte_s?: number;
   p?: number;
+  failed_gate?: string | null;
   quotes?: { yes_bid?: number; yes_ask?: number; no_bid?: number; no_ask?: number };
   fee_multiplier?: number;
   index_age_ms?: number;
   book_age_ms?: number;
   best?: { mode?: string } | null;
   confluence?: { long?: { setup?: string }; short?: { setup?: string } };
+  close?: string;
+  features?: { trend?: number | null; momentum?: number | null; group_votes?: { trend?: number | null; momentum?: number | null; structure?: number | null; candle?: number | null } };
 };
 
 export function toScoreRow(o: RawDecision, result: "yes" | "no" | undefined): DecisionRow | null {
@@ -42,9 +45,11 @@ export function toScoreRow(o: RawDecision, result: "yes" | "no" | undefined): De
       : "settlement-model";
   const tte = typeof o.tte_s === "number" ? o.tte_s : 0;
   const fresh = (o.index_age_ms ?? 0) < 20_000 && (o.book_age_ms ?? 0) < 20_000;
+  const at = Date.parse(o.ts ?? "") || 0;
+  const expiryMs = Date.parse(o.close ?? "") || at;
   return {
-    at: Date.parse(o.ts ?? "") || 0,
-    expiryMs: Date.parse(o.ts ?? "") || 0,
+    at,
+    expiryMs,
     series: o.series,
     setup: named,
     modelPYes: p,
@@ -75,4 +80,34 @@ export function lastPerTicker(decisions: RawDecision[], outcomes: Map<string, "y
     if (row) out.push(row);
   }
   return out;
+}
+
+/** Every decision that has a probability and a price, joined to a later settlement. Repeats of one contract stay repeats. */
+export function scoreableDecisions(decisions: RawDecision[], outcomes: Map<string, "yes" | "no">): { rows: DecisionRow[]; dropped: Record<string, number> } {
+  const dropped: Record<string, number> = { no_ticker: 0, no_probability: 0, no_price: 0, no_settlement: 0 };
+  const rows: DecisionRow[] = [];
+  for (const o of decisions) {
+    if (!o.ticker) {
+      dropped.no_ticker += 1;
+      continue;
+    }
+    if (typeof o.p !== "number") {
+      dropped.no_probability += 1;
+      continue;
+    }
+    const q = o.quotes;
+    if (typeof q?.yes_bid !== "number" || typeof q?.yes_ask !== "number") {
+      dropped.no_price += 1;
+      continue;
+    }
+    const result = outcomes.get(o.ticker);
+    if (result !== "yes" && result !== "no") {
+      dropped.no_settlement += 1;
+      continue;
+    }
+    const row = toScoreRow(o, result);
+    if (row) rows.push(row);
+    else dropped.no_price += 1;
+  }
+  return { rows, dropped };
 }
