@@ -6,6 +6,8 @@ import { MODEL_VERSION } from "../desk/config";
 import { brier, brierBeatsPrice, netEv, walkWindows, type DecisionRow } from "./scorecard";
 
 export const MIN_DECISIONS = 300;
+export const FAST_LANE_MIN = 100;
+export const FAST_LANE_Z = 0.841621233572914;
 
 export type SetupStatus = "RESEARCH" | "ELIGIBLE";
 
@@ -28,12 +30,14 @@ export type PromotionDoc = {
   setups: Record<string, SetupVerdict>;
 };
 
-export function judgeSetup(rows: DecisionRow[], opts: { windowSize?: number; embargoMs?: number } = {}): SetupVerdict {
+export function judgeSetup(rows: DecisionRow[], opts: { windowSize?: number; embargoMs?: number; minDecisions?: number; z?: number } = {}): SetupVerdict {
   const size = opts.windowSize ?? 100;
   const embargoMs = opts.embargoMs ?? 15 * 60_000;
+  const minDecisions = opts.minDecisions ?? MIN_DECISIONS;
+  const z = opts.z ?? 1.6448536269514722;
   const scored = rows.filter((r) => r.settledYes != null);
   const pairs = scored.map((r) => ({ p: r.modelPYes, price: r.yesPrice, y: r.settledYes as 0 | 1 }));
-  const cmp = brierBeatsPrice(pairs);
+  const cmp = brierBeatsPrice(pairs, z);
   const modelBrier = pairs.length ? pairs.reduce((a, r) => a + (r.p - r.y) ** 2, 0) / pairs.length : Number.NaN;
   const priceBrier = pairs.length ? pairs.reduce((a, r) => a + (r.price - r.y) ** 2, 0) / pairs.length : Number.NaN;
   const ev = netEv(scored);
@@ -61,21 +65,27 @@ export function judgeSetup(rows: DecisionRow[], opts: { windowSize?: number; emb
     fills: fills.length,
     fillsPnl,
   };
-  if (scored.length < MIN_DECISIONS) return { ...base, why: `n ${scored.length} < ${MIN_DECISIONS}` };
+  if (scored.length < minDecisions) return { ...base, why: `n ${scored.length} < ${minDecisions}` };
   if (!fresh) return { ...base, why: "stale row in the window" };
-  if (!cmp.better) return { ...base, why: "model Brier does not beat the price at 95%" };
+  if (!cmp.better) return { ...base, why: z < 1.6 ? "model Brier does not beat the price at 80%" : "model Brier does not beat the price at 95%" };
   if (!(ev > 0)) return { ...base, why: "after-fee EV is not positive" };
   if (demoted) return { ...base, why: "two consecutive walk-forward windows lost to the price or lost money" };
   return { ...base, state: "ELIGIBLE", why: "passed" };
 }
 
-export function promotionDocument(bySetup: Record<string, DecisionRow[]>, at: number, modelVersion = MODEL_VERSION, opts?: { windowSize?: number; embargoMs?: number }): PromotionDoc {
+export function promotionDocument(bySetup: Record<string, DecisionRow[]>, at: number, modelVersion = MODEL_VERSION, opts?: { windowSize?: number; embargoMs?: number; minDecisions?: number; z?: number }): PromotionDoc {
   const setups: Record<string, SetupVerdict> = {};
   for (const [id, rows] of Object.entries(bySetup)) setups[id] = judgeSetup(rows, opts);
   return { modelVersion, at, setups };
 }
 
-/** Percent-of-account sizing stays refused until one eligible setup also has a positive fill record. */
+/** The cap raise stays off unless a setup is already ELIGIBLE. A missing file is a no. */
+export function aggressionReleaseAllowed(doc: PromotionDoc | null): { ok: boolean; why: string } {
+  if (!doc || doc.modelVersion !== MODEL_VERSION) return { ok: false, why: "no scorecard, caps stay at the approved dollars" };
+  const hit = Object.entries(doc.setups).find(([, s]) => s.state === "ELIGIBLE");
+  if (!hit) return { ok: false, why: "no setup beat the price after fees, full Kelly is $0" };
+  return { ok: true, why: `${hit[0]} cleared the fast lane` };
+}
 export function pctModeInterlock(doc: PromotionDoc | null): { ok: boolean; why: string } {
   if (!doc || doc.modelVersion !== MODEL_VERSION) return { ok: false, why: "promotion file missing or model version mismatch" };
   const hit = Object.values(doc.setups).find((s) => s.state === "ELIGIBLE" && s.n >= MIN_DECISIONS && s.fills > 0 && s.fillsPnl > 0);
