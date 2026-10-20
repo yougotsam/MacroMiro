@@ -19,6 +19,19 @@ export type SizeInput = {
 };
 
 export function quarterKellyStake(i: SizeInput): { stake: number; why: string } {
+  return kellyStake(i, 0.25);
+}
+
+/** Full Kelly. A setup that has not beaten the price stakes $0. The fraction cannot exceed 1. */
+export function fullKellyStake(i: SizeInput): { stake: number; why: string } {
+  if (!i.doc) return { stake: 0, why: "promotion file missing" };
+  if (i.doc.modelVersion !== MODEL_VERSION) return { stake: 0, why: "model version mismatch" };
+  const verdict = i.doc.setups[i.setup];
+  if (!verdict || verdict.state !== "ELIGIBLE") return { stake: 0, why: "no measured edge" };
+  return kellyStake(i, 1);
+}
+
+export function kellyStake(i: SizeInput, multiple: number): { stake: number; why: string } {
   if (!i.doc) return { stake: 0, why: "promotion file missing" };
   if (i.doc.modelVersion !== MODEL_VERSION) return { stake: 0, why: "model version mismatch" };
   const verdict = i.doc.setups[i.setup];
@@ -30,12 +43,12 @@ export function quarterKellyStake(i: SizeInput): { stake: number; why: string } 
   const odds = (1 - price) / price;
   const edge = p - price;
   if (!(edge > 0) || !(odds > 0)) return { stake: 0, why: "no edge" };
-  const fraction = 0.25 * (edge / odds);
+  const fraction = Math.min(1, Math.max(0, multiple)) * (edge / odds);
   const raw = fraction * i.bankroll;
   const cap = Math.min(MAX_ORDER_COST_USD, i.roomTotal, i.roomTicker, i.roomCorrelated, i.flatBudget);
   if (!(cap > 0)) return { stake: 0, why: "no room under the existing caps" };
   const stake = Math.round(Math.min(raw, cap) * 100) / 100;
-  return { stake: Math.max(0, stake), why: "quarter kelly" };
+  return { stake: Math.max(0, stake), why: multiple >= 1 ? "full kelly" : "quarter kelly" };
 }
 
 function clampFlat(budget: number): number {
