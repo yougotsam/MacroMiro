@@ -7,5 +7,6 @@
 | KALSHI_PAIR_UNDER_1 | Kalshi 15m | `src/lib/desk/pair-scan.ts`, `scripts/kalshi-pair-scan.ts` | YES ask + NO ask + taker fees < $1 | BUILT, read-only | Oct 13 scan: all 5 series cost $1.024–$1.06 (no arb). On one binary book the pair is < $1 only if the book is crossed, so this can't fire on single markets by construction. |
 | COINBASE_SPOT_SCALP | Coinbase spot | none | candles/trades | REJECTED for now | Intro fees 0.50%/0.90%: round trip ≥ 1.0% vs 15m ATR 0.12–0.24% |
 | COINBASE_CFM_FUTURES | Coinbase US dated futures | none | product list | FUTURE (needs futures approval) | listed, e.g. BIT-30OCT26 0.01 BTC, ~10% intraday margin |
+| RESOLUTION_RIDER | Kalshi 15m, last 90 seconds | `src/lib/deskc/rider.ts` | favorite inside the existing price band, closed 1m momentum, spread ≤ 2 ticks, order flow or a 2-sigma stand-in | RESEARCH. The live sender does not import it. Eligible only after the scorecard promotion rule. | Not scored yet. No live orders. |
 
 Promotion rule (all strategies): purged/embargoed walk-forward, deflated Sharpe, Brier per setup, positive after-cost expectancy at executable prices, owner mandate, safety checklist PASS.

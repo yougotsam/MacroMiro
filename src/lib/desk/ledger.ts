@@ -26,7 +26,11 @@ export type Decision = {
   shadow_best?: { side: string; mode: string; price: number; count: number; fee: number; edge: number; edge_base: number } | null;
   approval?: { ok: boolean; why: string; p_cal: number | null; ev_per_contract: number | null; cushion: number } | null;
   timing?: { policy: string; bucket: string | null } | null;
-  confluence?: { long: { score: number; setup: string; eligible: boolean }; short: { score: number; setup: string; eligible: boolean } } | null;
+  confluence?: {
+    long: { score: number; setup: string; eligible: boolean; points?: Record<string, number>; missing?: string[] };
+    short: { score: number; setup: string; eligible: boolean; points?: Record<string, number>; missing?: string[] };
+    block?: string | null;
+  } | null;
   best: { side: string; mode: string; price: number; count: number; fee: number; edge: number; edge_base: number } | null;
   action: "BUY" | "NO_TRADE" | "REFUSED" | "CANCEL";
   failed_gate: string | null;

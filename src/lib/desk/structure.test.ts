@@ -16,6 +16,7 @@ function frame(over: Partial<FeatureSnapshot> = {}): FeatureSnapshot {
     groups: { trend: 1, momentum: 0.2, structure: 0, candle: 0 },
     score: 0.3,
     ...over,
+    flow: over.flow ?? null,
   };
 }
 
