@@ -1,8 +1,8 @@
 /**
  * Settlement-grade feeds over ONE authenticated Kalshi WebSocket (api.elections.kalshi.com — the
  * external-api-ws host refuses this box, which is why the old desk's RTI feed looked "unauthorized"/stale).
- *   cfbenchmarks_value: BRTI, ETHUSD_RTI, SOLUSD_RTI, XRPUSD_RTI — one-second prints (msg.data.value @ msg.data.time)
- *   pyth_value: gold plus GBP, EUR and JPY. These are the Kalshi settlement symbols, not the market tickers.
+ *   cfbenchmarks_value: BRTI, ETH, SOL, XRP, DOGE — one-second prints
+ *   pyth_value: gold, silver, oil, and the three currencies. Same account. Not a second wallet.
  * Bootstrap: last hour of 1-second RTI values from the CF Benchmarks REST passthrough.
  * Recorder: every print is appended to <data>/prints/<day>.jsonl for replay/calibration.
  */
@@ -13,9 +13,9 @@ import type { Print } from "./settlement";
 import { etDay } from "./time";
 
 const WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2";
-export const RTI = ["BRTI", "ETHUSD_RTI", "SOLUSD_RTI", "XRPUSD_RTI"] as const;
+export const RTI = ["BRTI", "ETHUSD_RTI", "SOLUSD_RTI", "XRPUSD_RTI", "DOGEUSD_RTI"] as const;
 export const GOLD = "Metal.Index.1OZGOLD/USD";
-export const PYTH = [GOLD, "FX.GBP/USD", "FX.EUR/USD", "FX.USD/JPY"] as const;
+export const PYTH = [GOLD, "Metal.Index.SILVER/USD", "Commodities.Index.PYTHOIL/USD", "FX.GBP/USD", "FX.EUR/USD", "FX.USD/JPY"] as const;
 const KEEP_MS = 2 * 3600_000;
 
 type Buf = { bySec: Map<number, number>; lastTs: number; lastRecv: number };

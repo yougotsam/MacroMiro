@@ -47,6 +47,22 @@ describe("structure must agree before a side is allowed", () => {
     expect(s.side).toBe("yes");
   });
 
+  it("a sweep of the lows is a yes", () => {
+    const s = technicalSide(frame({ structure: "sweep_low" }), 100, 101);
+    expect(s.side).toBe("yes");
+    expect(s.why).toBe("liquidity sweep of the lows");
+  });
+
+  it("a return into demand is a yes", () => {
+    const s = technicalSide(frame({ structure: "demand" }), 100, 101);
+    expect(s.side).toBe("yes");
+  });
+
+  it("a sweep of the highs is a no", () => {
+    const s = technicalSide(frame({ structure: "sweep_high" }), 100, 99);
+    expect(s.side).toBe("no");
+  });
+
   it("the technical score can move the chance, and not by more than 4 points", () => {
     expect(FEATURE_MAX_SHIFT).toBe(0.04);
     expect(featureShift(0.5, 1)).toBeCloseTo(0.04);

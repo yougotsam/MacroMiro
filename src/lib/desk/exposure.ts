@@ -5,9 +5,11 @@
  * Gold settles on a Pyth metal index with a different driver and is its own group: "gold|up" / "gold|down".
  * Buying YES = "up", buying NO = "down".
  */
-export function correlationGroup(ticker: string): "crypto" | "gold" | "fx" | "jpy" | null {
-  if (/^KX(?:BTC|ETH|SOL|XRP)15M-/.test(ticker)) return "crypto";
+export function correlationGroup(ticker: string): "crypto" | "gold" | "silver" | "oil" | "fx" | "jpy" | null {
+  if (/^KX(?:BTC|ETH|SOL|XRP|DOGE)15M-/.test(ticker)) return "crypto";
   if (/^KXGOLD15M-/.test(ticker)) return "gold";
+  if (/^KXSILVER15M-/.test(ticker)) return "silver";
+  if (/^KXWTI15M-/.test(ticker)) return "oil";
   if (/^KX(?:GBPUSD|EURUSD)15M-/.test(ticker)) return "fx";
   if (/^KXUSDJPY15M-/.test(ticker)) return "jpy";
   return null;

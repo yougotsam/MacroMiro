@@ -8,10 +8,10 @@ export const CALIBRATED_MODEL_APPROVED: boolean = true;
 /** Never reset an intraday loss latch with an on-disk override. */
 export const ENABLE_RISK_OVERRIDES: boolean = false;
 
-export const SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXGOLD15M", "KXGBPUSD15M", "KXEURUSD15M", "KXUSDJPY15M"] as const;
+export const SERIES = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXDOGE15M", "KXGOLD15M", "KXSILVER15M", "KXWTI15M", "KXGBPUSD15M", "KXEURUSD15M", "KXUSDJPY15M"] as const;
 export type Series = (typeof SERIES)[number];
-export const TICKER_RE = /^KX(?:BTC|ETH|SOL|XRP|GOLD|GBPUSD|EURUSD|USDJPY)15M-[0-9A-Z]+-[0-9A-Z]+$/;
-export const ORDER_SHARD = 2; // crypto and gold. GBP, EUR and JPY are exchange index 0. The order uses the market's own index.
+export const TICKER_RE = /^KX(?:BTC|ETH|SOL|XRP|DOGE|GOLD|SILVER|WTI|GBPUSD|EURUSD|USDJPY)15M-[0-9A-Z]+-[0-9A-Z]+$/;
+export const ORDER_SHARD = 2; // Where the funded cash sits. Every market spends that one pile.
 
 /** Settlement reference per series (from GET /markets rules + SETTLEMENT-RULES.md). */
 export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string; dp: number }> = {
@@ -19,7 +19,10 @@ export const REFERENCE: Record<Series, { kind: "rti60" | "pyth1m"; index: string
   KXETH15M: { kind: "rti60", index: "ETHUSD_RTI", dp: 2 },
   KXSOL15M: { kind: "rti60", index: "SOLUSD_RTI", dp: 4 },
   KXXRP15M: { kind: "rti60", index: "XRPUSD_RTI", dp: 4 },
+  KXDOGE15M: { kind: "rti60", index: "DOGEUSD_RTI", dp: 6 },
   KXGOLD15M: { kind: "pyth1m", index: "Metal.Index.1OZGOLD/USD", dp: 2 },
+  KXSILVER15M: { kind: "pyth1m", index: "Metal.Index.SILVER/USD", dp: 3 },
+  KXWTI15M: { kind: "pyth1m", index: "Commodities.Index.PYTHOIL/USD", dp: 2 },
   KXGBPUSD15M: { kind: "pyth1m", index: "FX.GBP/USD", dp: 5 },
   KXEURUSD15M: { kind: "pyth1m", index: "FX.EUR/USD", dp: 5 },
   KXUSDJPY15M: { kind: "pyth1m", index: "FX.USD/JPY", dp: 3 },

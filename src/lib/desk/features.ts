@@ -174,6 +174,45 @@ export function features(bars: Bar[]): FeatureSnapshot {
         break;
       }
     }
+    // Liquidity sweep: the bar runs the last 10 bars' high or low, then closes back inside. That is the stop hunt.
+    const look = w.slice(-11, -1);
+    if (look.length >= 5) {
+      const swingLow = Math.min(...look.map((b) => b.l));
+      const swingHigh = Math.max(...look.map((b) => b.h));
+      const sweptLow = last.l < swingLow && last.c > swingLow;
+      const sweptHigh = last.h > swingHigh && last.c < swingHigh;
+      if (sweptLow && !sweptHigh) {
+        structure += 0.5;
+        structTag = structTag === "none" ? "sweep_low" : `${structTag}+sweep_low`;
+      } else if (sweptHigh && !sweptLow) {
+        structure -= 0.5;
+        structTag = structTag === "none" ? "sweep_high" : `${structTag}+sweep_high`;
+      }
+    }
+    // Supply and demand: last opposite candle before a push. Price back inside that candle is the zone.
+    for (let i = w.length - 4; i >= 1; i -= 1) {
+      const base = w[i];
+      const impulse = w[i + 1];
+      const later = w.slice(i + 2);
+      if (base.c < base.o && impulse.c > base.h && impulse.c > impulse.o) {
+        const broken = later.some((b) => b.c < base.l);
+        const inside = last.c <= base.h && last.c >= base.l;
+        if (!broken && inside) {
+          structure += 0.5;
+          structTag = structTag === "none" ? "demand" : `${structTag}+demand`;
+        }
+        break;
+      }
+      if (base.c > base.o && impulse.c < base.l && impulse.c < impulse.o) {
+        const broken = later.some((b) => b.c > base.h);
+        const inside = last.c >= base.l && last.c <= base.h;
+        if (!broken && inside) {
+          structure -= 0.5;
+          structTag = structTag === "none" ? "supply" : `${structTag}+supply`;
+        }
+        break;
+      }
+    }
     structure = clamp1(structure);
   }
   const groups = { trend, momentum, structure, candle };
@@ -209,6 +248,8 @@ export function technicalSide(f: FeatureSnapshot, spot: number, strike: number):
   const below = spot < strike;
   if (rsi != null && rsi < 30 && bull) return { side: "yes", why: `RSI bounce ${rsi.toFixed(0)} + ${f.candle}` };
   if (rsi != null && rsi > 70 && bear) return { side: "no", why: `RSI fade ${rsi.toFixed(0)} + ${f.candle}` };
+  if (f.structure.includes("sweep_low") && !f.structure.includes("sweep_high")) return { side: "yes", why: "liquidity sweep of the lows" };
+  if (f.structure.includes("sweep_high") && !f.structure.includes("sweep_low")) return { side: "no", why: "liquidity sweep of the highs" };
   if (f.structure.includes("ote_long")) {
     if (bull || f.structure.includes("bull_fvg")) return { side: "yes", why: "fib pocket long" };
     return { side: null, why: "fib pocket needs a reaction" };
@@ -219,6 +260,17 @@ export function technicalSide(f: FeatureSnapshot, spot: number, strike: number):
   }
   if (f.structure.includes("bull_fvg") && above) return { side: "yes", why: "price back inside bull gap" };
   if (f.structure.includes("bear_fvg") && below) return { side: "no", why: "price back inside bear gap" };
+  if (f.structure.includes("demand") && !f.structure.includes("supply")) return { side: "yes", why: "demand zone" };
+  if (f.structure.includes("supply") && !f.structure.includes("demand")) return { side: "no", why: "supply zone" };
   if (rsi == null && ema20 == null) return { side: null, why: "indicators unread" };
   return { side: null, why: "no structure" };
+}
+
+/** Forex day split in New York time. It labels the shot. It does not ban a market. */
+export function sessionTag(nowMs: number): "london" | "newyork" | "asia" | "off" {
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hour12: false }).format(nowMs)) % 24;
+  if (hour >= 2 && hour < 5) return "london";
+  if (hour >= 8 && hour < 11) return "newyork";
+  if (hour >= 19 || hour < 2) return "asia";
+  return "off";
 }

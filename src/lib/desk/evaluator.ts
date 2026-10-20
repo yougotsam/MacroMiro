@@ -22,7 +22,7 @@ import {
   calibratorPath,
 } from "./config";
 import { approve, bucketFor, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
-import { features, featureShift, minuteBars, technicalSide, type FeatureSnapshot } from "./features";
+import { features, featureShift, minuteBars, sessionTag, technicalSide, type FeatureSnapshot } from "./features";
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
@@ -173,6 +173,7 @@ export class Evaluator {
     out.best = g.best;
     if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
     const tech = technicalSide(feats, last.v, m.strike);
+    if (tech.side) tech.why = `${tech.why} · ${sessionTag(now)}`;
     if (tech.side == null || tech.side !== g.best.side) {
       out.shadow = g.best;
       out.best = null;

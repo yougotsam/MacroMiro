@@ -65,7 +65,7 @@ describe("executable quotes and depth", () => {
 
 describe("collector loop with mocked feeds (no network)", () => {
   const close = Date.now() + 10 * 60_000;
-  const mk = (s: string): Market => ({ ticker: `${s}-26OCT091200-00`, series: s, eventTicker: `${s}-26OCT091200`, openMs: close - 900_000, closeMs: close, strike: 100, status: "active", exchangeIndex: 2, strikeType: "greater_or_equal", rules: "CF Benchmarks BRTI ETHUSDRTI SOLUSDRTI XRPUSDRTI gold", priceRanges: [{ start: 0, end: 1, step: 0.01 }] });
+  const mk = (s: string): Market => ({ ticker: `${s}-26OCT091200-00`, series: s, eventTicker: `${s}-26OCT091200`, openMs: close - 900_000, closeMs: close, strike: 100, status: "active", exchangeIndex: 2, strikeType: "greater_or_equal", rules: "CF Benchmarks BRTI ETHUSDRTI SOLUSDRTI XRPUSDRTI DOGEUSDRTI pyth gold gbp/usd eur/usd usd/jpy", priceRanges: [{ start: 0, end: 1, step: 0.01 }] });
   const deps = (over: Partial<ObserveDeps> = {}): ObserveDeps => ({
     openMarket: async (s) => mk(s),
     orderbookRaw: async () => ({ orderbook_fp: { yes_dollars: [["0.40", "10"]], no_dollars: [["0.55", "8"]] } }),
