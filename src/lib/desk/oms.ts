@@ -11,6 +11,7 @@ import { KALSHI_HOST, kalshiDelete, kalshiSignedHeaders } from "@/lib/scan/kalsh
 import { eventCancelPath } from "@/lib/scan/kalshi-order-status";
 import { CALIBRATED_MODEL_APPROVED, ORDER_SHARD, TICKER_RE, dataDir } from "./config";
 import { ordersByClientIds, type KOrder } from "./kalshi-read";
+import { exchangeFee } from "./exchange-fee";
 import type { AccountSnapshot, OrderIntent, RiskEngine } from "./risk";
 import type { Evidence, RecoveryQueue } from "./recovery";
 
@@ -55,6 +56,9 @@ export type JournalRow = {
   orderId?: string;
   status?: string;
   fill?: number;
+  /** Dollars Kalshi reported. Absent means the exchange did not say. Do not treat that as zero. */
+  fee?: number;
+  feeSource?: "exchange" | "unknown";
   note?: string;
 };
 
@@ -79,6 +83,24 @@ export const kalshiOrderPost: Transport = async (path, body) => {
   }
   return { status: res.status, body: parsed, text: text.slice(0, 400) };
 };
+
+/** Dollars Kalshi reported on this reply. A missing field stays unknown. Zero is a real zero. */
+function recordedFee(src: unknown): Pick<JournalRow, "fee" | "feeSource"> {
+  const top = src && typeof src === "object" ? (src as Record<string, unknown>) : null;
+  const nested = top?.order && typeof top.order === "object" ? (top.order as Record<string, unknown>) : null;
+  const pick = (o: Record<string, unknown> | null, key: string): string | undefined => {
+    if (!o || !(key in o)) return undefined;
+    const v = o[key];
+    if (typeof v === "string") return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    return undefined;
+  };
+  const taker = pick(top, "taker_fees_dollars") ?? pick(nested, "taker_fees_dollars");
+  const maker = pick(top, "maker_fees_dollars") ?? pick(nested, "maker_fees_dollars");
+  if (taker === undefined && maker === undefined) return { feeSource: "unknown" };
+  const f = exchangeFee({ taker_fees_dollars: taker, maker_fees_dollars: maker });
+  return f.fee == null ? { feeSource: "unknown" } : { fee: f.fee, feeSource: "exchange" };
+}
 
 export function cidFor(ticker: string, side: "yes" | "no", seq: number) {
   return `mm1-${ticker}-${side === "yes" ? "y" : "n"}-${seq}`;
@@ -271,7 +293,7 @@ export class Oms {
       let fill = Number(res.body.fill_count ?? 0);
       const remaining = Number(res.body.remaining_count ?? 0);
       let status = intent.mode === "taker" ? (fill > 0 ? "executed" : "canceled") : remaining > 0 ? "resting" : fill > 0 ? "executed" : "canceled";
-      this.write({ cid, stage: "sent", ticker: intent.ticker, orderId, status, fill });
+      this.write({ cid, stage: "sent", ticker: intent.ticker, orderId, status, fill, ...recordedFee(res.body) });
       // A maker reply can say "resting, 0 filled" and the book can fill it in the next tenth of a second.
       if (status === "resting") {
         const hit = (await this.lookup([cid]).catch(() => [])).find((o) => o.client_order_id === cid);
@@ -279,7 +301,7 @@ export class Oms {
         if (hit && got > 0) {
           fill = got;
           status = hit.status || "executed";
-          this.write({ cid, stage: "found", ticker: intent.ticker, orderId, status, fill, note: "filled after the send reply" });
+          this.write({ cid, stage: "found", ticker: intent.ticker, orderId, status, fill, ...recordedFee(hit), note: "filled after the send reply" });
         }
       }
       return { ok: true, why: "sent", cid, orderId, status, fill };
@@ -299,7 +321,7 @@ export class Oms {
       try {
         const hit = (await this.lookup([cid])).find((o) => o.client_order_id === cid);
         if (hit) {
-          this.write({ cid, stage: "found", ticker, orderId: hit.order_id, status: hit.status, fill: Number(hit.fill_count_fp ?? 0) });
+          this.write({ cid, stage: "found", ticker, orderId: hit.order_id, status: hit.status, fill: Number(hit.fill_count_fp ?? 0), ...recordedFee(hit) });
           return hit;
         }
       } catch {
@@ -324,7 +346,7 @@ export class Oms {
     }
     for (const r of open) {
       const h = hits.find((o) => o.client_order_id === r.cid);
-      if (h) this.write({ cid: r.cid, stage: "found", ticker: r.ticker, orderId: h.order_id, status: h.status, fill: Number(h.fill_count_fp ?? 0) });
+      if (h) this.write({ cid: r.cid, stage: "found", ticker: r.ticker, orderId: h.order_id, status: h.status, fill: Number(h.fill_count_fp ?? 0), ...recordedFee(h) });
       // Not observed is NOT authoritative proof an order was never filled.
       // Preserve pending risk until fill/order/account history conclusively reconciles it.
     }
@@ -346,7 +368,7 @@ export class Oms {
   /** A read-only recovery scan found the order on Kalshi under our client_order_id: record it (exchange record = proof). */
   recordFound(e: Evidence) {
     if (e.classification !== "found" || !e.order || !this.isAmbiguous(e.cid)) return false;
-    this.write({ cid: e.cid, stage: "found", ticker: e.ticker, orderId: e.order.order_id, status: e.order.status, fill: Number(e.order.fill_count_fp ?? 0), note: "read-only recovery scan" });
+    this.write({ cid: e.cid, stage: "found", ticker: e.ticker, orderId: e.order.order_id, status: e.order.status, fill: Number(e.order.fill_count_fp ?? 0), ...recordedFee(e.order), note: "read-only recovery scan" });
     return true;
   }
 
@@ -369,7 +391,7 @@ export class Oms {
       const hit = (await this.lookup([cid])).find((o) => o.order_id === orderId || o.client_order_id === cid);
       const fill = Number(hit?.fill_count_fp ?? 0);
       if (hit && (hit.status === "executed" || fill > 0)) {
-        this.write({ cid, stage: "found", ticker, orderId, status: hit.status, fill, note: `already filled, cancel skipped · ${why}` });
+        this.write({ cid, stage: "found", ticker, orderId, status: hit.status, fill, ...recordedFee(hit), note: `already filled, cancel skipped · ${why}` });
         return 208;
       }
     } catch {
