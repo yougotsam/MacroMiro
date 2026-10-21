@@ -1,0 +1,12 @@
+{
+ "updatedAt": "2026-10-21T11:19:10Z",
+ "lastRun": null,
+ "runs": 0,
+ "openIncidents": [],
+ "notes": [
+  "PR16 post-print lag: high-impact events inside the tape = 0 (need 30). BLS calendar HTTP 403, 0 events. No BEA/FOMC print from 2026-10-13 through 2026-10-21. No lag and no dollars.",
+  "PR16 settlement lag: 43 crypto closes, 270 settled bucket-rows, 1,328 of 1,793 final-minute rows had no favorite ask. Locked bucket (3-15s left, 46-60 prints) = 6 rows / 5 windows. Not a candidate.",
+  "PR16 early final minute (46-60s left, 0-15 prints): 97 rows / 39 windows, median ask 99.5\u00a2, OOS window-mean +1.7\u00a2. Independent OOS windows = 19 < 30. Not a candidate.",
+  "Fee path: live journal 30 fills, 7 fee-verified, 23 unknown. Cancel-throw fee write is commit de4029b and is not loaded. 07:30 ET window was still open; journal not rewritten."
+ ]
+}
