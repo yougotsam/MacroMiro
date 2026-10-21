@@ -5,6 +5,9 @@ set -u
 cd /workspace || exit 1
 mkdir -p /workspace/desk/logs /workspace/data/loop /workspace/data/desk
 
+# A wiped machine has no journal. Pull the private snapshot before the engine starts. Keep a journal that is already here.
+sh /workspace/scripts/desk-restore.sh >>/workspace/desk/logs/restore.log 2>&1 || echo "$(date -Is) desk-boot: restore failed; starting from whatever is local"
+
 if [ -r /workspace/.grok/secrets/tg_token ]; then
   TELEGRAM_BOT_TOKEN="$(cat /workspace/.grok/secrets/tg_token)"
   export TELEGRAM_BOT_TOKEN
@@ -78,4 +81,7 @@ fi
 echo "$(date -Is) desk-boot: starting desk engine"
 setsid /bin/bash /workspace/scripts/desk-engine.sh >>/workspace/desk/logs/supervisor.log 2>&1 &
 echo "$(date -Is) desk-boot: supervisor $!"
+# Save this boot's ledger after the engine is up. Do not block the desk on the push.
+sh /workspace/scripts/desk-backup.sh >>/workspace/desk/logs/backup.log 2>&1 &
+echo "$(date -Is) desk-boot: backup started"
 exit 0
