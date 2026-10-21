@@ -19,7 +19,7 @@ Every order is a resting bid under the ask. A filled ticket is held to the clock
     title: "Entry",
     body: `The live rule is the desk. This page repeats it.
 
-The day lean does not pick the side. Price sitting above the 20-minute average is not a trade. RSI does not open a trade and does not move the chance. YES can come from a 62%–79% fib pocket plus a wick or a gap, a sweep of the lows that closes back up, a return into a demand candle, price back inside a bull gap, or a sniper price setup on that same side. NO is the mirror. An upper wick is not an entry. The sniper cannot cancel a trade. London and New York are labeled on the shot. They do not turn the scanner off.
+The day lean does not pick the side. Price sitting above the 20-minute average is not a trade. RSI does not open a trade and does not move the chance. YES can come from a 62%–79% fib pocket plus a wick or a gap, a 38%–62% Fibonacci retracement of the last swing with a candle back up, a pullback to a rising 20-minute average, a sweep of the lows that closes back up, a return into a demand candle, price back inside a bull gap, or a sniper price setup on that same side. NO is the mirror. An upper wick is not an entry. None of these set the chance. The settlement math does. The sniper cannot cancel a trade. London and New York are labeled on the shot. They do not turn the scanner off.
 
 Price range: 21¢–72¢. Clock: 5s after open to 30s before close. Both the bid and the ask have to be posted. Size is $1, $2, or $3. One ticket per contract. The day stops at $15 down. A count of losing trades does not stop it. A filled ticket is held to the clock. Resting orders are pulled 30 seconds before settlement.
 

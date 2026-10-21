@@ -22,7 +22,7 @@ import {
   calibratorPath,
 } from "./config";
 import { approve, bucketFor, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
-import { features, featureShift, flowFromBars, minuteBars, sessionTag, technicalSide, type FeatureSnapshot } from "./features";
+import { strategyCall } from "./strategies";
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
@@ -66,6 +66,8 @@ export type SeriesEval = {
   /** round-3 approval (calibrated P + conservative EV); null when the gate never produced a candidate */
   approval: Approval | null;
   timing: { policy: string; bucket: string | null } | null;
+  /** Which added strategy agreed, if the 1-minute list was quiet. Null when none did. */
+  strategy: "FIB_RETRACE" | "EMA_PULLBACK" | null;
 };
 
 export class Evaluator {
@@ -84,7 +86,7 @@ export class Evaluator {
     const out: SeriesEval = {
       series, market: m, book, pBase: null, p: null, shift: 0, sigma: null, spot: null, indexAge: null, feats: null, sniper: null, best: null, shadow: null, macro: null, failed: null, quotes: null,
       tte: m ? (m.closeMs - now) / 1000 : null, shock: 0, lockFrac: 0, guard: this.guard.state(series, now), makerOk: false, makerMinEdge: MAKER_MIN_EDGE, minPrice: 0, budget,
-      approval: null, timing: null,
+      approval: null, timing: null, strategy: null,
     };
     const fail = (g: string) => ((out.failed = g), out);
     if (!exOk) return fail("G0_exchange_paused");
@@ -203,6 +205,14 @@ export class Evaluator {
       tech.side = g.best.side;
       tech.why = `sniper ${sniperSide?.setup ?? "setup"}`;
     }
+    if (tech.side == null) {
+      const call = strategyCall(bars);
+      if (call && call.side === g.best.side) {
+        tech.side = call.side;
+        tech.why = call.why;
+        out.strategy = call.name;
+      }
+    }
     if (tech.side) tech.why = `${tech.why} · ${sessionTag(now)}`;
     if (tech.side == null || tech.side !== g.best.side) {
       out.shadow = g.best;
@@ -279,6 +289,7 @@ export function decisionRowOf(e: SeriesEval, action: Decision["action"], fee: Fe
     order,
     approval: e.approval ? { ok: e.approval.ok, why: e.approval.why, p_cal: e.approval.pCal, ev_per_contract: e.approval.evPerContract, cushion: e.approval.cushion } : null,
     timing: e.timing,
+    strategy: e.strategy,
     confluence: confluenceLog(e.sniper),
     guard: { shock: Number(e.shock.toFixed(4)), maker_min_edge: Number(e.makerMinEdge.toFixed(4)), lock_frac: Number(e.lockFrac.toFixed(3)), move_z: Number(e.guard.z.toFixed(2)), cooling: e.guard.cooling, maker_ok: e.makerOk, budget: e.budget, min_price: e.minPrice },
   };
