@@ -54,6 +54,11 @@ describe("structure must agree before a side is allowed", () => {
     expect(s.why).toBe("liquidity sweep of the lows");
   });
 
+  it("an upper wick is not an entry, even on a demand tag or an overbought fade", () => {
+    expect(technicalSide(frame({ candle: "upper_wick", structure: "demand" }), 100, 101).side).toBeNull();
+    expect(technicalSide(frame({ candle: "upper_wick", rsi14: 74 }), 105, 100).why).toBe("upper wick is not an entry");
+  });
+
   it("a return into demand is a yes", () => {
     const s = technicalSide(frame({ structure: "demand" }), 100, 101);
     expect(s.side).toBe("yes");

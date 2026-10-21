@@ -282,10 +282,12 @@ export function unavailableFlow(): FlowVote {
 
 /** The side the 1-minute structure allows. Null means sit. A settlement chance cannot enter against this. */
 export function technicalSide(f: FeatureSnapshot, spot: number, strike: number): { side: "yes" | "no" | null; why: string } {
+  // Live book, 17–21 Oct: 16 entries with this candle, 2 wins, about −$32. A wick is not a setup.
+  if (f.candle === "upper_wick") return { side: null, why: "upper wick is not an entry" };
   const rsi = f.rsi14;
   const ema20 = f.ema20;
   const bull = f.candle === "bull_engulf" || f.candle === "lower_wick";
-  const bear = f.candle === "bear_engulf" || f.candle === "upper_wick";
+  const bear = f.candle === "bear_engulf";
   const above = spot > strike;
   const below = spot < strike;
   if (rsi != null && rsi < 30 && bull) return { side: "yes", why: `RSI bounce ${rsi.toFixed(0)} + ${f.candle}` };

@@ -215,6 +215,11 @@ export class Evaluator {
       out.best = null;
       return fail("G2_structure_ema_chase");
     }
+    if (feats?.candle === "upper_wick") {
+      out.shadow = g.best;
+      out.best = null;
+      return fail("G2_structure_upper_wick");
+    }
     const intel = intelVerdict(series, g.best.side, now);
     if (!intel.ok) {
       out.shadow = g.best;
