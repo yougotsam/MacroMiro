@@ -25,6 +25,10 @@ describe("stale heartbeat alert", () => {
       const lines = readFileSync(`${dir}/alerts.jsonl`, "utf8").trim().split("\n");
       expect(lines).toHaveLength(1);
       expect(lines[0]).not.toContain("TELEGRAM");
+      const row = JSON.parse(lines[0]) as { subject: string; http: number | null; id: number | null };
+      expect(row.subject).toContain("watchdog stale");
+      expect(row.http).toBeNull();
+      expect(row.id).toBeNull();
       writeFileSync(beat, JSON.stringify({ pid: 1, at: new Date(now).toISOString(), seq: 1, mode: "paper", ddLimitPct: 50, ddLimitStatus: "PENDING_OWNER_DECISION", last: null }));
       const fresh = noteHeartbeat(now + 1_000, {});
       expect(fresh.alerted).toBe(false);

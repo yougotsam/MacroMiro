@@ -44,6 +44,22 @@ proc_matches() {
   return 1
 }
 
+# Recorders append. They are started even when the engine is already up, and they do not send.
+start_loop() {
+  local needle="$1"
+  local script="$2"
+  local log="$3"
+  if proc_matches "$needle" >/dev/null; then
+    echo "$(date -Is) desk-boot: $needle already running"
+    return
+  fi
+  echo "$(date -Is) desk-boot: starting $needle"
+  setsid /bin/bash "$script" >>"$log" 2>&1 &
+}
+
+start_loop "scripts/desk-capture.sh" /workspace/scripts/desk-capture.sh /workspace/desk/logs/macro-capture.log
+start_loop "scripts/desk-book.sh" /workspace/scripts/desk-book.sh /workspace/desk/logs/book-recorder.log
+
 if ! proc_matches "scripts/loop/watchdog.ts" >/dev/null; then
   echo "$(date -Is) desk-boot: starting watchdog"
   setsid "$BUN" scripts/loop/watchdog.ts >>/workspace/desk/logs/watchdog.log 2>&1 &
@@ -85,3 +101,4 @@ echo "$(date -Is) desk-boot: supervisor $!"
 sh /workspace/scripts/desk-backup.sh >>/workspace/desk/logs/backup.log 2>&1 &
 echo "$(date -Is) desk-boot: backup started"
 exit 0
+

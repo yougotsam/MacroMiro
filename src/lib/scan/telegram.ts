@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { logAlert } from "@/lib/desk/alert-log";
 import type { ScanPayload, ScanRow } from "./types";
 
 const TOKEN_FILE = "/workspace/.grok/secrets/tg_token";
@@ -45,6 +46,8 @@ export async function sendTelegram(text: string): Promise<SendOk | SendErr> {
   const t = token();
   const chat = chatId();
   if (!t || !chat) return { ok: false, error: "no telegram secret" };
+  const subject = text.slice(0, 80);
+  const ts = new Date().toISOString();
   try {
     const res = await fetch(`https://api.telegram.org/bot${t}/sendMessage`, {
       method: "POST",
@@ -57,10 +60,17 @@ export async function sendTelegram(text: string): Promise<SendOk | SendErr> {
       signal: AbortSignal.timeout(10_000),
     });
     const json = (await res.json()) as { ok?: boolean; result?: { message_id?: number }; description?: string };
-    if (!json.ok) return { ok: false, error: json.description || `http ${res.status}` };
-    return { ok: true, id: json.result?.message_id ?? 0 };
+    const id = typeof json.result?.message_id === "number" ? json.result.message_id : null;
+    if (!json.ok) {
+      logAlert({ ts, subject, http: res.status, id: null, error: json.description || `http ${res.status}` });
+      return { ok: false, error: json.description || `http ${res.status}` };
+    }
+    logAlert({ ts, subject, http: res.status, id });
+    return { ok: true, id: id ?? 0 };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "send failed" };
+    const error = e instanceof Error ? e.message : "send failed";
+    logAlert({ ts, subject, http: 0, id: null, error });
+    return { ok: false, error };
   }
 }
 
