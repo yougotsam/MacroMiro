@@ -36,6 +36,7 @@ import { armResearch, researchFor, warmResearch } from "./research-cache";
 import { indexSnap, refreshIndexBars } from "./index-bars";
 import { proxyFor, warmProxies, blindSeries } from "./proxy-tape";
 import { refreshWindowBlocks } from "./window-block";
+import { noteHeartbeat } from "./heartbeat-alert";
 
 export type { SeriesEval } from "./evaluator";
 import { Evaluator, decisionRowOf, type SeriesEval } from "./evaluator";
@@ -264,6 +265,10 @@ export class Engine {
       if (tickId % 10 === 0) {
         this.feeds.flush();
         this.feeds.prune(now);
+      }
+      if (tickId % 30 === 0) {
+        const alert = noteHeartbeat(now);
+        if (alert.alerted) log("heartbeat", alert.why);
       }
       if (tickId === 1 || tickId % 300 === 0) this.refreshPromotion();
       if (tickId % 300 === 0) {
