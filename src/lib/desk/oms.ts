@@ -387,19 +387,44 @@ export class Oms {
   }
 
   async cancel(orderId: string, ticker: string, cid: string, why: string) {
+    const filled = (hit: KOrder, note: string) => {
+      const fill = Number(hit.fill_count_fp ?? 0);
+      this.write({ cid, stage: "found", ticker, orderId, status: hit.status, fill, ...recordedFee(hit), note });
+      return 208;
+    };
+    const find = async () => (await this.lookup([cid])).find((o) => o.order_id === orderId || o.client_order_id === cid);
     try {
-      const hit = (await this.lookup([cid])).find((o) => o.order_id === orderId || o.client_order_id === cid);
+      const hit = await find();
       const fill = Number(hit?.fill_count_fp ?? 0);
-      if (hit && (hit.status === "executed" || fill > 0)) {
-        this.write({ cid, stage: "found", ticker, orderId, status: hit.status, fill, ...recordedFee(hit), note: `already filled, cancel skipped · ${why}` });
-        return 208;
-      }
+      if (hit && (hit.status === "executed" || fill > 0)) return filled(hit, `already filled, cancel skipped · ${why}`);
     } catch {
-      /* if the lookup fails, still try the cancel */
+      /* lookup failed: still try the cancel, then look again */
     }
-    const r = this.del ? await this.del(eventCancelPath(orderId, ticker)) : await kalshiDelete(eventCancelPath(orderId, ticker));
-    this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${r.status}` });
-    return r.status;
+    let status = 0;
+    try {
+      const r = this.del ? await this.del(eventCancelPath(orderId, ticker)) : await kalshiDelete(eventCancelPath(orderId, ticker));
+      status = r.status;
+    } catch {
+      status = 0;
+    }
+    if (status >= 200 && status < 300) {
+      this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${status}` });
+      return status;
+    }
+    // http 0 or any non-2xx is not a cancel. The order may already be a fill.
+    try {
+      const hit = await find();
+      const fill = Number(hit?.fill_count_fp ?? 0);
+      if (hit && (hit.status === "executed" || fill > 0)) return filled(hit, `cancel http ${status} but filled · ${why}`);
+      if (hit?.status === "canceled") {
+        this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${status} · exchange shows canceled` });
+        return 200;
+      }
+      this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${status} · not confirmed${hit ? ` · still ${hit.status}` : " · not on the book"}` });
+    } catch {
+      this.write({ cid, stage: "cancel", ticker, orderId, note: `${why} · http ${status} · lookup failed, order not confirmed gone` });
+    }
+    return status;
   }
 }
 

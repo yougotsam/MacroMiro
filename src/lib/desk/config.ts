@@ -87,7 +87,7 @@ export const LOSS_STREAK_PAUSE_MS = 60 * 60_000; // …pause 60 minutes
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
 export const UNCERTAINTY = 0.02; // subtracted from P on every side
-export const PRICE_MIN = 0.04;
+export const PRICE_MIN = 0.21; // at or under 20¢: 1 win, 9 losses, about −$10.58 on the 28-fill journal (in-sample, 17–21 Oct 2026). The rest of the band paid for that hole. Not a fitted model.
 export const PRICE_MAX = 0.72; // a bought contract above 72¢ is a favorite. Those won often and lost money after fees.
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;

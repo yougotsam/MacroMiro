@@ -90,7 +90,8 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     const s = snap({ realizedToday: -10, openWorst: 3, restWorst: 1.2, pendingWorst: 0.4 });
     expect(dayWorstOf(s)).toBeCloseTo(-14.6, 6);
     expect(risk.check(intent({ price: 0.5, count: 2 }), s, NOW).ok).toBe(false);
-    expect(risk.check(intent({ price: 0.2, count: 2 }), s, NOW).ok).toBe(true);
+    expect(risk.check(intent({ price: 0.2, count: 2 }), s, NOW).why).toBe("price band");
+    expect(risk.check(intent({ price: 0.3, count: 1 }), s, NOW).ok).toBe(true);
   });
 
   it("taker fees count toward the order's worst case", () => {
@@ -598,16 +599,21 @@ describe("adverse-selection guard", () => {
     expect(scoreSides(0.7, 0.7, book, fee, { allowMaker: false, allowTaker: true }).best).toBeNull();
   });
 
-  it("never buys under 5¢ in the last minute (maker or taker)", async () => {
+  it("never buys at or under 20¢, and never under 5¢ in the last minute", async () => {
     const { minPriceFor, pullReason } = await G();
     expect(minPriceFor(59)).toBe(0.05);
     expect(minPriceFor(61)).toBe(0);
     const fee = { feeType: "quadratic", multiplier: 1 };
-    // YES ask 4.5¢ (NO bid 95.5¢), P 0.30 → a huge taker edge, still refused in the last minute
+    // YES ask 4.5¢, P 0.30 → a huge taker edge, refused by the 21¢ floor even with minutes left
     const cheap: Book = { yesBid: { price: 0.04, size: 100 }, noBid: { price: 0.955, size: 100 }, ts: NOW };
-    expect(scoreSides(0.3, 0.3, cheap, fee).best?.price).toBeLessThan(0.05);
+    expect(scoreSides(0.3, 0.3, cheap, fee).best).toBeNull();
+    expect(scoreSides(0.3, 0.3, cheap, fee).failed).toBe("no_edge_or_band");
+    const tradable: Book = { yesBid: { price: 0.3, size: 100 }, noBid: { price: 0.65, size: 100 }, ts: NOW };
+    const ok = scoreSides(0.55, 0.55, tradable, fee);
+    expect(ok.best).not.toBeNull();
+    expect(ok.best!.price).toBeGreaterThanOrEqual(0.21);
     const lm = scoreSides(0.3, 0.3, cheap, fee, { allowMaker: true, allowTaker: true, minPrice: minPriceFor(30) });
-    expect(lm.all.every((c) => c.price >= 0.05)).toBe(true);
+    expect(lm.best).toBeNull();
     const calm = { cooling: false, dir: null, z: 0, triggered: false, until: 0 };
     expect(pullReason({ side: "yes", price: 0.045, p: 0.3, failed: null, shock: 0, tte: 30, lockFrac: 0.7, kind: "rti60", guard: calm })).toContain("under 5¢");
   });
