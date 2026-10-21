@@ -1,7 +1,7 @@
 #!/bin/bash
 # Push a tarball of data/desk to the PRIVATE repo yougotsam/MacroMiro-desk-backup.
 # Refuses if that repo is public. Does not add a remote to the public code repo. Does not send an order.
-set -euo pipefail
+set -eu
 cd /workspace
 REPO="yougotsam/MacroMiro-desk-backup"
 
