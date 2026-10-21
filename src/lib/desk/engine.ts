@@ -29,6 +29,9 @@ import { DecisionLedger, type Decision } from "./ledger";
 import { Oms } from "./oms";
 import { RiskEngine, dayWorstOf, switches, type AccountSnapshot } from "./risk";
 import { roomBudget } from "./sizing";
+import { promotionFromDisk } from "./fill-ledger";
+import { promotionSize, setupName } from "./promotion-size";
+import type { PromotionDoc } from "../deskc/promotion";
 import { armResearch, researchFor, warmResearch } from "./research-cache";
 import { indexSnap, refreshIndexBars } from "./index-bars";
 import { proxyFor, warmProxies, blindSeries } from "./proxy-tape";
@@ -79,6 +82,8 @@ export class Engine {
   private known = new Map<string, Resting>();
   errors = 0;
   lastStatus: Record<string, unknown> = {};
+  private promotionDoc: PromotionDoc | null = null;
+  private promotionWhy = "promotion not loaded";
 
   async start() {
     mkdirSync(dataDir(), { recursive: true });
@@ -105,6 +110,7 @@ export class Engine {
     let blocks: string[] = [];
     try { blocks = refreshWindowBlocks(); } catch { /* no log yet: nothing is blocked on a guess */ }
     log("window blocks", blocks.join(" ") || "none");
+    this.refreshPromotion();
     await this.oms.reconcilePending().catch(() => 0);
     log("engine started", MODEL_VERSION, MODEL_REV, "live", switches.live(), "begin", switches.begin(), "arm", switches.arm());
   }
@@ -259,6 +265,7 @@ export class Engine {
         this.feeds.flush();
         this.feeds.prune(now);
       }
+      if (tickId === 1 || tickId % 300 === 0) this.refreshPromotion();
       if (tickId % 300 === 0) {
         void warmResearch().catch((e) => log("research bars", e instanceof Error ? e.message.slice(0, 120) : e));
         try { refreshWindowBlocks(); } catch { /* keep the last set */ }
@@ -314,7 +321,25 @@ export class Engine {
           this.ledger.write(this.decisionRow({ ...x.e, failed: `G2_fast_move_cooldown_${g.dir}` }, "NO_TRADE", x.fee, now2), now2);
           continue;
         }
-        const intent = { product: "event" as const, ticker: x.e.market!.ticker, side: b.side, mode: b.mode, price: b.price, count: b.count, fee: b.fee, tickId, exchangeIndex: x.e.market!.exchangeIndex };
+        const pYes = x.e.p ?? 0;
+        const sized = promotionSize({
+          doc: this.promotionDoc,
+          setup: setupName(b.side, x.e.sniper),
+          flatCount: b.count,
+          flatFee: b.fee,
+          price: b.price,
+          maker: b.mode === "maker",
+          fee: x.fee ?? { feeType: "quadratic", multiplier: 1 },
+          pSide: b.side === "yes" ? pYes : 1 - pYes,
+          flatBudget: budget,
+          bankroll: (this.snapshot?.shard2Cash ?? 0) + (this.snapshot?.shard0Cash ?? 0),
+        });
+        if (sized.count < 1) {
+          this.ledger.write(this.decisionRow({ ...x.e, failed: sized.why }, "NO_TRADE", x.fee, now2), now2);
+          log("NO_TRADE", x.e.market?.ticker ?? x.e.series, sized.why);
+          continue;
+        }
+        const intent = { product: "event" as const, ticker: x.e.market!.ticker, side: b.side, mode: b.mode, price: b.price, count: sized.count, fee: sized.fee, tickId, exchangeIndex: x.e.market!.exchangeIndex };
         const res = await this.oms.submit(intent, this.snapshot);
         if (res.cid) this.dirty = true; // anything that reached the OMS journal forces a fresh snapshot next tick
         if (res.ok) {
@@ -327,7 +352,7 @@ export class Engine {
           this.decisionRow({ ...x.e, failed: res.ok ? null : res.why }, res.ok ? "BUY" : "REFUSED", x.fee, now2, { cid: res.cid, orderId: res.orderId, status: res.status, fill: res.fill, why: res.why }),
           now2,
         );
-        log(res.ok ? "ORDER" : "REFUSED", intent.ticker, b.side, b.mode, b.price, "x", b.count, "edge", b.edge.toFixed(3), "need", (b.mode === "maker" ? x.e.makerMinEdge : 0.04).toFixed(3), res.why, res.status ?? "");
+        log(res.ok ? "ORDER" : "REFUSED", intent.ticker, b.side, b.mode, b.price, "x", sized.count, "edge", b.edge.toFixed(3), "need", (b.mode === "maker" ? x.e.makerMinEdge : 0.04).toFixed(3), res.why, sized.why, res.status ?? "");
       }
       await this.sweepOutcomes(now2);
       const latched = this.risk.latched(now2);
@@ -342,6 +367,7 @@ export class Engine {
         switches: { live: switches.live(), begin: switches.begin(), arm: switches.arm() },
         latched: latched?.latchReason ?? null,
         budget,
+        promotion: this.promotionWhy,
         macro: macroGate(now2),
         strategyReadiness: {
           settlementModel: CALIBRATED_MODEL_APPROVED ? "reviewed" : "unapproved / shadow only",
@@ -378,6 +404,19 @@ export class Engine {
       log("tick error", e instanceof Error ? e.stack?.slice(0, 400) : e);
     } finally {
       this.busy = false;
+    }
+  }
+
+  /** Scorecard from fee-verified journal fills only. Research orders keep the flat budget until a setup is ELIGIBLE. */
+  private refreshPromotion(now = Date.now()) {
+    try {
+      const p = promotionFromDisk(dataDir(), now);
+      this.promotionDoc = p.doc;
+      this.promotionWhy = p.why;
+      log("promotion", p.why);
+    } catch (e) {
+      this.errors += 1;
+      log("promotion", e instanceof Error ? e.message.slice(0, 160) : e);
     }
   }
 }
