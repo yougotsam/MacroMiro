@@ -14,6 +14,8 @@ if [ -r .grok/secrets/tg_chat ]; then
   export TELEGRAM_CHAT_ID
 fi
 node scripts/preview.mjs stop || true
+# Desk respawn is independent of the preview. A desk failure must not skip the app.
+sh /workspace/scripts/desk-boot.sh >>/workspace/desk/logs/boot.log 2>&1 || true
 if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:8080/; then
   exit 0
 fi

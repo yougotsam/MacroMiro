@@ -19,9 +19,17 @@ pick_bun() {
   command -v bun
 }
 BUN="$(pick_bun)"
+if [ -r /workspace/.grok/secrets/tg_token ]; then
+  TELEGRAM_BOT_TOKEN="$(cat /workspace/.grok/secrets/tg_token)"
+  export TELEGRAM_BOT_TOKEN
+fi
+if [ -r /workspace/.grok/secrets/tg_chat ]; then
+  TELEGRAM_CHAT_ID="$(cat /workspace/.grok/secrets/tg_chat)"
+  export TELEGRAM_CHAT_ID
+fi
 while true; do
   echo "$(date -Is) supervisor: starting desk engine"
-  "$BUN" scripts/desk-engine.ts
+  stdbuf -oL -eL "$BUN" scripts/desk-engine.ts
   code=$?
   if [ "$code" -eq 3 ]; then
     echo "$(date -Is) supervisor: another engine is running; waiting 30 s"
