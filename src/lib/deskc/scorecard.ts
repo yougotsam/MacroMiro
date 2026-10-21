@@ -193,3 +193,26 @@ export function walkWindows(rows: DecisionRow[], size: number, embargoMs: number
   if (cur.length) out.push(cur);
   return out;
 }
+
+/**
+ * Does `alt` beat `base` on Brier? Mean of (alt error − base error).
+ * Negative means alt is sharper. `better` needs at least `minN` rows and a one-sided
+ * 95% upper bound that is still negative. A hairline gap does not pass.
+ * This does not send an order.
+ */
+export function brierImproves(
+  rows: { base: number; alt: number; y: 0 | 1 }[],
+  z = 1.6448536269514722,
+  minN = 30,
+): { better: boolean; mean: number; se: number; n: number; baseBrier: number; altBrier: number } {
+  const n = rows.length;
+  const empty = { better: false, mean: Number.NaN, se: Number.NaN, n, baseBrier: Number.NaN, altBrier: Number.NaN };
+  if (n < 2) return empty;
+  const baseBrier = brier(rows.map((r) => ({ p: r.base, y: r.y })));
+  const altBrier = brier(rows.map((r) => ({ p: r.alt, y: r.y })));
+  const d = rows.map((r) => (r.alt - r.y) ** 2 - (r.base - r.y) ** 2);
+  const mean = d.reduce((a, b) => a + b, 0) / n;
+  const v = d.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
+  const se = Math.sqrt(v / n);
+  return { better: n >= minN && mean + z * se < 0, mean, se, n, baseBrier, altBrier };
+}

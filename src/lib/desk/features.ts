@@ -275,6 +275,11 @@ export function flowFromBars(
   return { rvol: vol, cvd: delta, vwap: session, ofi, book, source, stale: !fresh || vol == null, why: gaps.length ? gaps.join(", ") : null };
 }
 
+/** No venue prints a tape for this market. Nulls, not zeros. */
+export function unavailableFlow(): FlowVote {
+  return { rvol: null, cvd: null, vwap: null, ofi: null, book: null, source: null, stale: true, why: "unavailable: no venue tape" };
+}
+
 /** The side the 1-minute structure allows. Null means sit. A settlement chance cannot enter against this. */
 export function technicalSide(f: FeatureSnapshot, spot: number, strike: number): { side: "yes" | "no" | null; why: string } {
   const rsi = f.rsi14;

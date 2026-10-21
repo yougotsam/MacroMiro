@@ -30,6 +30,7 @@ import { intelVerdict } from "./intel-gate";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, sniperCanEnter, type Evidence } from "./sniper";
 import { barsForSniper, flowRefusal, researchFor } from "./research-cache";
+import { blindScore } from "./blind-score";
 import { windowRefusal } from "./window-block";
 import { type MoveGuard, makerWindowOk, minPriceFor, shockOf, type GuardState } from "./guard";
 import type { Market } from "./kalshi-read";
@@ -143,17 +144,26 @@ export class Evaluator {
     const shift = featureShift(pBase, feats.score);
     out.pBase = pBase;
     out.feats = feats;
-    // The settlement chance above uses the index only. The sniper below uses stored Coinbase bars when they exist.
-    const researchBars = bars.map((b) => ({ ...b, t: b.t * 60_000 }));
-    const index15 = resampleComplete(researchBars, 15);
-    const index1h = resampleComplete(researchBars, 60);
-    const chosen = barsForSniper(series, index15, index1h);
-    const stored = researchFor(series);
-    if (out.feats) out.feats = { ...out.feats, flow: flowFromBars(stored?.m15 ?? null, stored?.source ?? null, Boolean(stored?.fresh), stored?.ofi ?? null, stored?.book ?? null) };
-    out.sniper = {
-      long: evaluateSniper(chosen.m15, chosen.h1, "long", macro.available && !macro.blocked),
-      short: evaluateSniper(chosen.m15, chosen.h1, "short", macro.available && !macro.blocked),
-    };
+    // One hour of live index prints cannot build 60 closed 15-minute bars.
+    // Crypto uses stored Coinbase bars when those are long enough.
+    // Gold, silver, oil, and FX use complete bars from the stored settlement prints.
+    // Neither source enters the settlement price. A gap is not filled.
+    const blind = blindScore(series, macro.available && !macro.blocked);
+    if (blind) {
+      if (out.feats) out.feats = { ...out.feats, flow: blind.flow };
+      out.sniper = { long: blind.long, short: blind.short };
+    } else {
+      const researchBars = bars.map((b) => ({ ...b, t: b.t * 60_000 }));
+      const index15 = resampleComplete(researchBars, 15);
+      const index1h = resampleComplete(researchBars, 60);
+      const chosen = barsForSniper(series, index15, index1h);
+      const stored = researchFor(series);
+      if (out.feats) out.feats = { ...out.feats, flow: flowFromBars(stored?.m15 ?? null, stored?.source ?? null, Boolean(stored?.fresh), stored?.ofi ?? null, stored?.book ?? null) };
+      out.sniper = {
+        long: evaluateSniper(chosen.m15, chosen.h1, "long", macro.available && !macro.blocked),
+        short: evaluateSniper(chosen.m15, chosen.h1, "short", macro.available && !macro.blocked),
+      };
+    }
     const flowBlock = flowRefusal(series);
     if (flowBlock) return fail(flowBlock);
     out.shift = shift;
