@@ -43,9 +43,11 @@ describe("structure must agree before a side is allowed", () => {
     expect(s.side).toBe("yes");
     expect(s.why).toBe("fib pocket long");
   });
-  it("an RSI bounce with a bullish wick is yes even below the line", () => {
+  it("an RSI extreme does not open a trade", () => {
     const s = technicalSide(frame({ rsi14: 28, candle: "lower_wick", ema20: 110 }), 90, 100);
-    expect(s.side).toBe("yes");
+    expect(s.side).toBeNull();
+    expect(s.why).toBe("no structure");
+    expect(technicalSide(frame({ rsi14: 74, candle: "bear_engulf" }), 105, 100).side).toBeNull();
   });
 
   it("a sweep of the lows is a yes", () => {

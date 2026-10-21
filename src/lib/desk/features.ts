@@ -103,13 +103,11 @@ export function features(bars: Bar[]): FeatureSnapshot {
       else if (e7 < e14 && e14 < e50) trend = -1;
     }
   }
-  // MOMENTUM: RSI 14 regime + 5-minute return sign
+  // MOMENTUM: last 5 closed minutes of the settlement index. RSI is stored on the snapshot and does not vote.
+  // Extreme RSI has no edge after multiple-testing correction, and this book was using it as a fade and a continuation at the same time.
   let momentum: number | null = null;
-  if (r != null) {
-    const rs = r > 70 ? 0.25 : r < 30 ? -0.25 : clamp1((r - 50) / 20); // extremes = stretched, half credit
-    const rt = ret5 == null ? 0 : clamp1(ret5 / 10);
-    momentum = clamp1(0.5 * rs + 0.5 * rt);
-  }
+  if (ret5 != null) momentum = clamp1(ret5 / 10);
+  else if (r != null) momentum = 0;
   // CANDLE: engulfing / rejection wick on the last closed bar
   let candle: number | null = null;
   let candleTag = "none";
@@ -290,8 +288,6 @@ export function technicalSide(f: FeatureSnapshot, spot: number, strike: number):
   const bear = f.candle === "bear_engulf";
   const above = spot > strike;
   const below = spot < strike;
-  if (rsi != null && rsi < 30 && bull) return { side: "yes", why: `RSI bounce ${rsi.toFixed(0)} + ${f.candle}` };
-  if (rsi != null && rsi > 70 && bear) return { side: "no", why: `RSI fade ${rsi.toFixed(0)} + ${f.candle}` };
   if (f.structure.includes("sweep_low") && !f.structure.includes("sweep_high")) return { side: "yes", why: "liquidity sweep of the lows" };
   if (f.structure.includes("sweep_high") && !f.structure.includes("sweep_low")) return { side: "no", why: "liquidity sweep of the highs" };
   if (f.structure.includes("ote_long")) {
