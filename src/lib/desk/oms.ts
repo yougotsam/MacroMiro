@@ -84,6 +84,11 @@ export const kalshiOrderPost: Transport = async (path, body) => {
   return { status: res.status, body: parsed, text: text.slice(0, 400) };
 };
 
+/** Margin book. Same signed host. The caller has to pass risk.check first. */
+export function postMarginOrder(body: Record<string, unknown>) {
+  return kalshiOrderPost("/trade-api/v2/margin/orders", body);
+}
+
 /** Dollars Kalshi reported on this reply. A missing field stays unknown. Zero is a real zero. */
 function recordedFee(src: unknown): Pick<JournalRow, "fee" | "feeSource"> {
   const top = src && typeof src === "object" ? (src as Record<string, unknown>) : null;

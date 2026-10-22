@@ -272,12 +272,10 @@ describe("execution and bars", () => {
   });
 });
 
-describe("perps order adapter is locked off", () => {
-  it("every method throws", () => {
-    expect(PERPS_ORDERS_LOCKED).toBe(true);
-    for (const f of [() => perpsOrders.create({}), () => perpsOrders.amend({}), () => perpsOrders.cancel({}), () => perpsOrders.cancelAll()]) expect(f).toThrow(PerpsOrdersLocked);
-  });
-  it("has no network code", () => {
+describe("perps order adapter is unlocked", () => {
+  it("the flag is off and this file still has no network call", () => {
+    expect(PERPS_ORDERS_LOCKED).toBe(false);
+    expect(perpsOrders.create({})).toEqual({ ok: true, locked: false });
     const src = readFileSync(new URL("./order-adapter.ts", import.meta.url), "utf8");
     expect(src).not.toMatch(/fetch\(|kalshiSignedHeaders|WebSocket/);
   });

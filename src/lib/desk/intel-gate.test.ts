@@ -22,10 +22,10 @@ describe("spark and alexandria on the send", () => {
     expect(v.ok).toBe(true);
     expect(v.why).toBe("spark_stale");
   });
-  it("does not sit a yes when a fresh brief on bitcoin is bearish", () => {
+  it("sits a yes when a fresh brief on bitcoin is bearish", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("bearish", "btc")), NOW);
-    expect(v.ok).toBe(true);
-    expect(v.why).toBe("spark_bearish_noted");
+    expect(v.ok).toBe(false);
+    expect(v.why).toBe("spark_bearish_veto");
   });
   it("allows the matching side and leaves an unnamed market alone", () => {
     expect(judgeIntel("KXBTC15M", "yes", docs(spark("bullish", "btc")), NOW).ok).toBe(true);
@@ -36,11 +36,18 @@ describe("spark and alexandria on the send", () => {
     expect(v.ok).toBe(true);
     expect(v.why).toBe("spark_bullish_agrees");
   });
-  it("does not sit a yes when a fresh MiroFish read is bearish", () => {
+  it("sits a yes when a fresh MiroFish read is bearish", () => {
     const fish = { stage: "done", probability: 0.2, at: NOW - 60_000 };
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear"), fish), NOW);
-    expect(v.ok).toBe(true);
-    expect(v.why).toContain("mirofish_noted");
+    expect(v.ok).toBe(false);
+    expect(v.why).toContain("mirofish_veto");
+  });
+  it("a quoted spark probability moves the chance by its log-odds", () => {
+    const card = spark("bullish", "btc") as { status: string; at: string; card: { bias: string; asset: string; probability?: number } };
+    card.card.probability = 0.7;
+    const d = sparkLogit("KXBTC15M", docs(card), NOW);
+    expect(d).toBeGreaterThan(0.25);
+    expect(d).toBeLessThanOrEqual(0.8);
   });
   it("a fresh bitcoin brief moves the chance, and Firecrawl scales it", () => {
     const docsOn = { ...docs(spark("bullish", "btc")), firecrawlReady: true };

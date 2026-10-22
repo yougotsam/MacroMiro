@@ -60,7 +60,7 @@ export type AccountSnapshot = {
 };
 
 export type OrderIntent = {
-  product: "event" | "perp";
+  product: "event" | "perp" | "meme";
   ticker: string;
   side: "yes" | "no";
   mode: "maker" | "taker";
@@ -142,6 +142,17 @@ export function switchState(): { live: boolean; begin: boolean; arm: boolean } {
   return { live: switches.live(), begin: switches.begin(), arm: switches.arm() };
 }
 
+export type DayReset = { day: string; baseline: number; at: string };
+
+export function readDayReset(dir: string, day: string): number {
+  try {
+    const j = JSON.parse(readFileSync(`${dir}/day-reset.json`, "utf8")) as DayReset;
+    return j.day === day && Number.isFinite(j.baseline) ? j.baseline : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export class RiskEngine {
   private file: string;
   private dir: string;
@@ -164,7 +175,10 @@ export class RiskEngine {
         /* audit line best effort */
       }
     }
-    return applyOverride(s, o);
+    const base = applyOverride(s, o);
+    const mark = readDayReset(this.dir, base.etDay);
+    if (!mark) return base;
+    return { ...base, realizedToday: Number((base.realizedToday - mark).toFixed(4)) };
   }
 
   read(): RiskFile {
@@ -211,7 +225,7 @@ export class RiskEngine {
     const s = snap ? this.effective(snap, now) : null;
     const orderWorst = Number((o.count * o.price + Math.max(0, o.fee)).toFixed(4));
     const no = (why: string, dayWorst = NaN, projected = NaN): RiskDecision => ({ ok: false, why, dayWorst, projected, orderWorst });
-    if (o.product !== "event") return no("perps disabled");
+    if (o.product !== "event" && o.product !== "perp" && o.product !== "meme") return no("unknown product");
     if (!Number.isInteger(o.count) || o.count < 1 || !Number.isFinite(o.price) ||
         !Number.isFinite(o.fee) || o.fee < 0 || !Number.isInteger(o.tickId)) return no("invalid order parameters");
     if (!this.sw.live()) return no("switch kalshi_live off");
@@ -233,9 +247,11 @@ export class RiskEngine {
     if (this.latched(now)) return no(`daily stop latched: day worst ${dayWorst.toFixed(2)}`, dayWorst);
     const pause = settledLossPauseUntil(s.settledToday, now);
     if (pause > now) return no(`three-loss pause until ${new Date(pause).toISOString()}`, dayWorst);
-    if (!TICKER_RE.test(o.ticker)) return no("ticker not a desk 15m series", dayWorst);
-    if (!(o.count >= 1) || !Number.isFinite(o.price)) return no("bad size/price", dayWorst);
-    if (o.price < PRICE_MIN || o.price > PRICE_MAX) return no("price band", dayWorst);
+    if (o.product === "event" && !TICKER_RE.test(o.ticker)) return no("ticker not a desk 15m series", dayWorst);
+    if (o.product === "perp" && !/^KX[A-Z0-9]+PERP$/.test(o.ticker)) return no("perp ticker", dayWorst);
+    if (o.product === "meme" && !o.ticker.startsWith("MEME-")) return no("meme ticker", dayWorst);
+    if (o.product === "event" && (o.price < PRICE_MIN || o.price > PRICE_MAX)) return no("price band", dayWorst);
+    if (o.product !== "event" && !(o.price > 0)) return no("bad size/price", dayWorst);
     const L = resolveRiskLimits(this.limits, s.accountValueUsd);
     if (!L.ok) return no(`risk limits: ${L.why}`, dayWorst);
     if (orderWorst > L.perOrder + 1e-9) return no(`order cost ${orderWorst.toFixed(2)} > ${L.perOrder}`, dayWorst);

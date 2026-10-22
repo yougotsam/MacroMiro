@@ -243,7 +243,7 @@ export class Evaluator {
     }
     // approval: calibrated P + conservative EV after fees and cushion at the executable price (approval.ts)
     out.approval = approve({ pYesRaw: out.p, calibrator: this.calibrator(now), candidate: g.best, tteSec: left, policy, cushion: APPROVAL_CUSHION });
-    // A CPI or jobs print is on out.macro. It does not sit the ticket. Spark is an input, not an off switch.
+    // A fresh Spark, Alexandria, or scheduled print that disagrees sits the ticket. A stale file does not.
     if (APPROVAL_POLICY_ENFORCED && !out.approval.ok) {
       out.shadow = out.best;
       out.best = null;

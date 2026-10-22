@@ -8,7 +8,9 @@ Scored rules that are on, as of 21 Oct 2026:
 - Three settled losses in a row block new orders for 20 minutes from the third settlement. One loss does not. A win resets the count.
 - A score of 11, or a feature score of at least 0.75, adds a logit of 0.80. A score of 8, or a feature score of at least 0.45, adds 0.45.
 - One contract can still have only one live order. A second series in the same 15 minutes is allowed. The old one-order-per-window rule is off.
-- Spark, Alexandria, and Firecrawl stay on. They add log-odds before the price is judged, and a paid call starts when a ticket clears the gate, at most once every 10 minutes. They are not a screen switch. Every decision row records `intel`.
+- Spark and Alexandria use their own probability. That number moves the chance. If the fresh read disagrees with the ticket, the ticket sits. A missing file does not sit the book.
+- Perpetual orders are unlocked on their own button. One contract still has to cost $3 or less. Meme coins are a third button on the same cash. They do not send until a pool check passes.
+- The status file has `latency.lastMs`, `p50`, `p95`, `p99`, and `late`. A loop over 5 seconds does not send that tick.
 - Half-Kelly cannot spend more than $3, the −$15 day stop, or the $9 open cap.
 
 There is no daily cron. A 7/14/20/50 cross is not an entry by itself. Firecrawl, Spark, and Alexandria are in the chance through `intel-gate.ts`. They still do not send. Meme coins are not on this order path.

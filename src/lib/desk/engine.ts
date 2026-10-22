@@ -74,6 +74,7 @@ export class Engine {
   private busy = false;
   private guardBusy = false;
   private tickId = 0;
+  private tickMs: number[] = [];
   private lastOutcomeSweep = 0;
   private snapshot: AccountSnapshot | null = null;
   private snapAt = 0;
@@ -312,6 +313,12 @@ export class Engine {
         .sort((a, b) => b.e.best!.edge * b.e.best!.count - a.e.best!.edge * a.e.best!.count);
 
       const now2 = Date.now();
+      const loopMs = now2 - t0;
+      this.tickMs.push(loopMs);
+      if (this.tickMs.length > 60) this.tickMs.shift();
+      const sorted = [...this.tickMs].sort((a, b) => a - b);
+      const pct = (p: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))] ?? 0;
+      const late = loopMs > 5_000;
       let sent = 0;
       for (const x of evals) {
         const isPick = ranked[0] === x;
@@ -321,6 +328,10 @@ export class Engine {
           continue;
         }
         const b = x.e.best!;
+        if (late) {
+          this.ledger.write(this.decisionRow({ ...x.e, failed: "G2_loop_late" }, "NO_TRADE", x.fee, now2), now2);
+          continue;
+        }
         const intelRun = onGatePass(x.e.series, b.side, now2);
         const withIntel = (row: ReturnType<typeof this.decisionRow>) => {
           row.intel = { logit: intelRun.logit, controls: intelRun.controls, passed_gate: true, requested: intelRun.requested };
@@ -377,6 +388,7 @@ export class Engine {
         exchangeTradingActive: this.ex.tradingActive,
         switches: { live: switches.live(), begin: switches.begin(), arm: switches.arm() },
         latched: latched?.latchReason ?? null,
+        latency: { lastMs: loopMs, p50: pct(0.5), p95: pct(0.95), p99: pct(0.99), late },
         budget,
         promotion: this.promotionWhy,
         macro: macroGate(now2),
@@ -384,7 +396,7 @@ export class Engine {
           settlementModel: CALIBRATED_MODEL_APPROVED ? "reviewed" : "unapproved / shadow only",
           microstructure: "coinbase signed trades and top of book; a missing tape stays null; gold, silver, oil, and FX log unavailable: no venue tape",
           higherTimeframes: "coinbase 15m and 1h when stored long enough; gold, silver, oil, and FX use complete settlement-index bars, gaps not filled; settlement still uses the index",
-          externalContext: "read after structure. A fresh Spark or MiroFish direction can refuse the other side. A stale or unclear brief does not sit the desk.",
+          externalContext: "Spark and Alexandria move the chance with their probability. A fresh disagreement sits the ticket. A stale file does not.",
         },
         snapshot: this.snapshot ? { dayWorst: dayWorstOf(this.snapshot), realized: this.snapshot.realizedToday, openWorst: this.snapshot.openWorst, restWorst: this.snapshot.restWorst, pendingWorst: this.snapshot.pendingWorst, shard2: this.snapshot.shard2Cash, ageMs: now2 - this.snapAt, override: this.snapshot.override ?? null, roomToStop: Number((dayWorstOf(this.snapshot) - DAILY_STOP_USD).toFixed(4)) } : null,
         resting: [...this.known.values()],

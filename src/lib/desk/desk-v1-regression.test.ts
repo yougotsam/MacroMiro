@@ -117,17 +117,18 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(r2.latched(tomorrow)).toBeNull();
   });
 
-  it("(c) perps are refused by the risk layer and the perp route is gone", async () => {
+  it("(c) a perp under the dollar cap is allowed, and the 15-minute order path does not post it", async () => {
     const dir = tmp("c");
     const risk = new RiskEngine(dir, ON);
-    expect(risk.check(intent({ product: "perp", ticker: "KXBTCPERP" }), snap(), NOW).why).toBe("perps disabled");
+    expect(risk.check(intent({ product: "perp", ticker: "KXBTCPERP" }), snap(), NOW).ok).toBe(true);
     const { t, calls } = spyTransport();
     const r = await new Oms(risk, t, async () => [], dir).submit(intent({ product: "perp", ticker: "KXBTCPERP" }), snap());
     expect(r.ok).toBe(false);
+    expect(r.why).toBe("ticker");
     expect(calls.length).toBe(0);
     const route = readFileSync(new URL("../../routes/api/live/perp-fire.ts", import.meta.url), "utf8");
-    expect(route).toContain("status: 410");
-    expect(route).not.toMatch(/kalshi|order\(/i);
+    expect(route).toContain("liveMarginTransport");
+    expect(route).not.toContain("status: 410");
   });
 
   it("switches, ARM, stale snapshot, other ET day and paused exchange all refuse", () => {

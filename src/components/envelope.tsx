@@ -26,14 +26,15 @@ import type { ScanPayload, ScanRow } from "@/lib/scan/types";
 import { EtClock } from "@/components/et-clock";
 import { cn } from "@/lib/utils";
 
-type Tab = "floor" | "scan" | "print" | "book" | "perps" | "swarm" | "side";
+type Tab = "floor" | "scan" | "print" | "book" | "perps" | "memes" | "swarm" | "side";
 
 const TABS: { id: Tab; label: string; title: string; line: string }[] = [
   { id: "floor", label: "Desk", title: "Desk", line: "Chart, the open ticket, and the last decision." },
   { id: "print", label: "News", title: "News", line: "Calendar and Spark. A note. Not an order." },
   { id: "swarm", label: "Swarm", title: "Swarm", line: "MiroFish. A crowd read. Not an order." },
   { id: "side", label: "Board", title: "Board", line: "Every Kalshi sector. A price rank. Not a win rate." },
-  { id: "perps", label: "Perps", title: "Perps", line: "Kalshi margin. Own cash." },
+  { id: "perps", label: "Perps", title: "Perps", line: "Kalshi margin. Same cash cap." },
+  { id: "memes", label: "Memes", title: "Memes", line: "Separate book. Same cash pool." },
 ];
 
 type Position = {
@@ -809,6 +810,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       {tab === "swarm" ? <SwarmPanel /> : null}
       {tab === "side" ? <SideQuest /> : null}
       {tab === "perps" ? <PerpsLater /> : null}
+      {tab === "memes" ? <MemeBook /> : null}
     </div>
   );
 }
@@ -974,12 +976,34 @@ function PerpsLater() {
           currentPrice={price > 0 ? price : 0}
           balanceUsd={cash}
           dailyPnL={0}
-          onDispatchOrder={() => {
-            setFireNote("Perpetual orders are disabled until their independent margin, fees, bracket safety and risk tests pass.");
+          onDispatchOrder={(cfg: { side: "bid" | "ask"; clipSizeUsd: number }) => {
+            const price = book ? (book.ask || book.bid) : 0;
+            void fetch("/api/live/perp-fire", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ticker: book?.ticker ?? "KXGOLDPERP", side: cfg.side, price, clipUsd: cfg.clipSizeUsd || price }),
+            })
+              .then((r) => r.json())
+              .then((d: { ok?: boolean; why?: string; status?: string }) => {
+                setFireNote(d.ok ? `Sent ${d.status ?? ""}` : (d.why || d.status || "Not sent"));
+              })
+              .catch(() => setFireNote("The margin book did not answer."));
           }}
         />
       </div>
       {fireNote ? <p className="mt-3 text-sm leading-6 text-muted">{fireNote}</p> : null}
+    </section>
+  );
+}
+
+function MemeBook() {
+  return (
+    <section className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+      <p className="font-mono text-xs uppercase tracking-widest text-subtle">Separate book · same cash pool</p>
+      <h2 className="mt-2 font-display text-3xl italic">Meme coins</h2>
+      <p className="mt-3 text-sm leading-6 text-muted">
+        This button is not the 15-minute book and not the perpetual book. A meme order uses the same dollar cap and the same account. Nothing sends until a pair clears a pool check: mint and freeze off, and the order’s own size moves the pool by less than 2%. No pair is approved yet.
+      </p>
     </section>
   );
 }

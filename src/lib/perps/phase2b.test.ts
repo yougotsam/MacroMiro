@@ -56,8 +56,14 @@ describe("management (shared by sim and OMS)", () => {
 
 describe("perps OMS (locked) against an in-memory exchange", () => {
   const i: Intent = { kind: "entry", ticker: "KXBTCPERP", dir: "long", qty: 3, price: 8.36, maker: false, decisionId: "d1" };
-  it("lock is on and the live transport refuses", async () => { expect(PERPS_ORDERS_LOCKED).toBe(true); await expect(lockedTransport.createOrder(toCreateReq(i))).rejects.toThrow(/LOCKED/); });
-  it("default OMS never sends", async () => { const x = new FakeExchange(); const o = new PerpsOms(x); expect((await o.submit(i)).status).toMatch(/LOCKED/); expect(x.orders.length).toBe(0); });
+  it("the stub transport still refuses, and a fake exchange receives a send", async () => {
+    expect(PERPS_ORDERS_LOCKED).toBe(false);
+    await expect(lockedTransport.createOrder(toCreateReq(i))).rejects.toThrow(/LOCKED/);
+    const x = new FakeExchange();
+    const o = new PerpsOms(x);
+    expect((await o.submit(i)).status).toBe("ACK");
+    expect(x.orders.length).toBe(1);
+  });
   it("idempotent cid, duplicate refused, timeout → UNKNOWN → reconcile (no resend)", async () => {
     const x = new FakeExchange(); const o = new PerpsOms(x, null, true);
     expect(clientOrderId(i)).toBe(clientOrderId({ ...i })); x.failNextCreateAfterAccept = true;

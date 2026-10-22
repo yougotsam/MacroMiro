@@ -1,11 +1,12 @@
 /**
  * Firecrawl Spark brief, Alexandria catalog, MiroFish last run, and the desk news calendar.
- * Read from the files those pipelines already write. No network call. A model percent is not the
- * settlement chance. A fresh read is written on the reason. It does not cancel the ticket.
+ * A fresh Spark or Alexandria probability moves the chance. A fresh read that
+ * disagrees with the ticket sits it. A missing or stale file does not.
  */
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
 import type { Series } from "./config";
+import { logit } from "./features";
 import { scheduledVeto, type Scheduled } from "./macro-calendar";
 
 const FRESH_MS = 6 * 3600_000;
@@ -54,7 +55,7 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
   const fish = miroRead(docs.mirofish, now);
   const done = (ok: boolean, why: string, sparkBias: string | null, sparkAsset: string | null, logit: number): IntelVerdict => {
     if (fish.side && fish.side !== side) {
-      return { ok: true, why: `${why}+mirofish_noted`, sparkBias, sparkAsset, mirofish: fish.state, logit };
+      return { ok: false, why: `${why}+mirofish_veto`, sparkBias, sparkAsset, mirofish: fish.state, logit };
     }
     return { ok, why, sparkBias, sparkAsset, mirofish: fish.state, logit };
   };
@@ -62,20 +63,30 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
   const cal = docs.news?.calendar as { thisWeek?: Scheduled[]; nextWeek?: Scheduled[] } | undefined;
   const veto = scheduledVeto([...(cal?.thisWeek ?? []), ...(cal?.nextWeek ?? [])], now);
   const sparkL = sparkLogit(series, docs, now);
-  if (veto.length) return done(true, "news_release_noted", null, null, sparkL);
+  if (veto.length) return done(false, "news_release_veto", null, null, sparkL);
 
   const spark = docs.spark;
   const at = Date.parse(String(spark?.at ?? ""));
-  const card = spark?.card as { bias?: string; asset?: string } | null | undefined;
+  const card = spark?.card as { bias?: string; asset?: string; probability?: number | null } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
   if (!fresh) return done(true, "spark_stale", null, null, sparkL);
 
   const bias = String(card.bias ?? "unclear");
   const asset = String(card.asset ?? "unclear");
+  const sp = Number(card.probability);
+  if (covers(series, asset) && Number.isFinite(sp) && sp > 0 && sp < 1 && ((side === "yes" && sp < 0.42) || (side === "no" && sp > 0.58))) {
+    return done(false, "spark_probability_veto", bias, asset, sparkL);
+  }
   if (bias !== "bullish" && bias !== "bearish") return done(true, "spark_unclear", bias, asset, sparkL);
   if (!covers(series, asset)) return done(true, "spark_other_asset", bias, asset, sparkL);
   const want = bias === "bullish" ? "yes" : "no";
-  if (side !== want) return done(true, `spark_${bias}_noted`, bias, asset, sparkL);
+  if (side !== want) return done(false, `spark_${bias}_veto`, bias, asset, sparkL);
+  const alex = docs.alexandria;
+  const alexAt = Date.parse(String(alex?.at ?? ""));
+  const ap = Number(alex?.probability);
+  if (Number.isFinite(alexAt) && now >= alexAt && now - alexAt < 7 * 24 * 3600_000 && ap >= 0 && ap <= 1 && ((side === "yes" && ap < 0.42) || (side === "no" && ap > 0.58))) {
+    return done(false, "alexandria_veto", bias, asset, sparkL);
+  }
   return done(true, `spark_${bias}_agrees`, bias, asset, sparkL);
 }
 
@@ -84,18 +95,20 @@ export function sparkLogit(series: Series, docs: IntelDocs, now: number): number
   let sparkL = 0;
   const spark = docs.spark;
   const at = Date.parse(String(spark?.at ?? ""));
-  const card = spark?.card as { bias?: string; asset?: string } | null | undefined;
+  const card = spark?.card as { bias?: string; asset?: string; probability?: number | null } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
   if (docs.controls?.spark !== false && fresh && covers(series, String(card?.asset ?? ""))) {
-    if (card?.bias === "bullish") sparkL += 0.25;
-    if (card?.bias === "bearish") sparkL -= 0.25;
+    const sp = Number(card?.probability);
+    if (Number.isFinite(sp) && sp > 0 && sp < 1) sparkL += Math.max(-0.8, Math.min(0.8, logit(sp) - logit(0.5)));
+    else if (card?.bias === "bullish") sparkL += 0.25;
+    else if (card?.bias === "bearish") sparkL -= 0.25;
   }
   let alexL = 0;
   const alex = docs.alexandria;
   const alexAt = Date.parse(String(alex?.at ?? ""));
   const alexFresh = docs.controls?.alexandria !== false && Number.isFinite(alexAt) && now >= alexAt && now - alexAt < 7 * 24 * 3600_000;
   const p = Number(alex?.probability);
-  if (alexFresh && p >= 0 && p <= 1) alexL = Math.max(-0.25, Math.min(0.25, (p - 0.5) * 0.8));
+  if (alexFresh && p >= 0 && p <= 1) alexL = Math.max(-0.8, Math.min(0.8, logit(p) - logit(0.5)));
   let L = sparkL + alexL;
   if (docs.controls?.firecrawl !== false && docs.firecrawlReady === true && L !== 0) L *= 1.25;
   return L;
