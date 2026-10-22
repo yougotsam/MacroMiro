@@ -1,0 +1,11 @@
+{
+ "mode": "RESEARCH_PAPER",
+ "approvedJobs": [
+  "legacy_spark_brief",
+  "news_search",
+  "article_scrape",
+  "mirofish_seeding"
+ ],
+ "setBy": "owner",
+ "setAt": "2026-10-20T01:34:03.530Z"
+}

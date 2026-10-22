@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>evaluator.ts</title><link rel="stylesheet" href="page.css"></head><body><main>
+<p class="kicker">Rule sheet · inventory only · nothing on this page has been changed</p>
+<h1>evaluator.ts</h1><p class="path">/workspace/src/lib/desk/evaluator.ts</p><p class="role">The scan. It builds the ticket, then refuses it before risk ever sees it. These are the fail strings in the file.</p>
+<section class="card"><div class="id">E1</div><h2>Market must be real</h2>
+<p class="now"><span class="label">In the file now</span>Exchange paused. No open market. Strike type must be greater-or-equal. Shard must be 0 or 2 and the price grid must exist. The market's written rule must match the series rule.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep these. They are venue facts.</p></section><section class="card"><div class="id">E2</div><h2>Clocks and feeds</h2>
+<p class="now"><span class="label">In the file now</span>Under 3 seconds left. Index stale. No book. Book stale or from the future by more than half a second. Last 1-minute bar stale. Fewer than 60 volatility samples. Crypto official 60-second accumulator missing or mismatched. Fee unknown or not quadratic.</p>
+<p class="opt"><span class="label">Option, not applied</span>Same clock choices as C12.</p></section><section class="card"><div class="id">E3</div><h2>Fast move and room</h2>
+<p class="now"><span class="label">In the file now</span>If that series is cooling, the reason is G2_fast_move_cooldown plus the direction. If the dollar room is 0 or less, G2_no_room.</p>
+<p class="opt"><span class="label">Option, not applied</span>Same choices as C14 and C3.</p></section><section class="card"><div class="id">E4</div><h2>Timing policy</h2>
+<p class="now"><span class="label">In the file now</span>If the approval timing policy is enforced and this seconds-left bucket is not allowed, the ticket fails. Maker and taker can be turned off per bucket. The minimum price can be raised per bucket.</p>
+<p class="opt"><span class="label">Option, not applied</span>Name the buckets in this sheet once you want them changed. They are not in config.ts.</p></section><section class="card"><div class="id">E5</div><h2>Gate result</h2>
+<p class="now"><span class="label">In the file now</span>If gate.ts returns no candidate, the fail is G2_ plus the gate's reason. In the final seconds, makers can be switched off and the reason says so.</p>
+<p class="opt"><span class="label">Option, not applied</span>Same choices as the gate sheet.</p></section><section class="card"><div class="id">E6</div><h2>Window block</h2>
+<p class="now"><span class="label">In the file now</span>windowRefusal can null the ticket and keep it as a shadow.</p>
+<p class="opt"><span class="label">Option, not applied</span>Read this together with R11. Two window rules exist. Approve one.</p></section><section class="card"><div class="id">E7</div><h2>How a side is allowed in</h2>
+<p class="now"><span class="label">In the file now</span>The structure side must match the priced side. If structure has no side, a sniper setup on that same side can supply it. If structure and sniper are both empty, a fib or EMA call on that same side can supply it. If the reason starts with 20-EMA, it is refused as ema_chase. An upper wick is refused.</p>
+<p class="opt"><span class="label">Option, not applied</span>Let structure be the only way in. Or let the fib and EMA call stay as a way in. Or remove the sniper way in.</p></section><section class="card"><div class="id">E8</div><h2>Intel after structure</h2>
+<p class="now"><span class="label">In the file now</span>intelVerdict runs after the structure check. If it returns not ok, the ticket is a shadow and the reason is G2_ plus its why.</p>
+<p class="opt"><span class="label">Option, not applied</span>This file can refuse. intel-gate.ts, which it calls, currently returns ok. See that sheet.</p></section><section class="card"><div class="id">E9</div><h2>Approval</h2>
+<p class="now"><span class="label">In the file now</span>An approval failure is G3_ plus the reason. If the model is not approved, the reason is G3_uncalibrated_model_shadow_only and the ticket is not sent.</p>
+<p class="opt"><span class="label">Option, not applied</span>The config flag is true, so this shadow path is off unless that flag changes.</p></section><nav><a href="06-oms.html">← oms.ts</a> · <a href="index.html">Index</a> · <a href="08-intelligence.html">intelligence.ts →</a></nav></main></body></html>

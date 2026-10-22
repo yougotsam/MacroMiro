@@ -1,0 +1,4 @@
+{"at":"2026-10-15T08:35:45.528Z","status":{"exchange_active":true,"trading_active":false},"balance":[{"sub":0,"equity":"0.0000","avail":"0.0000"}],"liqThreshold":1}
+{"at":"2026-10-15T08:35:57.553Z","status":{"exchange_active":true,"trading_active":false},"balance":[{"sub":0,"equity":"0.0000","avail":"0.0000"}],"liqThreshold":1}
+{"at":"2026-10-15T09:01:35.575Z","status":{"exchange_active":true,"trading_active":true},"balance":[{"sub":0,"equity":"0.0000","avail":"0.0000"}],"liqThreshold":1}
+{"at":"2026-10-15T09:01:55.597Z","status":{"exchange_active":true,"trading_active":true},"balance":[{"sub":0,"equity":"0.0000","avail":"0.0000"}],"liqThreshold":1}

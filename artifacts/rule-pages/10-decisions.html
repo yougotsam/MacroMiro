@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>decisions.jsonl</title><link rel="stylesheet" href="page.css"></head><body><main>
+<p class="kicker">Rule sheet · inventory only · nothing on this page has been changed</p>
+<h1>decisions.jsonl</h1><p class="path">/workspace/data/desk/decisions.jsonl</p><p class="role">A log, not a rule. 83,553 rows when this sheet was written: 77,979 NO_TRADE, 2,675 CANCEL, 2,235 REFUSED, 664 BUY.</p>
+<section class="card"><div class="id">D1</div><h2>Fields on every row</h2>
+<p class="now"><span class="label">In the file now</span>ts, ticker, series, action, tte_s, close, strike, spot, model, p, p_base, feature_shift, sigma, quotes, book_age_ms, index_age_ms, fee_type, fee_multiplier, features, confluence, timing, guard, approval, depth, order, shadow_best, failed_gate, strategy.</p>
+<p class="opt"><span class="label">Option, not applied</span>Add the rule id that allowed or blocked the row.</p></section><section class="card"><div class="id">D2</div><h2>BUY best object</h2>
+<p class="now"><span class="label">In the file now</span>side, mode, price, count, fee, edge, edge_base.</p>
+<p class="opt"><span class="label">Option, not applied</span>Add the dollars reserved and whether a loss pause was running.</p></section><section class="card"><div class="id">D3</div><h2>The nos</h2>
+<p class="now"><span class="label">In the file now</span>shadow_best holds a ticket that was priced and not sent. failed_gate and strategy say why, when they are filled in.</p>
+<p class="opt"><span class="label">Option, not applied</span>Require strategy on every BUY, and failed_gate on every NO_TRADE.</p></section><section class="card"><div class="id">D4</div><h2>What this file cannot do</h2>
+<p class="now"><span class="label">In the file now</span>It does not refuse, size, or send. A later score has to join it to the order journal and to outcomes.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep it as the record. Do not put a rule in it.</p></section><nav><a href="09-intel-gate.html">← intel-gate.ts</a> · <a href="index.html">Index</a> · <a href="11-order-path.html">ORDER_PATH.md →</a></nav></main></body></html>

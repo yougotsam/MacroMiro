@@ -1,8 +1,14 @@
 # MacroMiro — AURIX-X Kalshi Desk
 
-**Current trading state: LIVE 15-minute tickets.** `CALIBRATED_MODEL_APPROVED` in
-`src/lib/desk/config.ts` is `true`. The desk sends when the switches are on and the risk checks pass.
-Perpetual orders stay off.
+**Current trading state: the 15-minute rule is loaded. It does not send unless `kalshi_live`, `kalshi_begin`, and `desk_arm` are all on.** `CALIBRATED_MODEL_APPROVED` in `src/lib/desk/config.ts` is `true`. As of the 21 Oct 2026 restart the arm file is off. Perpetual orders stay off.
+
+There is no daily cron in this file. The engine is a loop, not a once-a-day close. Running it again does not "give the same daily answer." A 7/14/20/50 average cross is not an entry. A price already past the 20-minute average is refused.
+
+The three rules in the order path, scored on the 29 whole fills through 21 Oct 2026:
+
+- Price 36¢–72¢. Under 36¢ is refused.
+- A settled loss blocks new orders for 20 minutes from the settlement.
+- One live order per 15-minute window, every series.
 
 **Single authoritative trading strategy:** [docs/STRATEGY.md](docs/STRATEGY.md).
 **Repair, test limitations, release criteria:** [docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md](docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md).

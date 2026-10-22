@@ -269,12 +269,14 @@ describe("probability validation (report-only)", () => {
   });
   it("Codex P1 price bands: asks under 4¢, over 72¢, or under 5¢ in the last minute are never booked", () => {
     const low = mk(1, 0.2, 1, { yesBid: 0.02, yesAsk: 0.035, tte: 300 });
-    expect(PRICE_MIN).toBe(0.21);
+    expect(PRICE_MIN).toBe(0.36);
     expect(takerReplay([low], (x) => x.p).trades).toBe(0);
     const lastMin = mk(2, 0.2, 1, { yesBid: 0.03, yesAsk: 0.045, tte: 40 });
     expect(takerReplay([lastMin], (x) => x.p).trades).toBe(0);
-    const inside = { ...lastMin, tte: 300, p: 0.55, pBase: 0.55, yesBid: 0.3, yesAsk: 0.35 };
-    expect(takerReplay([inside], (x) => x.p).trades).toBe(1); // 35¢ with minutes left: inside the band
+    const inside = { ...lastMin, tte: 300, p: 0.55, pBase: 0.55, yesBid: 0.35, yesAsk: 0.4 };
+    expect(takerReplay([inside], (x) => x.p).trades).toBe(1); // 40¢ with minutes left: inside the band
+    const mid = { ...inside, yesBid: 0.3, yesAsk: 0.35 };
+    expect(takerReplay([mid], (x) => x.p).trades).toBe(0); // 35¢ is under the 36¢ floor
     const favorite = mk(4, 0.9, 1, { yesBid: 0.78, yesAsk: 0.8 });
     expect(takerReplay([favorite], (x) => x.p).trades).toBe(0);
     const high = mk(3, 0.999, 1, { yesBid: 0.94, yesAsk: 0.95 });
@@ -376,19 +378,18 @@ describe("round 3 risk limits: −$15 day, $9 total, $3 per ticker, $4 same-dire
     expect(s.tickerWorst![T]).toBeCloseTo(1.5, 6);
   });
 
-  it("$3 per ticker counts open + resting + pending + the new order", () => {
+  it("$3 per ticker still binds, and an open ticket blocks the rest of its window", () => {
     const r = new RiskEngine(tmp("tick3"), ON3);
-    expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [T]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).ok).toBe(true); // 2.90
-    const v = r.check(order({ count: 2, tickId: 2 }), base({ openWorst: 2.1, tickerWorst: { [T]: 2.1 }, correlated: { "crypto|up": 2.1 } }), NOW3);
+    const other = "KXETH15M-26OCT081215-15";
+    expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [other]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).ok).toBe(true);
+    expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [T]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).why).toContain("one live order per window");
+    const v = r.check(order({ count: 7, price: 0.5, tickId: 2 }), base({ openWorst: 0, tickerWorst: {}, correlated: { "crypto|up": 0 } }), NOW3);
     expect(v.ok).toBe(false);
-    expect(v.why).toContain(`ticker exposure ${T} 3.10 > 3`);
-    // another ticker is unaffected
-    expect(r.check(order({ ticker: "KXETH15M-26OCT081200-00", tickId: 3 }), base({ openWorst: 2.1, tickerWorst: { [T]: 2.1 }, correlated: { "crypto|up": 2.1 } }), NOW3).ok).toBe(true);
   });
 
   it("$4 same-direction crypto: BTC + ETH + SOL YES add up; NO side and gold are other groups", () => {
     const r = new RiskEngine(tmp("corr4"), ON3);
-    const s = base({ openWorst: 3.2, tickerWorst: { "KXETH15M-26OCT081200-00": 1.6, "KXSOL15M-26OCT081215-15": 1.6 }, correlated: { "crypto|up": 3.2 } });
+    const s = base({ openWorst: 3.2, tickerWorst: { "KXETH15M-26OCT081230-30": 1.6, "KXSOL15M-26OCT081215-15": 1.6 }, correlated: { "crypto|up": 3.2 } });
     const v = r.check(order({ count: 2 }), s, NOW3);
     expect(v.ok).toBe(false);
     expect(v.why).toContain("correlated crypto|up 4.20 > 4");

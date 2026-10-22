@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>oms.ts</title><link rel="stylesheet" href="page.css"></head><body><main>
+<p class="kicker">Rule sheet · inventory only · nothing on this page has been changed</p>
+<h1>oms.ts</h1><p class="path">/workspace/src/lib/desk/oms.ts</p><p class="role">The only file that signs an order. submit is the door.</p>
+<section class="card"><div class="id">O1</div><h2>Journal health</h2>
+<p class="now"><span class="label">In the file now</span>An unreadable journal row turns sending off until it is reconciled. The row must have a client id, a stage, and a ticker. An intent row must carry a positive worst-case number.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep.</p></section><section class="card"><div class="id">O2</div><h2>Model flag</h2>
+<p class="now"><span class="label">In the file now</span>If the release gate is off, submit returns before risk. The reason says the model is not independently calibrated.</p>
+<p class="opt"><span class="label">Option, not applied</span>Point this at a score file instead of the constant.</p></section><section class="card"><div class="id">O3</div><h2>Limit orders only</h2>
+<p class="now"><span class="label">In the file now</span>Price must be strictly between 0 and 1. Count must be a whole number of at least 1. There is no market order type.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep.</p></section><section class="card"><div class="id">O4</div><h2>Risk first</h2>
+<p class="now"><span class="label">In the file now</span>submit calls risk.check. A no there is returned and nothing is posted.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep that order.</p></section><section class="card"><div class="id">O5</div><h2>Cash move</h2>
+<p class="now"><span class="label">In the file now</span>If the destination shard cannot pay and the other shard can, it posts a transfer first. Source and destination are event_contract. A failed or non-200 move stops the order. If neither shard can pay, it stops.</p>
+<p class="opt"><span class="label">Option, not applied</span>Stop moving cash automatically.</p></section><section class="card"><div class="id">O6</div><h2>Write before send</h2>
+<p class="now"><span class="label">In the file now</span>The intent row is appended before the order is posted. Client id is mm1-, the ticker, y or n, and a rising count.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep the shape so old rows stay readable.</p></section><section class="card"><div class="id">O7</div><h2>Order body</h2>
+<p class="now"><span class="label">In the file now</span>Maker: good till canceled, post only. Taker: immediate or cancel. Both set cancel_order_on_pause.</p>
+<p class="opt"><span class="label">Option, not applied</span>A maker that expires in 30 seconds. Or takers only.</p></section><section class="card"><div class="id">O8</div><h2>After the reply</h2>
+<p class="now"><span class="label">In the file now</span>200 or 201 is a sent row. A resting maker is looked up once, in case it filled immediately. A timeout, a 500, a 0, or a 429 is marked unknown, looked up, and never posted again. Any other status is rejected and not retried.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep the never-repost rule.</p></section><section class="card"><div class="id">O9</div><h2>What counts as still open</h2>
+<p class="now"><span class="label">In the file now</span>Pending risk includes intents whose last stage is still intent or unknown. Once the exchange has acknowledged or cancelled it, the exchange numbers are used instead.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep.</p></section><nav><a href="05-risk.html">← risk.ts</a> · <a href="index.html">Index</a> · <a href="07-evaluator.html">evaluator.ts →</a></nav></main></body></html>

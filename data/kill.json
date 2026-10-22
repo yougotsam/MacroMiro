@@ -2,10 +2,10 @@
   "armed": true,
   "liveEnabled": true,
   "dailyLossUsd": 0,
-  "dailyLossDate": "2026-10-05",
+  "dailyLossDate": "2026-10-21",
   "consecutiveLosses": 0,
   "pauseUntil": 0,
   "stale": false,
   "reason": "feeds ok",
-  "updatedAt": "2026-10-05T12:02:14.552Z"
+  "updatedAt": "2026-10-22T01:09:12.446Z"
 }

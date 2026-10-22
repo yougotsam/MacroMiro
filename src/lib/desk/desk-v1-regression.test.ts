@@ -14,7 +14,7 @@ import { featureShift } from "./features";
 import { scoreSides, sizeFor, type Book } from "./gate";
 import { buildSnapshot, tickerOfCid } from "./kalshi-read";
 import { cidFor, Oms, orderBody, transferBody, type PostResult } from "./oms";
-import { RiskEngine, dayWorstOf, streakPauseUntil, type AccountSnapshot, type OrderIntent } from "./risk";
+import { RiskEngine, dayWorstOf, settledLossPauseUntil, streakPauseUntil, windowAlreadyOpen, type AccountSnapshot, type OrderIntent } from "./risk";
 import { cryptoProb, goldProb, normCdf, sigmaFromPrints } from "./settlement";
 import { roomBudget as roomBudgetTop } from "./sizing";
 import { etDay, etDayStart } from "./time";
@@ -91,7 +91,8 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(dayWorstOf(s)).toBeCloseTo(-14.6, 6);
     expect(risk.check(intent({ price: 0.5, count: 2 }), s, NOW).ok).toBe(false);
     expect(risk.check(intent({ price: 0.2, count: 2 }), s, NOW).why).toBe("price band");
-    expect(risk.check(intent({ price: 0.3, count: 1 }), s, NOW).ok).toBe(true);
+    expect(risk.check(intent({ price: 0.3, count: 1 }), s, NOW).why).toBe("price band");
+    expect(risk.check(intent({ price: 0.4, count: 1 }), s, NOW).ok).toBe(true);
   });
 
   it("taker fees count toward the order's worst case", () => {
@@ -171,13 +172,26 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(r.check({ ...i, tickId: 78 }, snap(), NOW).ok).toBe(true);
   });
 
-  it("a loss count does not pause; the stop is the dollar day limit", () => {
-    const t0 = NOW - 10 * 60_000;
-    const L = (k: number, pnl = -1) => ({ ticker: T, pnl, settledMs: t0 + k * 1000 });
-    expect(streakPauseUntil([L(1), L(2), L(3, 0.5), L(4)])).toBe(0);
-    expect(streakPauseUntil([L(1), L(2), L(3)])).toBe(0);
-    const r = new RiskEngine(tmp("streak"), ON);
-    expect(r.check(intent(), snap({ settledToday: [L(1), L(2), L(3)] }), NOW).ok).toBe(true);
+  it("one settled loss pauses 20 minutes; a loss count is not a second stop", () => {
+    const recent = NOW - 10 * 60_000;
+    const old = NOW - 21 * 60_000;
+    const L = (settledMs: number, pnl = -1) => ({ ticker: T, pnl, settledMs });
+    expect(streakPauseUntil([L(recent), L(recent + 1000), L(recent + 2000)])).toBe(0);
+    expect(settledLossPauseUntil([L(recent)], NOW)).toBe(recent + 20 * 60_000);
+    expect(settledLossPauseUntil([L(old)], NOW)).toBe(0);
+    expect(settledLossPauseUntil([{ ticker: T, pnl: 1, settledMs: recent }], NOW)).toBe(0);
+    const r = new RiskEngine(tmp("loss-pause"), ON);
+    expect(r.check(intent(), snap({ settledToday: [L(recent)] }), NOW).why).toContain("settled loss pause");
+    expect(r.check(intent(), snap({ settledToday: [L(old)] }), NOW).ok).toBe(true);
+  });
+
+  it("a live position in this window blocks every series, and the next window does not", () => {
+    const r = new RiskEngine(tmp("window"), ON);
+    const open = "KXETH15M-26OCT081200-00";
+    expect(windowAlreadyOpen(T, { [open]: 1.5 })).toBe(true);
+    expect(r.check(intent(), snap({ tickerWorst: { [open]: 1.5 } }), NOW).why).toContain("one live order per window");
+    expect(r.check(intent(), snap({ tickerWorst: { "KXETH15M-26OCT081215-15": 1.5 } }), NOW).ok).toBe(true);
+    expect(r.check(intent(), snap({ tickerWorst: { [open]: 0 } }), NOW).ok).toBe(true);
   });
 });
 
@@ -599,19 +613,19 @@ describe("adverse-selection guard", () => {
     expect(scoreSides(0.7, 0.7, book, fee, { allowMaker: false, allowTaker: true }).best).toBeNull();
   });
 
-  it("never buys at or under 20¢, and never under 5¢ in the last minute", async () => {
+  it("never buys under 36¢, and never under 5¢ in the last minute", async () => {
     const { minPriceFor, pullReason } = await G();
     expect(minPriceFor(59)).toBe(0.05);
     expect(minPriceFor(61)).toBe(0);
     const fee = { feeType: "quadratic", multiplier: 1 };
-    // YES ask 4.5¢, P 0.30 → a huge taker edge, refused by the 21¢ floor even with minutes left
+    // YES ask 4.5¢, P 0.30 → a huge taker edge, refused by the 36¢ floor even with minutes left
     const cheap: Book = { yesBid: { price: 0.04, size: 100 }, noBid: { price: 0.955, size: 100 }, ts: NOW };
     expect(scoreSides(0.3, 0.3, cheap, fee).best).toBeNull();
     expect(scoreSides(0.3, 0.3, cheap, fee).failed).toBe("no_edge_or_band");
-    const tradable: Book = { yesBid: { price: 0.3, size: 100 }, noBid: { price: 0.65, size: 100 }, ts: NOW };
+    const tradable: Book = { yesBid: { price: 0.35, size: 100 }, noBid: { price: 0.6, size: 100 }, ts: NOW };
     const ok = scoreSides(0.55, 0.55, tradable, fee);
     expect(ok.best).not.toBeNull();
-    expect(ok.best!.price).toBeGreaterThanOrEqual(0.21);
+    expect(ok.best!.price).toBeGreaterThanOrEqual(0.36);
     const lm = scoreSides(0.3, 0.3, cheap, fee, { allowMaker: true, allowTaker: true, minPrice: minPriceFor(30) });
     expect(lm.best).toBeNull();
     const calm = { cooling: false, dir: null, z: 0, triggered: false, until: 0 };

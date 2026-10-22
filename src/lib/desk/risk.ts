@@ -19,6 +19,7 @@ import {
   MAX_ORDERS_PER_TICKER_WINDOW,
   PRICE_MAX,
   PRICE_MIN,
+  POST_LOSS_PAUSE_MS,
   RISK_LIMITS,
   SECRETS_DIR,
   TICKER_RE,
@@ -81,7 +82,7 @@ export function dayWorstOf(s: AccountSnapshot) {
   return Number((s.realizedToday - s.openWorst - s.restWorst - s.pendingWorst).toFixed(4));
 }
 
-/** 3 consecutive losing settlements → pause 60 minutes from the 3rd loss. Wins reset the streak. */
+/** Kept so a loss count cannot become a back door. It does not fire while LOSS_STREAK_PAUSE is 9999. The live pause is settledLossPauseUntil. */
 export function streakPauseUntil(settled: Settled[]): number {
   const s = [...settled].sort((a, b) => a.settledMs - b.settledMs);
   let streak = 0;
@@ -97,6 +98,36 @@ export function streakPauseUntil(settled: Settled[]): number {
     } else if (x.pnl > 0) streak = 0;
   }
   return until;
+}
+
+/** The window id is the part of the ticker after the series. Every series shares it. */
+export function windowId(ticker: string): string {
+  const i = ticker.indexOf("-");
+  return i < 0 ? ticker : ticker.slice(i + 1);
+}
+
+/** True when this 15-minute window already has open, resting, or pending exposure. A cancelled attempt that left the book does not count. */
+export function windowAlreadyOpen(ticker: string, tickerWorst: Record<string, number>): boolean {
+  const w = windowId(ticker);
+  for (const [t, worst] of Object.entries(tickerWorst)) {
+    if (worst > 0 && windowId(t) === w) return true;
+  }
+  return false;
+}
+
+/**
+ * One settled loss blocks new orders for 20 minutes from that settlement.
+ * The pause starts when the result is known, not when the order was sent.
+ * A later win does not erase a loss that is still inside the 20 minutes.
+ */
+export function settledLossPauseUntil(settled: Settled[], now = Date.now()): number {
+  let lastLoss = 0;
+  for (const x of settled) {
+    if (x.pnl < 0 && Number.isFinite(x.settledMs) && x.settledMs <= now && x.settledMs > lastLoss) lastLoss = x.settledMs;
+  }
+  if (!lastLoss) return 0;
+  const until = lastLoss + POST_LOSS_PAUSE_MS;
+  return until > now ? until : 0;
 }
 
 function flag(name: string) {
@@ -208,6 +239,8 @@ export class RiskEngine {
     if (this.latched(now)) return no(`daily stop latched: day worst ${dayWorst.toFixed(2)}`, dayWorst);
     const pause = streakPauseUntil(s.settledToday);
     if (pause > now) return no(`loss streak pause until ${new Date(pause).toISOString()}`, dayWorst);
+    const lossPause = settledLossPauseUntil(s.settledToday, now);
+    if (lossPause > now) return no(`settled loss pause until ${new Date(lossPause).toISOString()}`, dayWorst);
     if (!TICKER_RE.test(o.ticker)) return no("ticker not a desk 15m series", dayWorst);
     if (!(o.count >= 1) || !Number.isFinite(o.price)) return no("bad size/price", dayWorst);
     if (o.price < PRICE_MIN || o.price > PRICE_MAX) return no("price band", dayWorst);
@@ -219,6 +252,7 @@ export class RiskEngine {
     const exposure = s.openWorst + s.restWorst + s.pendingWorst + orderWorst;
     if (exposure > L.total + 1e-9) return no(`exposure ${exposure.toFixed(2)} > ${L.total}`, dayWorst, projected);
     if (!s.tickerWorst || !s.correlated) return no("per-ticker / correlated exposure unknown", dayWorst, projected);
+    if (windowAlreadyOpen(o.ticker, s.tickerWorst)) return no("one live order per window", dayWorst, projected);
     const tick = (s.tickerWorst[o.ticker] ?? 0) + orderWorst;
     if (!Number.isFinite(tick) || tick > L.perTicker + 1e-9) return no(`ticker exposure ${o.ticker} ${tick.toFixed(2)} > ${L.perTicker}`, dayWorst, projected);
     const corrKey = correlationKey(o.ticker, o.side === "no" ? "down" : "up");

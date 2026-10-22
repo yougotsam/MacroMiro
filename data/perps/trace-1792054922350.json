@@ -1,0 +1,534 @@
+{
+ "at": "2026-10-15T09:02:01.696Z",
+ "enabled": true,
+ "exchangeStatus": {
+  "exchange_active": true,
+  "trading_active": true
+ },
+ "ordersPath": "LOCKED OFF (src/lib/perps/order-adapter.ts)",
+ "sizingProfile": "research-clip/not-a-mandate",
+ "markets": {
+  "KXBTCPERP": {
+   "market": {
+    "ticker": "KXBTCPERP",
+    "title": "0.0001 BTC",
+    "assetClass": "Crypto",
+    "status": "active",
+    "bid": 8.1243,
+    "ask": 8.1246,
+    "last": 8.1246,
+    "contractSize": 0.0001,
+    "tick": 0.0001,
+    "leverageEstimate": 6.3858,
+    "openInterestUsd": 21947948.8074,
+    "volume24hUsd": 473646902.4945,
+    "markPrice": 8.1269,
+    "markTsMs": 1792054921684,
+    "referencePrice": 8.1209,
+    "referenceTsMs": 1792054921000,
+    "exchangeIndex": 0
+   },
+   "bars": {
+    "m1": 2762,
+    "b15": 183,
+    "incomplete15": 5,
+    "h1": 228,
+    "need15": 60,
+    "need1h": 205
+   },
+   "book": {
+    "fetchedAt": "2026-10-15T09:02:01.990Z",
+    "ageMs": 41,
+    "ok": true,
+    "reasons": [],
+    "tradingActive": true
+   },
+   "band": {
+    "minBid": 6.49944,
+    "maxAsk": 9.749640000000001
+   },
+   "funding": {
+    "rate": 0.0001011668030833,
+    "nextMs": 1792065600000,
+    "mark": 8.1269,
+    "computedMs": 1792054921684
+   },
+   "topOfBook": {
+    "bids": [
+     [
+      8.1243,
+      131
+     ],
+     [
+      8.1242,
+      377
+     ],
+     [
+      8.1238,
+      5949
+     ]
+    ],
+    "asks": [
+     [
+      8.1247,
+      131
+     ],
+     [
+      8.1248,
+      377
+     ],
+     [
+      8.125,
+      7000
+     ]
+    ]
+   },
+   "candidates": [
+    {
+     "schema": "perps-candidate/v2",
+     "ticker": "KXBTCPERP",
+     "dir": "long",
+     "observedAt": "2026-10-15T09:02:01.684Z",
+     "receivedAt": "2026-10-15T09:02:01.990Z",
+     "decidedAt": "2026-10-15T09:02:02.031Z",
+     "bookKind": "venue",
+     "executionClass": "venue_book",
+     "setup": "NONE",
+     "score": 3,
+     "scoreState": "VALID_SCORE",
+     "missing": [
+      "signed trade flow"
+     ],
+     "bestBid": 8.1243,
+     "bestAsk": 8.1247,
+     "spreadPct": 0.0049,
+     "entry": 8.1243,
+     "entryType": "post_only_limit",
+     "stop": 8.0369,
+     "stopBasis": "last confirmed 15m swing ± 0.1 ATR",
+     "target1": 8.2117,
+     "target2": 8.299,
+     "qtyContracts": 11,
+     "notionalUsd": 89.37,
+     "riskUsd": 0.9609,
+     "fees": {
+      "makerRate": 0.0002,
+      "takerRate": 0.0012
+     },
+     "funding": {
+      "known": true,
+      "rate8h": 0.0001011668030833,
+      "nextFundingAt": "2026-10-15T12:00:00.000Z",
+      "costPctOverHold": 0.00126
+     },
+     "costs": {
+      "winCostUsd": 0.0369,
+      "lossCostUsd": 0.1273
+     },
+     "payoff": {
+      "winUsdNet": 1.4045,
+      "lossUsdNet": -1.0883,
+      "breakEvenWinRate": 0.4366,
+      "winProbability": null,
+      "winProbabilityState": "UNKNOWN"
+     },
+     "gates": {
+      "data_ready": {
+       "pass": true,
+       "why": "60×15m + 205×1h bars; dropped 1 impossible bars"
+      },
+      "setup": {
+       "pass": false,
+       "why": "NONE"
+      },
+      "confluence_9": {
+       "pass": false,
+       "why": "3/13"
+      },
+      "funding": {
+       "pass": true,
+       "why": "rate 0.0001011668030833 per 8h (longs pay if +)"
+      },
+      "depth": {
+       "pass": true,
+       "why": "1417161 contracts between entry and stop on our side vs need 3×11"
+      },
+      "size": {
+       "pass": true,
+       "why": "11 contracts (risk cap 11, notional cap $100)"
+      },
+      "after_cost_positive_payoff": {
+       "pass": true,
+       "why": "win 1.4045 / loss -1.0883"
+      },
+      "book_fresh": {
+       "pass": true,
+       "why": "fresh, or the caller did not check"
+      },
+      "market_open": {
+       "pass": true,
+       "why": "open, or the caller did not check"
+      }
+     },
+     "decision": "NO_TRADE",
+     "reason": "failed: setup, confluence_9",
+     "timeSource": "caller",
+     "sizingProfile": "research-clip/not-a-mandate"
+    },
+    {
+     "schema": "perps-candidate/v2",
+     "ticker": "KXBTCPERP",
+     "dir": "short",
+     "observedAt": "2026-10-15T09:02:01.684Z",
+     "receivedAt": "2026-10-15T09:02:01.990Z",
+     "decidedAt": "2026-10-15T09:02:02.031Z",
+     "bookKind": "venue",
+     "executionClass": "venue_book",
+     "setup": "TREND_PULLBACK",
+     "score": 4,
+     "scoreState": "VALID_SCORE",
+     "missing": [
+      "wrong premium/discount location",
+      "signed trade flow"
+     ],
+     "bestBid": 8.1243,
+     "bestAsk": 8.1247,
+     "spreadPct": 0.0049,
+     "entry": 8.1247,
+     "entryType": "post_only_limit",
+     "stop": 8.1701,
+     "stopBasis": "last confirmed 15m swing ± 0.1 ATR",
+     "target1": 8.0793,
+     "target2": 8.034,
+     "qtyContracts": 12,
+     "notionalUsd": 97.5,
+     "riskUsd": 0.5443,
+     "fees": {
+      "makerRate": 0.0002,
+      "takerRate": 0.0012
+     },
+     "funding": {
+      "known": true,
+      "rate8h": 0.0001011668030833,
+      "nextFundingAt": "2026-10-15T12:00:00.000Z",
+      "costPctOverHold": -0.00126
+     },
+     "costs": {
+      "winCostUsd": 0.0378,
+      "lossCostUsd": 0.1365
+     },
+     "payoff": {
+      "winUsdNet": 0.7787,
+      "lossUsdNet": -0.6808,
+      "breakEvenWinRate": 0.4665,
+      "winProbability": null,
+      "winProbabilityState": "UNKNOWN"
+     },
+     "gates": {
+      "data_ready": {
+       "pass": true,
+       "why": "60×15m + 205×1h bars; dropped 1 impossible bars"
+      },
+      "setup": {
+       "pass": true,
+       "why": "TREND_PULLBACK"
+      },
+      "confluence_9": {
+       "pass": false,
+       "why": "4/13"
+      },
+      "funding": {
+       "pass": true,
+       "why": "rate 0.0001011668030833 per 8h (shorts pay if −)"
+      },
+      "depth": {
+       "pass": true,
+       "why": "1425547 contracts between entry and stop on our side vs need 3×12"
+      },
+      "size": {
+       "pass": true,
+       "why": "12 contracts (risk cap 22, notional cap $100)"
+      },
+      "after_cost_positive_payoff": {
+       "pass": true,
+       "why": "win 0.7787 / loss -0.6808"
+      },
+      "book_fresh": {
+       "pass": true,
+       "why": "fresh, or the caller did not check"
+      },
+      "market_open": {
+       "pass": true,
+       "why": "open, or the caller did not check"
+      }
+     },
+     "decision": "NO_TRADE",
+     "reason": "failed: confluence_9",
+     "timeSource": "caller",
+     "sizingProfile": "research-clip/not-a-mandate"
+    }
+   ]
+  },
+  "KXGOLDPERP": {
+   "market": {
+    "ticker": "KXGOLDPERP",
+    "title": "Gold",
+    "assetClass": "Metals",
+    "status": "active",
+    "bid": 4.1535,
+    "ask": 4.1542,
+    "last": 4.1538,
+    "contractSize": 0.001,
+    "tick": 0.0001,
+    "leverageEstimate": 15.2735,
+    "openInterestUsd": 5482176.9324,
+    "volume24hUsd": 52570193.499,
+    "markPrice": 4.1538,
+    "markTsMs": 1792054921684,
+    "referencePrice": 4.1533,
+    "referenceTsMs": 1792054921000,
+    "exchangeIndex": 1
+   },
+   "bars": {
+    "m1": 2762,
+    "b15": 183,
+    "incomplete15": 2,
+    "h1": 229,
+    "need15": 60,
+    "need1h": 205
+   },
+   "book": {
+    "fetchedAt": "2026-10-15T09:02:02.325Z",
+    "ageMs": 20,
+    "ok": true,
+    "reasons": [],
+    "tradingActive": true
+   },
+   "band": {
+    "minBid": 3.3228000000000004,
+    "maxAsk": 4.985040000000001
+   },
+   "funding": {
+    "rate": 0.0001293510741922,
+    "nextMs": 1792072800000,
+    "mark": 4.1538,
+    "computedMs": 1792054921684
+   },
+   "topOfBook": {
+    "bids": [
+     [
+      4.1535,
+      361
+     ],
+     [
+      4.153,
+      25000
+     ],
+     [
+      4.1529,
+      25000
+     ]
+    ],
+    "asks": [
+     [
+      4.1542,
+      7309
+     ],
+     [
+      4.1546,
+      20125
+     ],
+     [
+      4.1547,
+      25000
+     ]
+    ]
+   },
+   "candidates": [
+    {
+     "schema": "perps-candidate/v2",
+     "ticker": "KXGOLDPERP",
+     "dir": "long",
+     "observedAt": "2026-10-15T09:02:01.684Z",
+     "receivedAt": "2026-10-15T09:02:02.325Z",
+     "decidedAt": "2026-10-15T09:02:02.345Z",
+     "bookKind": "venue",
+     "executionClass": "venue_book",
+     "setup": "NONE",
+     "score": 1,
+     "scoreState": "VALID_SCORE",
+     "missing": [
+      "signed trade flow"
+     ],
+     "bestBid": 4.1535,
+     "bestAsk": 4.1542,
+     "spreadPct": 0.0169,
+     "entry": 4.1535,
+     "entryType": "post_only_limit",
+     "stop": 4.1408,
+     "stopBasis": "last confirmed 15m swing ± 0.1 ATR",
+     "target1": 4.1662,
+     "target2": 4.1789,
+     "qtyContracts": 24,
+     "notionalUsd": 99.68,
+     "riskUsd": 0.3049,
+     "fees": {
+      "makerRate": 0.000012,
+      "takerRate": 0.000072
+     },
+     "funding": {
+      "known": true,
+      "rate8h": 0.0001293510741922,
+      "nextFundingAt": "2026-10-15T14:00:00.000Z",
+      "costPctOverHold": 0.00162
+     },
+     "costs": {
+      "winCostUsd": 0.004,
+      "lossCostUsd": 0.0124
+     },
+     "payoff": {
+      "winUsdNet": 0.4533,
+      "lossUsdNet": -0.3173,
+      "breakEvenWinRate": 0.4118,
+      "winProbability": null,
+      "winProbabilityState": "UNKNOWN"
+     },
+     "gates": {
+      "data_ready": {
+       "pass": true,
+       "why": "60×15m + 205×1h bars; dropped 5 impossible bars"
+      },
+      "setup": {
+       "pass": false,
+       "why": "NONE"
+      },
+      "confluence_9": {
+       "pass": false,
+       "why": "1/13"
+      },
+      "funding": {
+       "pass": true,
+       "why": "rate 0.0001293510741922 per 8h (longs pay if +)"
+      },
+      "depth": {
+       "pass": true,
+       "why": "465037 contracts between entry and stop on our side vs need 3×24"
+      },
+      "size": {
+       "pass": true,
+       "why": "24 contracts (risk cap 78, notional cap $100)"
+      },
+      "after_cost_positive_payoff": {
+       "pass": true,
+       "why": "win 0.4533 / loss -0.3173"
+      },
+      "book_fresh": {
+       "pass": true,
+       "why": "fresh, or the caller did not check"
+      },
+      "market_open": {
+       "pass": true,
+       "why": "open, or the caller did not check"
+      }
+     },
+     "decision": "NO_TRADE",
+     "reason": "failed: setup, confluence_9",
+     "timeSource": "caller",
+     "sizingProfile": "research-clip/not-a-mandate"
+    },
+    {
+     "schema": "perps-candidate/v2",
+     "ticker": "KXGOLDPERP",
+     "dir": "short",
+     "observedAt": "2026-10-15T09:02:01.684Z",
+     "receivedAt": "2026-10-15T09:02:02.325Z",
+     "decidedAt": "2026-10-15T09:02:02.345Z",
+     "bookKind": "venue",
+     "executionClass": "venue_book",
+     "setup": "NONE",
+     "score": 5,
+     "scoreState": "VALID_SCORE",
+     "missing": [
+      "wrong premium/discount location",
+      "signed trade flow"
+     ],
+     "bestBid": 4.1535,
+     "bestAsk": 4.1542,
+     "spreadPct": 0.0169,
+     "entry": 4.1542,
+     "entryType": "post_only_limit",
+     "stop": 4.1625,
+     "stopBasis": "last confirmed 15m swing ± 0.1 ATR",
+     "target1": 4.1459,
+     "target2": 4.1376,
+     "qtyContracts": 24,
+     "notionalUsd": 99.7,
+     "riskUsd": 0.1993,
+     "fees": {
+      "makerRate": 0.000012,
+      "takerRate": 0.000072
+     },
+     "funding": {
+      "known": true,
+      "rate8h": 0.0001293510741922,
+      "nextFundingAt": "2026-10-15T14:00:00.000Z",
+      "costPctOverHold": -0.00162
+     },
+     "costs": {
+      "winCostUsd": 0.0008,
+      "lossCostUsd": 0.0092
+     },
+     "payoff": {
+      "winUsdNet": 0.2981,
+      "lossUsdNet": -0.2084,
+      "breakEvenWinRate": 0.4115,
+      "winProbability": null,
+      "winProbabilityState": "UNKNOWN"
+     },
+     "gates": {
+      "data_ready": {
+       "pass": true,
+       "why": "60×15m + 205×1h bars; dropped 5 impossible bars"
+      },
+      "setup": {
+       "pass": false,
+       "why": "NONE"
+      },
+      "confluence_9": {
+       "pass": false,
+       "why": "5/13"
+      },
+      "funding": {
+       "pass": true,
+       "why": "rate 0.0001293510741922 per 8h (shorts pay if −)"
+      },
+      "depth": {
+       "pass": true,
+       "why": "437687 contracts between entry and stop on our side vs need 3×24"
+      },
+      "size": {
+       "pass": true,
+       "why": "24 contracts (risk cap 120, notional cap $100)"
+      },
+      "after_cost_positive_payoff": {
+       "pass": true,
+       "why": "win 0.2981 / loss -0.2084"
+      },
+      "book_fresh": {
+       "pass": true,
+       "why": "fresh, or the caller did not check"
+      },
+      "market_open": {
+       "pass": true,
+       "why": "open, or the caller did not check"
+      }
+     },
+     "decision": "NO_TRADE",
+     "reason": "failed: setup, confluence_9",
+     "timeSource": "caller",
+     "sizingProfile": "research-clip/not-a-mandate"
+    }
+   ]
+  }
+ }
+}

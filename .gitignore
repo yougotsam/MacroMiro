@@ -8,4 +8,8 @@ test-results/
 .env
 .env.local
 backups/
+# 123MB and still growing. GitHub rejects a file over 100MB. The snapshot is decisions.jsonl.gz.
+data/desk/decisions.jsonl
+*.pid
+*.tmp
 

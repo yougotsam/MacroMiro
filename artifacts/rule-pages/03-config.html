@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>config.ts</title><link rel="stylesheet" href="page.css"></head><body><main>
+<p class="kicker">Rule sheet · inventory only · nothing on this page has been changed</p>
+<h1>config.ts</h1><p class="path">/workspace/src/lib/desk/config.ts</p><p class="role">Every live number. Other files read these. Changing a number here changes the desk.</p>
+<section class="card"><div class="id">C1</div><h2>Markets</h2>
+<p class="now"><span class="label">In the file now</span>11 series: BTC, ETH, SOL, XRP, DOGE, gold, silver, oil, GBP, EUR, JPY. The ticker must match that list.</p>
+<p class="opt"><span class="label">Option, not applied</span>Drop a name, or add a name. One list.</p></section><section class="card"><div class="id">C2</div><h2>How each market settles</h2>
+<p class="now"><span class="label">In the file now</span>Crypto uses a 60-second index average. Gold, silver, oil, GBP, EUR, and JPY use the last 1-minute print. Decimal places are set per series.</p>
+<p class="opt"><span class="label">Option, not applied</span>Leave this. It is the venue's rule.</p></section><section class="card"><div class="id">C3</div><h2>Dollar caps</h2>
+<p class="now"><span class="label">In the file now</span>Day stop −$15. Everything open ≤ $9. One ticker ≤ $3. Same-direction crypto ≤ $4. One order ≤ $3. Mode is dollars. A percent mode is written and switched off. An unknown account value in percent mode refuses every order.</p>
+<p class="opt"><span class="label">Option, not applied</span>Turn percent mode on, or write smaller dollar numbers.</p></section><section class="card"><div class="id">C4</div><h2>Approval flags</h2>
+<p class="now"><span class="label">In the file now</span>CALIBRATED_MODEL_APPROVED is true. ENABLE_RISK_OVERRIDES is false. A file on disk cannot reset the day's loss. Model version string is aurix-x-v1.2-settlement-correctness-2026-10-09. Guard revision is guard-1.</p>
+<p class="opt"><span class="label">Option, not applied</span>Tie the approved flag to a score, instead of a constant set to true.</p></section><section class="card"><div class="id">C5</div><h2>How many orders</h2>
+<p class="now"><span class="label">In the file now</span>One order per contract. One order per engine tick.</p>
+<p class="opt"><span class="label">Option, not applied</span>Allow a second only after the first is flat, or leave both at one.</p></section><section class="card"><div class="id">C6</div><h2>Loss count</h2>
+<p class="now"><span class="label">In the file now</span>LOSS_STREAK_PAUSE is 9999. A count of losses is not a stop. The unused pause length next to it is 60 minutes.</p>
+<p class="opt"><span class="label">Option, not applied</span>Set the count to 2 or 3, or delete the unused constant.</p></section><section class="card"><div class="id">C7</div><h2>Settled-loss pause</h2>
+<p class="now"><span class="label">In the file now</span>POST_LOSS_PAUSE_MS is 20 minutes, measured from the settlement.</p>
+<p class="opt"><span class="label">Option, not applied</span>0, 15, 45 minutes, or the rest of that window only.</p></section><section class="card"><div class="id">C8</div><h2>Chance haircut</h2>
+<p class="now"><span class="label">In the file now</span>UNCERTAINTY is 0.02. Two cents come off the chance on every side. The chance is never stated above 0.98.</p>
+<p class="opt"><span class="label">Option, not applied</span>0, 1¢, or 2¢.</p></section><section class="card"><div class="id">C9</div><h2>Price band</h2>
+<p class="now"><span class="label">In the file now</span>PRICE_MIN is 0.36. PRICE_MAX is 0.72.</p>
+<p class="opt"><span class="label">Option, not applied</span>A different floor, a different ceiling, or no band.</p></section><section class="card"><div class="id">C10</div><h2>Edge floors</h2>
+<p class="now"><span class="label">In the file now</span>Maker at least 1¢. Taker at least 4¢. The model with no chart input must show at least 1¢ on its own.</p>
+<p class="opt"><span class="label">Option, not applied</span>Maker only, taker only, or different cents.</p></section><section class="card"><div class="id">C11</div><h2>Chart cap</h2>
+<p class="now"><span class="label">In the file now</span>The chart may move the chance by at most 4 points. It cannot flip the side.</p>
+<p class="opt"><span class="label">Option, not applied</span>0, so the chart cannot move the chance. Or a larger cap.</p></section><section class="card"><div class="id">C12</div><h2>Clock</h2>
+<p class="now"><span class="label">In the file now</span>MIN_SECONDS_LEFT is 3. Book older than 3 seconds is refused. Index older than 5 seconds. Last closed 1-minute bar older than 90 seconds. Exchange status older than 15 seconds. Volatility needs 60 samples, which is 10 minutes of 10-second returns.</p>
+<p class="opt"><span class="label">Option, not applied</span>30 seconds left, 60 seconds left, or the last 90 seconds only.</p></section><section class="card"><div class="id">C13</div><h2>Fee constant</h2>
+<p class="now"><span class="label">In the file now</span>TAKER_FEE_RATE is 0.07, times the live series multiplier.</p>
+<p class="opt"><span class="label">Option, not applied</span>Leave it. It is the venue's number.</p></section><section class="card"><div class="id">C14</div><h2>Fast move</h2>
+<p class="now"><span class="label">In the file now</span>A move over 3 standard deviations across 2, 3, 4, or 5 seconds cools that series for 10 seconds, and until the 5-second move is back under 1.5 standard deviations.</p>
+<p class="opt"><span class="label">Option, not applied</span>A longer cool-off, or none.</p></section><section class="card"><div class="id">C15</div><h2>Where cash sits</h2>
+<p class="now"><span class="label">In the file now</span>ORDER_SHARD is 2. Every market spends that one pile. Currencies are filed on shard 0 by the order path, which can move cash over.</p>
+<p class="opt"><span class="label">Option, not applied</span>Stop the automatic move, or leave it.</p></section><nav><a href="02-strategy.html">← docs/STRATEGY.md</a> · <a href="index.html">Index</a> · <a href="04-gate.html">gate.ts →</a></nav></main></body></html>

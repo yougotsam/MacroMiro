@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>intelligence.ts</title><link rel="stylesheet" href="page.css"></head><body><main>
+<p class="kicker">Rule sheet · inventory only · nothing on this page has been changed</p>
+<h1>intelligence.ts</h1><p class="path">/workspace/src/lib/desk/intelligence.ts</p><p class="role">Reads four files and the news calendar. Returns a record. Does not price and does not send.</p>
+<section class="card"><div class="id">I1</div><h2>What it reads</h2>
+<p class="now"><span class="label">In the file now</span>mirofish-latest.json, spark-latest.json, alexandria-latest.json, desk-news.json, and the modified time of mirofish-seed.md. A missing or broken file becomes a null, not a crash.</p>
+<p class="opt"><span class="label">Option, not applied</span>Stop reading one of them, or add a file.</p></section><section class="card"><div class="id">I2</div><h2>MiroFish</h2>
+<p class="now"><span class="label">In the file now</span>Stage defaults to unavailable. Age is now minus the file's at, when that number is finite. Probability is kept only if it is between 0 and 1. usableForSettlement is always false.</p>
+<p class="opt"><span class="label">Option, not applied</span>Let that probability move the chance by a cap. Or drop the field.</p></section><section class="card"><div class="id">I3</div><h2>Spark</h2>
+<p class="now"><span class="label">In the file now</span>Status and time are copied. Fresh is true only when the timestamp is a real time, not in the future, and younger than 6 hours.</p>
+<p class="opt"><span class="label">Option, not applied</span>A stale Spark becomes a hard no. Right now it is only a label.</p></section><section class="card"><div class="id">I4</div><h2>Alexandria and Firecrawl</h2>
+<p class="now"><span class="label">In the file now</span>Alexandria is the number of tools in the file. Firecrawl is ready when the seed file exists and is younger than 24 hours.</p>
+<p class="opt"><span class="label">Option, not applied</span>Require the catalog to be non-empty before a ticket, or leave it as a count.</p></section><section class="card"><div class="id">I5</div><h2>Macro list</h2>
+<p class="now"><span class="label">In the file now</span>scheduledVeto runs on this week's and next week's calendar events. macroVeto is true when that list is not empty. The event names are returned. This function does not itself cancel an order.</p>
+<p class="opt"><span class="label">Option, not applied</span>Make an empty or stale calendar a refuse. Or leave the veto to the calendar function.</p></section><nav><a href="07-evaluator.html">← evaluator.ts</a> · <a href="index.html">Index</a> · <a href="09-intel-gate.html">intel-gate.ts →</a></nav></main></body></html>

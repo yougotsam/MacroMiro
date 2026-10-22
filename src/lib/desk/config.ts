@@ -80,14 +80,16 @@ export const MAX_TICKER_WORST_USD = RISK_LIMITS.usd.perTicker;
  * window; gold is its own group (exposure.ts). Approved $4.
  */
 export const MAX_CORRELATED_WORST_USD = RISK_LIMITS.usd.correlated;
-export const MAX_ORDERS_PER_TICKER_WINDOW = 3;
+export const MAX_ORDERS_PER_TICKER_WINDOW = 1; // one send per contract. A second fill on the same ticker was a loss. The window rule below is the tighter one.
 export const MAX_ORDERS_PER_TICK = 1;
-export const LOSS_STREAK_PAUSE = 9999; // loss count is not a stop. The stop is the dollar day limit.
-export const LOSS_STREAK_PAUSE_MS = 60 * 60_000; // …pause 60 minutes
+export const LOSS_STREAK_PAUSE = 9999; // a count of losses is not a separate stop. One settled loss pauses the clock below.
+export const LOSS_STREAK_PAUSE_MS = 60 * 60_000;
+/** After a losing settlement, no new order for 20 minutes. Measured on the 29 whole fills through 21 Oct 2026, using settlement time (no lookahead): the 7 it would have skipped were −$13.46. It is not a 3-loss streak. */
+export const POST_LOSS_PAUSE_MS = 20 * 60_000;
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
 export const UNCERTAINTY = 0.02; // subtracted from P on every side
-export const PRICE_MIN = 0.21; // at or under 20¢: 1 win, 9 losses, about −$10.58 on the 28-fill journal (in-sample, 17–21 Oct 2026). The rest of the band paid for that hole. Not a fitted model.
+export const PRICE_MIN = 0.36; // 21¢–35¢ on the same 29 fills: 2 wins, about −$7.63. 36¢–72¢: 11 fills, about +$1.83. In-sample. The floor used to be 21¢.
 export const PRICE_MAX = 0.72; // a bought contract above 72¢ is a favorite. Those won often and lost money after fees.
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;

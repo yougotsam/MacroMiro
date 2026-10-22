@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gate.ts</title><link rel="stylesheet" href="page.css"></head><body><main>
+<p class="kicker">Rule sheet · inventory only · nothing on this page has been changed</p>
+<h1>gate.ts</h1><p class="path">/workspace/src/lib/desk/gate.ts</p><p class="role">Prices YES and NO against the book. Does not send.</p>
+<section class="card"><div class="id">G1</div><h2>Two sides</h2>
+<p class="now"><span class="label">In the file now</span>YES and NO are scored separately against executable prices.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep both sides, or score only the side already in the lead.</p></section><section class="card"><div class="id">G2</div><h2>Edge formula</h2>
+<p class="now"><span class="label">In the file now</span>Edge = side chance − 0.02 − price − fee per contract. There is a second edge that uses the chance before any chart shift.</p>
+<p class="opt"><span class="label">Option, not applied</span>Drop the 0.02. Or add a spread penalty.</p></section><section class="card"><div class="id">G3</div><h2>Maker</h2>
+<p class="now"><span class="label">In the file now</span>Posts one tick above that side's bid, strictly under the ask, on the market's own price grid when the grid is supplied. Fee treated as zero on a quadratic series. Edge must be at least 1¢, or higher if a volatility shock raises the floor.</p>
+<p class="opt"><span class="label">Option, not applied</span>Join the bid. Or post no makers.</p></section><section class="card"><div class="id">G4</div><h2>Taker</h2>
+<p class="now"><span class="label">In the file now</span>Pays that side's ask. Count is the lesser of the budget and the size sitting on that level. Edge must be at least 4¢.</p>
+<p class="opt"><span class="label">Option, not applied</span>A limit one tick under the ask. Or no takers.</p></section><section class="card"><div class="id">G5</div><h2>The chart cannot create the trade</h2>
+<p class="now"><span class="label">In the file now</span>Both edges must clear. The chart-adjusted one, and the raw model one.</p>
+<p class="opt"><span class="label">Option, not applied</span>Raw model only. Or let the chart be enough on its own.</p></section><section class="card"><div class="id">G6</div><h2>Bad inputs</h2>
+<p class="now"><span class="label">In the file now</span>A chance outside 0 to 1, a broken quote, a non-positive size, or a fee that is not quadratic: no ticket. An empty book is no_quote.</p>
+<p class="opt"><span class="label">Option, not applied</span>Keep. A missing fee stays a no.</p></section><section class="card"><div class="id">G7</div><h2>Size</h2>
+<p class="now"><span class="label">In the file now</span>The most whole contracts whose price plus fee fit in the budget. Budget defaults to $3. Under 1 contract is recorded as no room.</p>
+<p class="opt"><span class="label">Option, not applied</span>Always 1 contract. Or a percent of cash.</p></section><section class="card"><div class="id">G8</div><h2>Which ticket wins</h2>
+<p class="now"><span class="label">In the file now</span>If several qualify, the largest edge times count wins. A taker wins a tie.</p>
+<p class="opt"><span class="label">Option, not applied</span>Prefer the maker on a tie. Or ignore size and take the higher edge.</p></section><section class="card"><div class="id">G9</div><h2>Price band inside this file</h2>
+<p class="now"><span class="label">In the file now</span>A price under PRICE_MIN or over PRICE_MAX is not a candidate. The comment still mentions a 5¢ floor in the last minute. The number used is PRICE_MIN from config.ts, which is 0.36.</p>
+<p class="opt"><span class="label">Option, not applied</span>Delete the 5¢ comment so the file does not describe two floors.</p></section><section class="card"><div class="id">G10</div><h2>Resting orders</h2>
+<p class="now"><span class="label">In the file now</span>restingEdge is chance − 0.02 − the order's own price. Used when deciding to cancel or reprice a maker that is already working.</p>
+<p class="opt"><span class="label">Option, not applied</span>Add a fee to that line, or leave it.</p></section><nav><a href="03-config.html">← config.ts</a> · <a href="index.html">Index</a> · <a href="05-risk.html">risk.ts →</a></nav></main></body></html>

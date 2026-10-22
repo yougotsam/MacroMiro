@@ -78,3 +78,96 @@
 {"at":"2026-10-05T11:53:09.340Z","workflow":"contradict","job":"01a10be9-1d5d-75d5-a0c9-996ef099b737","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
 {"at":"2026-10-05T11:53:44.433Z","workflow":"analogue","job":"01a109c2-b51c-711a-9ef0-69c942c61b2b","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
 {"at":"2026-10-05T11:53:44.664Z","workflow":"analogue","job":"01a10be9-a75f-74f4-ab20-e68ea90b0754","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-05T12:21:58.624Z","workflow":"verify","job":"01a10c03-8067-758e-9799-af9c6292b19f","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T02:38:19.273Z","workflow":"hunter","job":"01a10be8-09ef-70dd-b116-4afd13868532","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T02:38:19.550Z","workflow":"hunter","job":"01a10f13-82f4-746f-b891-fc9fb9ff2a81","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T02:38:54.825Z","workflow":"verify","job":"01a10c03-8067-758e-9799-af9c6292b19f","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T02:38:55.074Z","workflow":"verify","job":"01a10f14-0db6-729d-b75e-da874fd08b4d","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T02:39:30.176Z","workflow":"contradict","job":"01a10be9-1d5d-75d5-a0c9-996ef099b737","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T02:39:30.428Z","workflow":"contradict","job":"01a10f14-97cc-761a-a8fc-64382bdbb6f7","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T02:40:05.769Z","workflow":"analogue","job":"01a10be9-a75f-74f4-ab20-e68ea90b0754","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T02:40:08.496Z","workflow":"analogue","job":"01a10f15-2c74-73b5-8af1-3060a7aeaa06","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T22:47:56.162Z","workflow":"hunter","job":"01a10f13-82f4-746f-b891-fc9fb9ff2a81","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T22:47:56.418Z","workflow":"hunter","job":"01a11366-f27c-7454-8bb0-d1f71aa34744","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T22:48:31.528Z","workflow":"verify","job":"01a10f14-0db6-729d-b75e-da874fd08b4d","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T22:48:31.814Z","workflow":"verify","job":"01a11367-7ca3-71bb-a5b0-d17c14defa5a","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T22:49:06.890Z","workflow":"contradict","job":"01a10f14-97cc-761a-a8fc-64382bdbb6f7","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T22:49:07.088Z","workflow":"contradict","job":"01a11368-06ad-722b-a57b-b9d836281e65","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-06T22:49:42.161Z","workflow":"analogue","job":"01a10f15-2c74-73b5-8af1-3060a7aeaa06","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-06T22:49:42.420Z","workflow":"analogue","job":"01a11368-9078-725c-88c5-6e65ebd28d73","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T05:32:23.035Z","workflow":"hunter","job":"01a11366-f27c-7454-8bb0-d1f71aa34744","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T05:32:23.295Z","workflow":"hunter","job":"01a114d9-3af8-7176-9cc4-6c521fe90733","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T05:32:58.364Z","workflow":"verify","job":"01a11367-7ca3-71bb-a5b0-d17c14defa5a","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T05:32:58.591Z","workflow":"verify","job":"01a114d9-c4e6-778c-9754-b5f4184f9d83","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T05:33:33.721Z","workflow":"contradict","job":"01a11368-06ad-722b-a57b-b9d836281e65","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T05:33:33.960Z","workflow":"contradict","job":"01a114da-4f06-72be-b9a1-5070a77d4a69","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T05:34:09.031Z","workflow":"analogue","job":"01a11368-9078-725c-88c5-6e65ebd28d73","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T05:34:09.253Z","workflow":"analogue","job":"01a114da-d8ff-7072-b6b9-26bd7b97239d","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T11:38:01.066Z","workflow":"hunter","job":"01a114d9-3af8-7176-9cc4-6c521fe90733","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T11:38:01.312Z","workflow":"hunter","job":"01a11627-fa65-777d-bcf4-45b41f422b47","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T11:38:36.401Z","workflow":"verify","job":"01a114d9-c4e6-778c-9754-b5f4184f9d83","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T11:38:36.628Z","workflow":"verify","job":"01a11628-8454-71bb-b49f-5ffbcb67b02a","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T11:39:11.976Z","workflow":"contradict","job":"01a114da-4f06-72be-b9a1-5070a77d4a69","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T11:39:12.190Z","workflow":"contradict","job":"01a11629-0f49-7578-9315-4f18b2bf62c9","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T11:39:47.349Z","workflow":"analogue","job":"01a114da-d8ff-7072-b6b9-26bd7b97239d","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T11:39:47.574Z","workflow":"analogue","job":"01a11629-9978-7776-8b11-84b3ba417c08","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T17:46:12.653Z","workflow":"hunter","job":"01a11627-fa65-777d-bcf4-45b41f422b47","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T17:46:12.931Z","workflow":"hunter","job":"01a11779-11a0-7425-ab33-aee909df395b","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T17:46:47.989Z","workflow":"verify","job":"01a11628-8454-71bb-b49f-5ffbcb67b02a","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T17:46:48.005Z","workflow":"verify","job":null,"credits":null,"headline":"","delta":null,"apply":false,"reason":"Rate limit exceeded. Consumed (req/min): 3, Remaining (req/min): 0. Upgrade your plan at https://firecrawl.dev/pricing for increased rate limits or please retry after 25s, resets at Wed Oct 07 2026 17:47:12 GMT+0000 (Coordinated Universal Time)","trade":false}
+{"at":"2026-10-07T17:47:23.260Z","workflow":"contradict","job":"01a11629-0f49-7578-9315-4f18b2bf62c9","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T17:47:23.509Z","workflow":"contradict","job":"01a1177a-2560-752a-b2ed-b269c04b6224","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T17:47:58.583Z","workflow":"analogue","job":"01a11629-9978-7776-8b11-84b3ba417c08","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T17:47:58.823Z","workflow":"analogue","job":"01a1177a-af5c-729e-9ab6-a22ea39f6595","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T18:16:12.835Z","workflow":"verify","job":"01a11794-88a7-7521-b773-28b860a2836c","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-07T21:35:57.260Z","workflow":"verify","job":"01a11794-88a7-7521-b773-28b860a2836c","credits":10,"headline":"Next CPI release: September 2026 CPI on Oct. 14, 2026; next FOMC meeting: October 27-28, 2026.","delta":null,"apply":false,"reason":"direct market data is not fresh","trade":false}
+{"at":"2026-10-07T21:36:13.831Z","workflow":"hunter","job":"01a11779-11a0-7425-ab33-aee909df395b","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-07T21:36:14.044Z","workflow":"hunter","job":"01a1184b-a873-756a-8338-891c5b6bda45","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T01:47:35.835Z","workflow":"verify","job":"01a11931-c99f-7353-bf5a-9db5c342513b","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T01:48:11.296Z","workflow":"contradict","job":"01a1177a-2560-752a-b2ed-b269c04b6224","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-08T01:48:11.507Z","workflow":"contradict","job":"01a11932-551a-74bf-873e-0ea6fc270da8","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T01:48:46.987Z","workflow":"analogue","job":"01a1177a-af5c-729e-9ab6-a22ea39f6595","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-08T01:48:47.183Z","workflow":"analogue","job":"01a11932-e086-70b5-b7ab-9bd01cf76dee","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T03:45:42.034Z","workflow":"hunter","job":"01a1184b-a873-756a-8338-891c5b6bda45","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-08T03:45:42.270Z","workflow":"hunter","job":"01a1199d-eb29-71ac-9a2a-7bc0350bbea8","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T23:57:18.263Z","workflow":"hunter","job":"01a1199d-eb29-71ac-9a2a-7bc0350bbea8","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-08T23:57:18.507Z","workflow":"hunter","job":"01a11df3-2cb4-7189-8f6e-b3b2ab68d845","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T23:57:53.601Z","workflow":"verify","job":"01a11931-c99f-7353-bf5a-9db5c342513b","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-08T23:57:53.832Z","workflow":"verify","job":"01a11df3-b6aa-707a-9b5d-e1bc9f17b099","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T23:58:28.914Z","workflow":"contradict","job":"01a11932-551a-74bf-873e-0ea6fc270da8","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-08T23:58:29.166Z","workflow":"contradict","job":"01a11df4-409d-70dc-8099-355398ca4125","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-08T23:59:04.573Z","workflow":"analogue","job":"01a11932-e086-70b5-b7ab-9bd01cf76dee","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-08T23:59:04.808Z","workflow":"analogue","job":"01a11df4-cbe2-754e-b31a-d9eba4d2a91b","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-09T13:52:52.625Z","workflow":"hunter","job":"01a11df3-2cb4-7189-8f6e-b3b2ab68d845","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-09T13:52:52.891Z","workflow":"hunter","job":"01a120f0-2a0d-71ae-896d-cabea7c2d563","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-09T13:53:28.040Z","workflow":"verify","job":"01a11df3-b6aa-707a-9b5d-e1bc9f17b099","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-09T13:53:28.293Z","workflow":"verify","job":"01a120f0-b44b-76cb-8199-1360ab4e1820","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-09T13:54:03.579Z","workflow":"contradict","job":"01a11df4-409d-70dc-8099-355398ca4125","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-09T13:54:03.793Z","workflow":"contradict","job":"01a120f1-3f20-7459-b6e0-4e510ff9b073","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-09T13:54:39.052Z","workflow":"analogue","job":"01a11df4-cbe2-754e-b31a-d9eba4d2a91b","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-09T13:54:39.260Z","workflow":"analogue","job":"01a120f1-c9a9-716b-8c26-3b8c97feb486","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-10T20:05:26.998Z","workflow":"hunter","job":"01a120f0-2a0d-71ae-896d-cabea7c2d563","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-10T20:05:27.224Z","workflow":"hunter","job":"01a1276b-9fbc-7720-b016-d1480e018dfc","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-10T20:06:02.276Z","workflow":"verify","job":"01a120f0-b44b-76cb-8199-1360ab4e1820","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-10T20:06:02.443Z","workflow":"verify","job":"01a1276c-296f-7349-9c84-2dfc79ea34fa","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-10T20:06:37.476Z","workflow":"contradict","job":"01a120f1-3f20-7459-b6e0-4e510ff9b073","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-10T20:06:37.678Z","workflow":"contradict","job":"01a1276c-b2f0-721b-800f-f1eb8bbbe9f3","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-10T20:07:12.709Z","workflow":"analogue","job":"01a120f1-c9a9-716b-8c26-3b8c97feb486","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-10T20:07:12.905Z","workflow":"analogue","job":"01a1276d-3c99-71d3-bd79-1d0365318086","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-13T05:55:55.346Z","workflow":"hunter","job":"01a1276b-9fbc-7720-b016-d1480e018dfc","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T05:55:55.535Z","workflow":"hunter","job":"01a133d4-efa6-75be-bf3d-0c9450383383","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-13T05:56:30.552Z","workflow":"verify","job":"01a1276c-296f-7349-9c84-2dfc79ea34fa","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T05:56:30.566Z","workflow":"verify","job":null,"credits":null,"headline":"","delta":null,"apply":false,"reason":"Rate limit exceeded. Consumed (req/min): 3, Remaining (req/min): 0. Upgrade your plan at https://firecrawl.dev/pricing for increased rate limits or please retry after 25s, resets at Tue Oct 13 2026 05:56:55 GMT+0000 (Coordinated Universal Time)","trade":false}
+{"at":"2026-10-13T05:57:05.582Z","workflow":"contradict","job":"01a1276c-b2f0-721b-800f-f1eb8bbbe9f3","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T05:57:05.763Z","workflow":"contradict","job":"01a133d6-01f9-777e-8202-aa9027cf6b8c","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-13T05:57:40.792Z","workflow":"analogue","job":"01a1276d-3c99-71d3-bd79-1d0365318086","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T05:57:40.982Z","workflow":"analogue","job":"01a133d6-8b85-773c-8d57-1ab945f4e343","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-13T06:25:55.542Z","workflow":"verify","job":"01a133f0-66d8-7329-88dc-96f20ae443ad","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-13T20:13:09.192Z","workflow":"hunter","job":"01a133d4-efa6-75be-bf3d-0c9450383383","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T20:13:09.479Z","workflow":"hunter","job":"01a136e5-c140-728d-875b-79393acfab8d","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-13T20:13:44.663Z","workflow":"verify","job":"01a133f0-66d8-7329-88dc-96f20ae443ad","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T20:13:44.678Z","workflow":"verify","job":null,"credits":null,"headline":"","delta":null,"apply":false,"reason":"Rate limit exceeded. Consumed (req/min): 3, Remaining (req/min): 0. Upgrade your plan at https://firecrawl.dev/pricing for increased rate limits or please retry after 25s, resets at Tue Oct 13 2026 20:14:09 GMT+0000 (Coordinated Universal Time)","trade":false}
+{"at":"2026-10-13T20:14:19.813Z","workflow":"contradict","job":"01a133d6-01f9-777e-8202-aa9027cf6b8c","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T20:14:20.036Z","workflow":"contradict","job":"01a136e6-d50d-767b-92de-a869e5c00090","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}
+{"at":"2026-10-13T20:14:55.121Z","workflow":"analogue","job":"01a133d6-8b85-773c-8d57-1ab945f4e343","credits":null,"headline":"","delta":null,"apply":false,"reason":"job timed out","trade":false}
+{"at":"2026-10-13T20:14:55.351Z","workflow":"analogue","job":"01a136e7-5ef4-743e-9f2b-4f8464871f97","credits":null,"headline":"","delta":null,"apply":false,"reason":"working","trade":false}

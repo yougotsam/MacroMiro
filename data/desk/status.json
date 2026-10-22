@@ -1,0 +1,380 @@
+{
+ "ts": "2026-10-22T01:09:25.003Z",
+ "model": "aurix-x-v1.2-settlement-correctness-2026-10-09+guard-1",
+ "tickId": 3477,
+ "errors": 0,
+ "omsJournalCorruptRows": 0,
+ "feeds": "live",
+ "exchangeTradingActive": true,
+ "switches": {
+  "live": true,
+  "begin": true,
+  "arm": false
+ },
+ "latched": "day worst -15.03 ≤ -15",
+ "budget": 0,
+ "promotion": "journal fills 47; fee-verified 20; fee-unknown 27; settlement-model RESEARCH n 16 < 300; TREND_PULLBACK RESEARCH n 2 < 300; SWEEP_REVERSAL RESEARCH n 2 < 300; flat budget stays until ELIGIBLE",
+ "macro": {
+  "available": false,
+  "blocked": false,
+  "reason": "official_source_unverified_BLS",
+  "events": []
+ },
+ "strategyReadiness": {
+  "settlementModel": "reviewed",
+  "microstructure": "coinbase signed trades and top of book; a missing tape stays null; gold, silver, oil, and FX log unavailable: no venue tape",
+  "higherTimeframes": "coinbase 15m and 1h when stored long enough; gold, silver, oil, and FX use complete settlement-index bars, gaps not filled; settlement still uses the index",
+  "externalContext": "read after structure. A fresh Spark or MiroFish direction can refuse the other side. A stale or unclear brief does not sit the desk."
+ },
+ "snapshot": {
+  "dayWorst": -15.6103,
+  "realized": -15.6103,
+  "openWorst": 0,
+  "restWorst": 0,
+  "pendingWorst": 0,
+  "shard2": 19.5215,
+  "ageMs": 103,
+  "override": null,
+  "roomToStop": -0.6103
+ },
+ "resting": [],
+ "sentThisTick": 0,
+ "series": [
+  {
+   "series": "KXBTC15M",
+   "ticker": "KXBTC15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.29566489777378574,
+   "pBase": 0.30026655324180584,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0359,
+   "makerMinEdge": 0.0459,
+   "lockFrac": 0,
+   "moveZ": -2.88,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 1,
+     "eligible": false,
+     "missing": []
+    },
+    "short": {
+     "score": 1,
+     "eligible": false,
+     "missing": [
+      "wrong premium/discount location"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXETH15M",
+   "ticker": "KXETH15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.2822626192000864,
+   "pBase": 0.28490252214936707,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0351,
+   "makerMinEdge": 0.0451,
+   "lockFrac": 0,
+   "moveZ": -1.53,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 1,
+     "eligible": false,
+     "missing": []
+    },
+    "short": {
+     "score": 3,
+     "eligible": false,
+     "missing": [
+      "wrong premium/discount location"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXSOL15M",
+   "ticker": "KXSOL15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.4374464109148837,
+   "pBase": 0.4476664172700437,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.04,
+   "makerMinEdge": 0.05,
+   "lockFrac": 0,
+   "moveZ": -1.61,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 2,
+     "eligible": false,
+     "missing": []
+    },
+    "short": {
+     "score": 2,
+     "eligible": false,
+     "missing": [
+      "wrong premium/discount location"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXXRP15M",
+   "ticker": "KXXRP15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.5397403845160798,
+   "pBase": 0.5578085801899964,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0399,
+   "makerMinEdge": 0.0499,
+   "lockFrac": 0,
+   "moveZ": -1.17,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 2,
+     "eligible": false,
+     "missing": []
+    },
+    "short": {
+     "score": 5,
+     "eligible": false,
+     "missing": [
+      "wrong premium/discount location"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXDOGE15M",
+   "ticker": "KXDOGE15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.7797810333437902,
+   "pBase": 0.7750148188828587,
+   "gate": "G2_fast_move_cooldown_up",
+   "best": null,
+   "shock": 0.0313,
+   "makerMinEdge": 0.0413,
+   "lockFrac": 0,
+   "moveZ": 0.48,
+   "cooling": true,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 1,
+     "eligible": false,
+     "missing": []
+    },
+    "short": {
+     "score": 3,
+     "eligible": false,
+     "missing": [
+      "wrong premium/discount location"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXGOLD15M",
+   "ticker": "KXGOLD15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.35746680733182207,
+   "pBase": 0.3759676480898494,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0364,
+   "makerMinEdge": 0.0464,
+   "lockFrac": 0,
+   "moveZ": 0.61,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "real exchange volume",
+      "signed trade flow",
+      "session traded-volume VWAP"
+     ]
+    },
+    "short": {
+     "score": 3,
+     "eligible": false,
+     "missing": [
+      "wrong premium/discount location",
+      "real exchange volume",
+      "signed trade flow",
+      "session traded-volume VWAP"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXSILVER15M",
+   "ticker": "KXSILVER15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.27359176943977703,
+   "pBase": 0.2776025569865991,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0326,
+   "makerMinEdge": 0.0426,
+   "lockFrac": 0,
+   "moveZ": 0.67,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 53/60; gaps not filled"
+     ]
+    },
+    "short": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 53/60; gaps not filled"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXWTI15M",
+   "ticker": "KXWTI15M-26OCT212115-15",
+   "tte": 335,
+   "p": 0.4829510983417135,
+   "pBase": 0.49294910973957495,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0377,
+   "makerMinEdge": 0.0477,
+   "lockFrac": 0,
+   "moveZ": 0.45,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 53/60; gaps not filled"
+     ]
+    },
+    "short": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 53/60; gaps not filled"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXGBPUSD15M",
+   "ticker": "KXGBPUSD15M-26OCT212115-30",
+   "tte": 335,
+   "p": 0.262107647280196,
+   "pBase": 0.2791052782930885,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0326,
+   "makerMinEdge": 0.0426,
+   "lockFrac": 0,
+   "moveZ": -0.66,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 59/60; gaps not filled"
+     ]
+    },
+    "short": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 59/60; gaps not filled"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXEURUSD15M",
+   "ticker": "KXEURUSD15M-26OCT212115-30",
+   "tte": 335,
+   "p": 0.22684764377738253,
+   "pBase": 0.2425253533526312,
+   "gate": "G2_no_room",
+   "best": null,
+   "shock": 0.0305,
+   "makerMinEdge": 0.0405,
+   "lockFrac": 0,
+   "moveZ": -0.79,
+   "cooling": false,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 59/60; gaps not filled"
+     ]
+    },
+    "short": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 59/60; gaps not filled"
+     ]
+    }
+   }
+  },
+  {
+   "series": "KXUSDJPY15M",
+   "ticker": "KXUSDJPY15M-26OCT212115-30",
+   "tte": 335,
+   "p": 0.2764205580635082,
+   "pBase": 0.2842498660122021,
+   "gate": "G2_fast_move_cooldown_down",
+   "best": null,
+   "shock": 0.0329,
+   "makerMinEdge": 0.0429,
+   "lockFrac": 0,
+   "moveZ": -1.92,
+   "cooling": true,
+   "makerOk": true,
+   "sniper": {
+    "long": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 59/60; gaps not filled"
+     ]
+    },
+    "short": {
+     "score": 0,
+     "eligible": false,
+     "missing": [
+      "15m index bars 59/60; gaps not filled"
+     ]
+    }
+   }
+  }
+ ]
+}
