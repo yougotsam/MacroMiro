@@ -1,14 +1,16 @@
 # MacroMiro — AURIX-X Kalshi Desk
 
-**Current trading state: the 15-minute rule is loaded. It does not send unless `kalshi_live`, `kalshi_begin`, and `desk_arm` are all on.** `CALIBRATED_MODEL_APPROVED` in `src/lib/desk/config.ts` is `true`. As of the 21 Oct 2026 restart the arm file is off. Perpetual orders stay off.
+**Current trading state: the 15-minute rule is loaded. It does not send unless `kalshi_live`, `kalshi_begin`, and `desk_arm` are all on.** `CALIBRATED_MODEL_APPROVED` is `true`. The arm file is off until you turn it on. Perpetual orders stay off. Meme coins are not on this order path.
 
-There is no daily cron in this file. The engine is a loop, not a once-a-day close. Running it again does not "give the same daily answer." A 7/14/20/50 average cross is not an entry. A price already past the 20-minute average is refused.
+Scored on the 29 whole fills through 21 Oct 2026, and left in force:
 
-The three rules in the order path, scored on the 29 whole fills through 21 Oct 2026:
-
-- Price 36¢–72¢. Under 36¢ is refused.
+- Buy only from 36¢ to 72¢. The 18¢–38¢ flip band is the band that lost about $7.63. It is refused.
 - A settled loss blocks new orders for 20 minutes from the settlement.
-- One live order per 15-minute window, every series.
+- One live order per 15-minute window.
+- The chart moves the chance in log-odds, then the move is cut at 4 points. A +0.45 or +0.80 logit is not applied.
+- Half-Kelly is in `sizing.ts`. It cannot spend more than $3, the −$15 day stop, or the $9 open cap. 15% of equity is a ceiling inside that function. On this account the $3 cap is the one that binds.
+
+There is no daily cron. A 7/14/20/50 cross is not an entry. Firecrawl, Spark, and Alexandria are notes. They do not set the chance and they do not send.
 
 **Single authoritative trading strategy:** [docs/STRATEGY.md](docs/STRATEGY.md).
 **Repair, test limitations, release criteria:** [docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md](docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md).

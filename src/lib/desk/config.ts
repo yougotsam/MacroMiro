@@ -89,12 +89,13 @@ export const POST_LOSS_PAUSE_MS = 20 * 60_000;
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
 export const UNCERTAINTY = 0.02; // subtracted from P on every side
-export const PRICE_MIN = 0.36; // 21¢–35¢ on the same 29 fills: 2 wins, about −$7.63. 36¢–72¢: 11 fills, about +$1.83. In-sample. The floor used to be 21¢.
+export const PRICE_MIN = 0.36; // 21¢–35¢ on the same 29 fills: 2 wins, about −$7.63. 18¢–38¢ was proposed as a flip band. It is the same losing band. Refused.
 export const PRICE_MAX = 0.72; // a bought contract above 72¢ is a favorite. Those won often and lost money after fees.
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;
 export const BASE_MIN_EDGE = 0.01; // the settlement model alone (no features) must show this much on the chosen side/price
-export const FEATURE_MAX_SHIFT = 0.04; // the chart may move the chance by at most 4 points. It cannot flip a 90% settlement. Favorites are refused by PRICE_MAX instead.
+export const FEATURE_MAX_SHIFT = 0.04; // the chart may move the chance by at most 4 points. A +0.45 or +0.80 logit is not applied.
+export const WINDOW_EQUITY_CAP = 0.15; // half-Kelly may talk about 15% of equity. The $3 order cap is tighter and is the one that sends.
 export const P_CLAMP = 0.98; // never claim more certainty than this
 export const MIN_SECONDS_LEFT = 3;
 

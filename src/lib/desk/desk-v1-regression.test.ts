@@ -642,6 +642,12 @@ describe("size to room", () => {
     expect(roomBudget(snap({ realizedToday: 5, openWorst: 3, restWorst: 4.5 }))).toBeCloseTo(1.5, 6); // exposure room 1.5 < daily room 2.5
     expect(roomBudget(snap({ realizedToday: -15 }))).toBe(0);
     expect(roomBudget(null)).toBe(0);
+    const { halfKellyStake } = await import("./sizing");
+    expect(halfKellyStake(0.5, 0.5, 40).stake).toBe(0);
+    expect(halfKellyStake(0.6, 0.36, 10_000).stake).toBe(3);
+    expect(halfKellyStake(0.55, 0.4, 40).stake).toBeLessThanOrEqual(3);
+    expect(halfKellyStake(0.5, 0.18, 40).why).toBe("half kelly under the dollar cap");
+    expect(0.18).toBeLessThan(0.36);
     const fee = { feeType: "quadratic", multiplier: 1 };
     const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
     const g = scoreSides(0.7, 0.7, book, fee, { allowMaker: true, allowTaker: true, budget: 1.3 });

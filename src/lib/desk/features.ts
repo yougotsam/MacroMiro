@@ -1,7 +1,6 @@
 /**
  * Supporting features on the settlement index's own 1-minute bars (built from 1-second prints).
- * Four evidence groups, one vote each (no double counting). Combined shift ≤ ±FEATURE_MAX_SHIFT,
- * scaled by 4·P·(1−P) so features can't move near-certain contracts. Features never pick a side alone.
+ * Four evidence groups, one vote each (no double counting). The shift is a log-odds step of at most 0.16, then cut at ±FEATURE_MAX_SHIFT.
  */
 import { FEATURE_MAX_SHIFT } from "./config";
 import type { Print } from "./settlement";
@@ -246,9 +245,27 @@ export function features(bars: Bar[]): FeatureSnapshot {
   };
 }
 
-/** Feature shift in probability points, ≤ FEATURE_MAX_SHIFT, shrinking toward the extremes. */
+/** Live logit step. At a 50¢ base a full score moves the chance by 4 points and no more.
+ *  +0.45 and +0.80 are not used. Those steps are about 11 and 19 points, and this book has not scored them. */
+export const LIVE_LOGIT = 0.16;
+
+export function logit(p: number): number {
+  const x = Math.min(1 - 1e-6, Math.max(1e-6, p));
+  return Math.log(x / (1 - x));
+}
+
+export function fromLogit(L: number): number {
+  if (!Number.isFinite(L)) return 0.5;
+  return 1 / (1 + Math.exp(-L));
+}
+
+/** Feature shift in probability points, ≤ FEATURE_MAX_SHIFT. Log-odds, then clamped. */
 export function featureShift(pBase: number, score: number) {
-  return FEATURE_MAX_SHIFT * Math.max(-1, Math.min(1, score)) * 4 * pBase * (1 - pBase);
+  if (!Number.isFinite(pBase) || !Number.isFinite(score) || pBase <= 0 || pBase >= 1) return 0;
+  const s = Math.max(-1, Math.min(1, score));
+  if (s === 0) return 0;
+  const shifted = fromLogit(logit(pBase) + LIVE_LOGIT * s) - pBase;
+  return Math.max(-FEATURE_MAX_SHIFT, Math.min(FEATURE_MAX_SHIFT, shifted));
 }
 
 /** RVOL, CVD, VWAP, signed imbalance, and the top of book. A missing tape is null, not zero. */

@@ -1,7 +1,19 @@
 # AURIX-X / MACROMIRO — 15-minute rulebook v1.1
 Date: 2026-10-09 | Scope: Kalshi 15m BTC/ETH/SOL/XRP/gold outcomes, separate perps
 SUPERSEDED as the product spec by `docs/product/PRD.md` (2026-10-14). This file stays as the 15-minute rulebook only. If it disagrees with the PRD, the system map, the strategy registry, the venue matrix, or the risk mandate, those win.
-STATUS: LIVE 15-minute tickets. **CALIBRATED_MODEL_APPROVED=true** in `src/lib/desk/config.ts`. Perpetual orders stay off. This line used to say the desk was shadow-only. That was stale.
+
+## DECISION 21 OCT 2026
+The log-odds formula is in the code. The untested steps are not.
+
+- Base chance stays the settlement distance: spot versus strike, volatility, and seconds left. Crypto is the 60-second average. Gold, silver, oil, and FX are the last 1-minute print.
+- A chart score adds a logit of at most 0.16, then the change in the chance is cut at 4 points. +0.45 and +0.80 are not applied. They were not scored on this book.
+- Half-Kelly is `0.5 × (b·p − (1−p)) / b`, then at most 15% of equity, then at most $3. The order budget is still the tighter of $3, the −$15 day room, and the $9 open room.
+- 18¢–38¢ is refused. On the 29 whole fills, 21¢–35¢ was about −$7.63.
+- One settled loss pauses 20 minutes. One live order per window.
+- A confluence score is not a win probability. `setup = NONE` does not get a probability poured into it.
+- Meme coins, perps, and a fast lane do not send from this file.
+
+STATUS: LIVE 15-minute tickets only when the three switches are on. **CALIBRATED_MODEL_APPROVED=true** in `src/lib/desk/config.ts`. Perpetual orders stay off.
 Code truth: `src/lib/desk/engine.ts` (research decision engine), `gate.ts` (quote evaluation),
 `oms.ts` (sole signed order writer), `risk.ts` (mandatory permission), `config.ts`.
 The prior handoff references `src/lib/scan/edge.ts`, a file that does not exist in this ZIP; this retired reference must NOT guide execution.

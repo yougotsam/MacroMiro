@@ -73,7 +73,9 @@ describe("structure must agree before a side is allowed", () => {
 
   it("the technical score can move the chance, and not by more than 4 points", () => {
     expect(FEATURE_MAX_SHIFT).toBe(0.04);
-    expect(featureShift(0.5, 1)).toBeCloseTo(0.04);
+    expect(featureShift(0.5, 1)).toBeCloseTo(0.04, 2);
     expect(featureShift(0.5, 0)).toBe(0);
+    expect(featureShift(0.5, 5)).toBeCloseTo(0.04, 2);
+    expect(Math.abs(featureShift(0.9, 1))).toBeLessThanOrEqual(0.04);
   });
 });
