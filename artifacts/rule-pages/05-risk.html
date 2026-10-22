@@ -23,7 +23,7 @@
 <p class="opt"><span class="label">Option, not applied</span>Same choices as C1 and C9.</p></section><section class="card"><div class="id">R10</div><h2>Dollars</h2>
 <p class="now"><span class="label">In the file now</span>Order cost including fee ≤ per-order cap. The day must remain above the day stop after the order. Open plus resting plus unconfirmed plus this order ≤ total cap.</p>
 <p class="opt"><span class="label">Option, not applied</span>Same choices as C3.</p></section><section class="card"><div class="id">R11</div><h2>One live order per window</h2>
-<p class="now"><span class="label">In the file now</span>If ticker exposure maps are missing, refuse. If any ticker in this same window id already has worst-case exposure above zero, refuse. The reason is one live order per window. A cancel that left the book does not count.</p>
+<p class="now"><span class="label">In the file now</span>The one-order-per-window check is gone. Another series in the same 15 minutes is allowed. The same contract is still capped at $3 and at one order.</p>
 <p class="opt"><span class="label">Option, not applied</span>One order per series instead of per window. Or no window cap.</p></section><section class="card"><div class="id">R12</div><h2>Groups</h2>
 <p class="now"><span class="label">In the file now</span>That ticker's worst case, including this order, must be ≤ $3. Same-direction crypto across coins must be ≤ $4. Gold is its own group. A non-number refuses.</p>
 <p class="opt"><span class="label">Option, not applied</span>One cap for the whole book. Or a separate cap per coin.</p></section><section class="card"><div class="id">R13</div><h2>Counts and cash</h2>

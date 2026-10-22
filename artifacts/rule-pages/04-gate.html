@@ -19,7 +19,7 @@
 <p class="opt"><span class="label">Option, not applied</span>Always 1 contract. Or a percent of cash.</p></section><section class="card"><div class="id">G8</div><h2>Which ticket wins</h2>
 <p class="now"><span class="label">In the file now</span>If several qualify, the largest edge times count wins. A taker wins a tie.</p>
 <p class="opt"><span class="label">Option, not applied</span>Prefer the maker on a tie. Or ignore size and take the higher edge.</p></section><section class="card"><div class="id">G9</div><h2>Price band inside this file</h2>
-<p class="now"><span class="label">In the file now</span>A price under PRICE_MIN or over PRICE_MAX is not a candidate. The comment still mentions a 5¢ floor in the last minute. The number used is PRICE_MIN from config.ts, which is 0.36.</p>
+<p class="now"><span class="label">In the file now</span>A price under PRICE_MIN or over PRICE_MAX is not a candidate. PRICE_MIN is 0.18. PRICE_MAX is 0.72. The last minute still refuses under 5¢ by raising the minimum, and 5¢ is already under 18¢.</p>
 <p class="opt"><span class="label">Option, not applied</span>Delete the 5¢ comment so the file does not describe two floors.</p></section><section class="card"><div class="id">G10</div><h2>Resting orders</h2>
 <p class="now"><span class="label">In the file now</span>restingEdge is chance − 0.02 − the order's own price. Used when deciding to cancel or reprice a maker that is already working.</p>
 <p class="opt"><span class="label">Option, not applied</span>Add a fee to that line, or leave it.</p></section><nav><a href="03-config.html">← config.ts</a> · <a href="index.html">Index</a> · <a href="05-risk.html">risk.ts →</a></nav></main></body></html>
