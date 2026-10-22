@@ -252,7 +252,6 @@ export class RiskEngine {
     const exposure = s.openWorst + s.restWorst + s.pendingWorst + orderWorst;
     if (exposure > L.total + 1e-9) return no(`exposure ${exposure.toFixed(2)} > ${L.total}`, dayWorst, projected);
     if (!s.tickerWorst || !s.correlated) return no("per-ticker / correlated exposure unknown", dayWorst, projected);
-    if (windowAlreadyOpen(o.ticker, s.tickerWorst)) return no("one live order per window", dayWorst, projected);
     const tick = (s.tickerWorst[o.ticker] ?? 0) + orderWorst;
     if (!Number.isFinite(tick) || tick > L.perTicker + 1e-9) return no(`ticker exposure ${o.ticker} ${tick.toFixed(2)} > ${L.perTicker}`, dayWorst, projected);
     const corrKey = correlationKey(o.ticker, o.side === "no" ? "down" : "up");

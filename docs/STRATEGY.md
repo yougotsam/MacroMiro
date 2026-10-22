@@ -10,7 +10,7 @@ The log-odds steps are on the order path.
 - Spark moves the same chance by 0.25 when the brief is fresh and names the asset. Alexandria moves it when the file is under 7 days old and carries a probability. A Firecrawl seed under 24 hours scales that news step by 1.25. A missing file adds nothing.
 - Half-Kelly is `0.5 × (b·p − (1−p)) / b`, then at most 15% of equity, then at most $3.
 - The buy floor is 18¢. The ceiling is 72¢. 18¢–38¢ is the favored misprice when the tilted chance is above 45¢.
-- One settled loss pauses 20 minutes. One live order per window.
+- One settled loss pauses 20 minutes. One live order per contract. A second series in the same 15 minutes is allowed. Spark and Alexandria run only after a ticket clears the gate.
 - Meme coins and perps do not send from this file.
 
 STATUS: LIVE 15-minute tickets only when the three switches are on. **CALIBRATED_MODEL_APPROVED=true** in `src/lib/desk/config.ts`. Perpetual orders stay off.

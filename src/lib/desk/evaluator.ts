@@ -27,7 +27,8 @@ import { features, applyLogit, flowFromBars, minuteBars, sessionTag, technicalSi
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
-import { intelVerdict, readIntelLogit } from "./intel-gate";
+import { intelVerdict } from "./intel-gate";
+import { intelligenceLogit, readIntelControls } from "./intelligence";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, sniperCanEnter, type Evidence } from "./sniper";
 import { barsForSniper, flowRefusal, researchFor } from "./research-cache";
@@ -171,7 +172,7 @@ export class Evaluator {
     const settlementSign: 1 | -1 = pBase >= 0.5 ? 1 : -1;
     const sniperScore = settlementSign > 0 ? (out.sniper?.long?.score ?? 0) : (out.sniper?.short?.score ?? 0);
     const tilt = tradeLogit(feats.score, sniperScore, settlementSign);
-    const tilted = applyLogit(pBase, tilt.delta + readIntelLogit(series, now));
+    const tilted = applyLogit(pBase, tilt.delta + intelligenceLogit(series, now));
     out.shift = tilted - pBase;
     out.p = clampP(tilted);
     // execution guard
@@ -296,5 +297,11 @@ export function decisionRowOf(e: SeriesEval, action: Decision["action"], fee: Fe
     strategy: e.strategy,
     confluence: confluenceLog(e.sniper),
     guard: { shock: Number(e.shock.toFixed(4)), maker_min_edge: Number(e.makerMinEdge.toFixed(4)), lock_frac: Number(e.lockFrac.toFixed(3)), move_z: Number(e.guard.z.toFixed(2)), cooling: e.guard.cooling, maker_ok: e.makerOk, budget: e.budget, min_price: e.minPrice },
+    intel: {
+      logit: Number(intelligenceLogit(e.series, now).toFixed(4)),
+      controls: readIntelControls(),
+      passed_gate: Boolean(e.best),
+      requested: [],
+    },
   };
 }

@@ -3,7 +3,7 @@
  * Read from the files those pipelines already write. No network call. A model percent is not the
  * settlement chance. A fresh read is written on the reason. It does not cancel the ticket.
  */
-import { readFileSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
 import type { Series } from "./config";
 import { scheduledVeto, type Scheduled } from "./macro-calendar";
@@ -16,6 +16,7 @@ export type IntelDocs = {
   news: Record<string, unknown> | null;
   mirofish: Record<string, unknown> | null;
   firecrawlReady?: boolean;
+  controls?: { spark: boolean; alexandria: boolean; firecrawl: boolean };
 };
 
 export type IntelVerdict = {
@@ -80,23 +81,43 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
 
 /** Spark, Alexandria, and a fresh Firecrawl seed move the chance. A missing file adds nothing. */
 export function sparkLogit(series: Series, docs: IntelDocs, now: number): number {
-  let L = 0;
+  let sparkL = 0;
   const spark = docs.spark;
   const at = Date.parse(String(spark?.at ?? ""));
   const card = spark?.card as { bias?: string; asset?: string } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
-  if (fresh && covers(series, String(card.asset ?? ""))) {
-    if (card.bias === "bullish") L += 0.25;
-    if (card.bias === "bearish") L -= 0.25;
+  if (docs.controls?.spark !== false && fresh && covers(series, String(card?.asset ?? ""))) {
+    if (card?.bias === "bullish") sparkL += 0.25;
+    if (card?.bias === "bearish") sparkL -= 0.25;
   }
+  let alexL = 0;
   const alex = docs.alexandria;
   const alexAt = Date.parse(String(alex?.at ?? ""));
-  const alexFresh = Number.isFinite(alexAt) && now >= alexAt && now - alexAt < 7 * 24 * 3600_000;
+  const alexFresh = docs.controls?.alexandria !== false && Number.isFinite(alexAt) && now >= alexAt && now - alexAt < 7 * 24 * 3600_000;
   const p = Number(alex?.probability);
-  if (alexFresh && p >= 0 && p <= 1) L += Math.max(-0.25, Math.min(0.25, (p - 0.5) * 0.8));
-  const crawled = docs.firecrawlReady === true;
-  if (crawled && L !== 0) L *= 1.25;
+  if (alexFresh && p >= 0 && p <= 1) alexL = Math.max(-0.25, Math.min(0.25, (p - 0.5) * 0.8));
+  let L = sparkL + alexL;
+  if (docs.controls?.firecrawl !== false && docs.firecrawlReady === true && L !== 0) L *= 1.25;
   return L;
+}
+
+const CONTROL_FILE = () => `${DATA_ROOT}/desk/intel-controls.json`;
+
+export function readIntelControls(): { spark: boolean; alexandria: boolean; firecrawl: boolean } {
+  const row = readJson(CONTROL_FILE());
+  return {
+    spark: row?.spark !== false,
+    alexandria: row?.alexandria !== false,
+    firecrawl: row?.firecrawl !== false,
+  };
+}
+
+export function writeIntelControls(next: Partial<{ spark: boolean; alexandria: boolean; firecrawl: boolean }>) {
+  const cur = readIntelControls();
+  const row = { ...cur, ...next, at: new Date().toISOString() };
+  mkdirSync(`${DATA_ROOT}/desk`, { recursive: true });
+  writeFileSync(CONTROL_FILE(), JSON.stringify(row));
+  return row;
 }
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -120,6 +141,7 @@ export function readIntelLogit(series: Series, now = Date.now()): number {
     news: readJson(`${DATA_ROOT}/desk-news.json`),
     mirofish: readJson(`${DATA_ROOT}/mirofish-latest.json`),
     firecrawlReady,
+    controls: readIntelControls(),
   }, now);
 }
 
@@ -138,7 +160,47 @@ export function intelVerdict(series: Series, side: "yes" | "no", now = Date.now(
       news: readJson(`${DATA_ROOT}/desk-news.json`),
       mirofish: readJson(`${DATA_ROOT}/mirofish-latest.json`),
       firecrawlReady,
+      controls: readIntelControls(),
     },
     now,
   );
+}
+
+export type IntelRun = {
+  ts: string;
+  series: string;
+  side: "yes" | "no";
+  passed_gate: true;
+  logit: number;
+  controls: { spark: boolean; alexandria: boolean; firecrawl: boolean };
+  requested: string[];
+};
+
+let lastIntelKick = 0;
+
+/** Called only after the price gate has a ticket. Does not wait on Spark. A second pass inside 10 minutes does not start another job. */
+export function onGatePass(series: Series, side: "yes" | "no", now = Date.now()): IntelRun {
+  const controls = readIntelControls();
+  const requested: string[] = [];
+  if (controls.spark && now - lastIntelKick >= 10 * 60_000) {
+    requested.push("spark");
+    lastIntelKick = now;
+    void import("@/lib/live/spark.server").then((m) => m.kickSparkOnPass()).catch(() => undefined);
+  }
+  if (controls.alexandria) requested.push("alexandria");
+  if (controls.firecrawl) requested.push("firecrawl");
+  const row: IntelRun = {
+    ts: new Date(now).toISOString(),
+    series,
+    side,
+    passed_gate: true,
+    logit: readIntelLogit(series, now),
+    controls,
+    requested,
+  };
+  try {
+    mkdirSync(`${DATA_ROOT}/desk`, { recursive: true });
+    appendFileSync(`${DATA_ROOT}/desk/intel-audit.jsonl`, `${JSON.stringify(row)}\n`);
+  } catch { /* the decision row still carries the same fields */ }
+  return row;
 }

@@ -80,7 +80,7 @@ export const MAX_TICKER_WORST_USD = RISK_LIMITS.usd.perTicker;
  * window; gold is its own group (exposure.ts). Approved $4.
  */
 export const MAX_CORRELATED_WORST_USD = RISK_LIMITS.usd.correlated;
-export const MAX_ORDERS_PER_TICKER_WINDOW = 1; // one send per contract. A second fill on the same ticker was a loss. The window rule below is the tighter one.
+export const MAX_ORDERS_PER_TICKER_WINDOW = 1; // one send per contract. A second series in the same 15 minutes is allowed.
 export const MAX_ORDERS_PER_TICK = 1;
 export const LOSS_STREAK_PAUSE = 9999; // a count of losses is not a separate stop. One settled loss pauses the clock below.
 export const LOSS_STREAK_PAUSE_MS = 60 * 60_000;

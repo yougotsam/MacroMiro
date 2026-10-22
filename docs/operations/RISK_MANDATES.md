@@ -1,6 +1,6 @@
 # Risk mandates (per venue)
 ## Kalshi 15m YES/NO: APPROVED by owner (enforced in `src/lib/desk/config.ts` + `risk.ts`)
-Daily stop −$15 · max open risk $9 · max $3 per order · max $3 per ticker · correlated crypto $4 · price band 18¢–72¢ · one order per window · a logit of 0.80 at a score of 11 · snapshot stale after 20 s · 1 order per tick. Live sending also needs `CALIBRATED_MODEL_APPROVED=true` (currently **true**) plus the operator switches.
+Daily stop −$15 · max open risk $9 · max $3 per order · max $3 per ticker · correlated crypto $4 · price band 18¢–72¢ · one order per contract, not per window · a logit of 0.80 at a score of 11 · snapshot stale after 20 s · 1 order per tick. Live sending also needs `CALIBRATED_MODEL_APPROVED=true` (currently **true**) plus the operator switches. Spark, Alexandria, and Firecrawl are screen switches. They do not raise the dollar caps.
 
 ## Kalshi perps CONSERVATIVE v1 (2026-10-12): REJECTED BY OWNER, SUPERSEDED
 Kept only as a record. The $100 equity/notional caps, 3× leverage, $1 per trade, −$5/day, −$15/week, 2 positions,

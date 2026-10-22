@@ -4,6 +4,7 @@ import { flattenBook, readHeart, setArmed, tickHeart, ensureHeart } from "@/lib/
 import { mutationGuard } from "@/lib/desk/http-guard";
 import { beginFlagOn, liveExecutionAllowed, liveFlagOn, readKill } from "@/lib/envelope/kill.server";
 import { loadHeart } from "@/lib/envelope/store.server";
+import { readIntelControls, writeIntelControls } from "@/lib/desk/intel-gate";
 import type { BookId } from "@/lib/live/types";
 
 export const Route = createFileRoute("/api/live/heart")({
@@ -22,6 +23,7 @@ export const Route = createFileRoute("/api/live/heart")({
           dayLoss: kill.dailyLossUsd,
           pauseUntil: kill.pauseUntil,
           losses: kill.consecutiveLosses,
+          intel: readIntelControls(),
         });
       },
       POST: async ({ request }) => {
@@ -34,7 +36,9 @@ export const Route = createFileRoute("/api/live/heart")({
           clipUsd?: number;
           tick?: boolean;
           flatten?: BookId;
+          intel?: { spark?: boolean; alexandria?: boolean; firecrawl?: boolean };
         };
+        if (body.intel) writeIntelControls(body.intel);
         if (body.flatten) return Response.json(await flattenBook(body.flatten));
         if (typeof body.armed === "boolean" && body.tick !== true) {
           setArmed(body.armed, body.clipUsd != null ? clampClip(body.clipUsd) : undefined);
@@ -52,6 +56,7 @@ export const Route = createFileRoute("/api/live/heart")({
           dayLoss: kill.dailyLossUsd,
           pauseUntil: kill.pauseUntil,
           losses: kill.consecutiveLosses,
+          intel: readIntelControls(),
         });
       },
     },

@@ -380,11 +380,11 @@ describe("round 3 risk limits: −$15 day, $9 total, $3 per ticker, $4 same-dire
     expect(s.tickerWorst![T]).toBeCloseTo(1.5, 6);
   });
 
-  it("$3 per ticker still binds, and an open ticket blocks the rest of its window", () => {
+  it("$3 per ticker still binds; another series in the same window does not", () => {
     const r = new RiskEngine(tmp("tick3"), ON3);
     const other = "KXETH15M-26OCT081215-15";
     expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [other]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).ok).toBe(true);
-    expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [T]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).why).toContain("one live order per window");
+    expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [T]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).ok).toBe(true);
     const v = r.check(order({ count: 7, price: 0.5, tickId: 2 }), base({ openWorst: 0, tickerWorst: {}, correlated: { "crypto|up": 0 } }), NOW3);
     expect(v.ok).toBe(false);
   });

@@ -47,7 +47,7 @@ describe("spark and alexandria on the send", () => {
     expect(sparkLogit("KXBTC15M", docs(spark("bullish", "btc")), NOW)).toBeCloseTo(0.25, 6);
     expect(sparkLogit("KXBTC15M", docsOn, NOW)).toBeCloseTo(0.3125, 6);
     expect(sparkLogit("KXBTC15M", docs(spark("bearish", "btc")), NOW)).toBeCloseTo(-0.25, 6);
-    expect(sparkLogit("KXETH15M", docs(spark("bullish", "btc")), NOW)).toBe(0);
+    expect(sparkLogit("KXBTC15M", { ...docs(spark("bullish", "btc")), controls: { spark: false, alexandria: true, firecrawl: true } }, NOW)).toBe(0);
   });
   it("does not invent a side when MiroFish is down", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear")), NOW);

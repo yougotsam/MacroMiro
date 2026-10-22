@@ -99,7 +99,18 @@ let lastKick = 0;
 /** Cadence comes from the source registry (6 h; was 90 min = ~16 agent runs a day at ~76 credits each). Fresh headlines come from the free RSS feeds hourly.. */
 const EVERY = (SOURCES.find((x) => x.id === "fc_spark_brief")?.everyMin ?? 360) * 60 * 1000;
 
-/** The price loop does not call this. A new reading at most every 6 hours, and never while the monthly credit ceiling is hit. */
+/** A ticket cleared the price gate. Start one Spark job if the last one was more than 10 minutes ago. Does not wait. */
+export function kickSparkOnPass(): "started" | "cooldown" | "standby" | "budget" {
+  if (refreshing || Date.now() - lastKick < 10 * 60_000) return "cooldown";
+  if (budgetNow().suspendNonessential) return "budget";
+  if (!spendAllowed("legacy_spark_brief").ok) return "standby";
+  refreshing = true;
+  lastKick = Date.now();
+  void runSparkBrief().finally(() => {
+    refreshing = false;
+  });
+  return "started";
+}
 export function kickSparkIfStale() {
   if (refreshing || Date.now() - lastKick < EVERY) return;
   if (budgetNow().suspendNonessential) return;

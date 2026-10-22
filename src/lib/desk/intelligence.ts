@@ -1,14 +1,20 @@
 /**
- * Read-only file load. The order path applies Spark, Alexandria, and Firecrawl
- * in intel-gate.ts (`sparkLogit` / `readIntelLogit`) before the price is judged.
- * This file still does not send.
+ * Read-only file load. Spark, Alexandria, and Firecrawl change the chance through
+ * `intelligenceLogit`, which the evaluator adds before the price is judged.
+ * Spark and Alexandria jobs start only after a ticket clears the gate (`onGatePass`).
+ * This file does not send.
  */
 import { readFileSync, statSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
 
 import { scheduledVeto, type Scheduled } from "./macro-calendar";
+import { readIntelControls, readIntelLogit } from "./intel-gate";
+import type { Series } from "./config";
 
-export { scheduledVeto };
+export { scheduledVeto, readIntelControls };
+export function intelligenceLogit(series: Series, now = Date.now()): number {
+  return readIntelLogit(series, now);
+}
 export type DeskIntelligence = {
   mirofish: { stage: string; ageMs: number | null; probability: number | null; usableForSettlement: false };
   spark: { status: string; at: string | null; fresh: boolean };
@@ -16,6 +22,7 @@ export type DeskIntelligence = {
   firecrawl: { lastDocumentAgeMs: number | null; ready: boolean };
   macroVeto: boolean;
   vetoEvents: string[];
+  controls: { spark: boolean; alexandria: boolean; firecrawl: boolean };
   /** No LLM-derived model confidence is returned for order submission. */
 };
 
@@ -49,6 +56,8 @@ export function readDeskIntelligence(now = Date.now()): DeskIntelligence {
     alexandria: { tools: Array.isArray(alex?.tools) ? alex.tools.length : 0 },
     firecrawl: { lastDocumentAgeMs: firecrawlAge,
       ready: firecrawlAge != null && firecrawlAge >= 0 && firecrawlAge < 24 * 3600_000 },
-    macroVeto: vetoEvents.length > 0, vetoEvents
+    macroVeto: vetoEvents.length > 0,
+    vetoEvents,
+    controls: readIntelControls(),
   };
 }

@@ -39,6 +39,13 @@ export type Decision = {
   order?: { cid?: string; orderId?: string; status?: string; fill?: number; why?: string };
   /** execution guard context: vol shock, required maker edge, 60 s lock, fast-move state, $ budget */
   guard?: { shock: number; maker_min_edge: number; lock_frac: number; move_z: number; cooling: boolean; maker_ok: boolean; budget: number; min_price: number };
+  /** Spark, Alexandria, and Firecrawl. `requested` is set only when this row cleared the price gate. */
+  intel?: {
+    logit: number;
+    controls: { spark: boolean; alexandria: boolean; firecrawl: boolean };
+    passed_gate: boolean;
+    requested: string[];
+  };
 };
 
 export class DecisionLedger {

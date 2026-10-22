@@ -86,6 +86,7 @@ type HeartPayload = {
   live?: boolean;
   begun?: boolean;
   dayLoss?: number;
+  intel?: { spark: boolean; alexandria: boolean; firecrawl: boolean };
 };
 
 export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
@@ -111,6 +112,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
   const [gear, setGear] = useState(false);
   const [showLoop, setShowLoop] = useState(false);
   const [heartNote, setHeartNote] = useState("idle");
+  const [intelOn, setIntelOn] = useState({ spark: true, alexandria: true, firecrawl: true });
   const [heartTick, setHeartTick] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const [board, setBoard] = useState<BookScan[]>([]);
@@ -153,9 +155,11 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       r: h.round ? `${h.round.slug}:${h.round.leftSec}:${h.round.up}:${h.round.take}` : "",
       live: h.live,
       loss: h.dayLoss,
+      intel: h.intel,
     });
     if (sig === heartSig.current) return;
     heartSig.current = sig;
+    if (h.intel) setIntelOn(h.intel);
     if (typeof h.cash === "number") setCash(h.cash);
     if (h.positions) {
       setPositions(h.positions);
@@ -636,6 +640,33 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
               >
                 {begun ? "LIVE" : "OFF"}
               </button>
+              <div className="mt-2 flex gap-1">
+                {([
+                  ["spark", "Spark"],
+                  ["alexandria", "Alex"],
+                  ["firecrawl", "Crawl"],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={cn(
+                      "h-7 rounded-sm px-2 font-mono text-[10px]",
+                      intelOn[key] ? "bg-primary text-primary-foreground" : "border border-border text-muted",
+                    )}
+                    onClick={() => {
+                      const next = { ...intelOn, [key]: !intelOn[key] };
+                      setIntelOn(next);
+                      void fetch("/api/live/heart", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ intel: { [key]: next[key] }, tick: true }),
+                      }).catch(() => undefined);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

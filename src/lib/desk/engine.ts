@@ -36,6 +36,7 @@ import { armResearch, researchFor, warmResearch } from "./research-cache";
 import { indexSnap, refreshIndexBars } from "./index-bars";
 import { proxyFor, warmProxies, blindSeries } from "./proxy-tape";
 import { refreshWindowBlocks } from "./window-block";
+import { onGatePass } from "./intel-gate";
 import { noteHeartbeat } from "./heartbeat-alert";
 
 export type { SeriesEval } from "./evaluator";
@@ -320,10 +321,15 @@ export class Engine {
           continue;
         }
         const b = x.e.best!;
+        const intelRun = onGatePass(x.e.series, b.side, now2);
+        const withIntel = (row: ReturnType<typeof this.decisionRow>) => {
+          row.intel = { logit: intelRun.logit, controls: intelRun.controls, passed_gate: true, requested: intelRun.requested };
+          return row;
+        };
         // re-check the guard right before sending (the 250 ms loop may have tripped since evaluate)
         const g = this.guard.state(x.e.series, Date.now());
         if (g.cooling) {
-          this.ledger.write(this.decisionRow({ ...x.e, failed: `G2_fast_move_cooldown_${g.dir}` }, "NO_TRADE", x.fee, now2), now2);
+          this.ledger.write(withIntel(this.decisionRow({ ...x.e, failed: `G2_fast_move_cooldown_${g.dir}` }, "NO_TRADE", x.fee, now2)), now2);
           continue;
         }
         const pYes = x.e.p ?? 0;
@@ -340,7 +346,7 @@ export class Engine {
           bankroll: (this.snapshot?.shard2Cash ?? 0) + (this.snapshot?.shard0Cash ?? 0),
         });
         if (sized.count < 1) {
-          this.ledger.write(this.decisionRow({ ...x.e, failed: sized.why }, "NO_TRADE", x.fee, now2), now2);
+          this.ledger.write(withIntel(this.decisionRow({ ...x.e, failed: sized.why }, "NO_TRADE", x.fee, now2)), now2);
           log("NO_TRADE", x.e.market?.ticker ?? x.e.series, sized.why);
           continue;
         }
@@ -354,7 +360,7 @@ export class Engine {
           }
         }
         this.ledger.write(
-          this.decisionRow({ ...x.e, failed: res.ok ? null : res.why }, res.ok ? "BUY" : "REFUSED", x.fee, now2, { cid: res.cid, orderId: res.orderId, status: res.status, fill: res.fill, why: res.why }),
+          withIntel(this.decisionRow({ ...x.e, failed: res.ok ? null : res.why }, res.ok ? "BUY" : "REFUSED", x.fee, now2, { cid: res.cid, orderId: res.orderId, status: res.status, fill: res.fill, why: res.why })),
           now2,
         );
         log(res.ok ? "ORDER" : "REFUSED", intent.ticker, b.side, b.mode, b.price, "x", sized.count, "edge", b.edge.toFixed(3), "need", (b.mode === "maker" ? x.e.makerMinEdge : 0.04).toFixed(3), res.why, sized.why, res.status ?? "");

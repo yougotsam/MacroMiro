@@ -185,13 +185,12 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(r.check(intent(), snap({ settledToday: [L(old)] }), NOW).ok).toBe(true);
   });
 
-  it("a live position in this window blocks every series, and the next window does not", () => {
+  it("a live position in this window does not block the other series", () => {
     const r = new RiskEngine(tmp("window"), ON);
     const open = "KXETH15M-26OCT081200-00";
     expect(windowAlreadyOpen(T, { [open]: 1.5 })).toBe(true);
-    expect(r.check(intent(), snap({ tickerWorst: { [open]: 1.5 } }), NOW).why).toContain("one live order per window");
-    expect(r.check(intent(), snap({ tickerWorst: { "KXETH15M-26OCT081215-15": 1.5 } }), NOW).ok).toBe(true);
-    expect(r.check(intent(), snap({ tickerWorst: { [open]: 0 } }), NOW).ok).toBe(true);
+    expect(r.check(intent(), snap({ tickerWorst: { [open]: 1.5 }, correlated: { "crypto|up": 1.5 } }), NOW).ok).toBe(true);
+    expect(r.check(intent(), snap({ tickerWorst: { [T]: 2.5 }, correlated: { "crypto|up": 2.5 } }), NOW).why).toContain("ticker exposure");
   });
 });
 
