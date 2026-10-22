@@ -2,7 +2,7 @@
  * Supporting features on the settlement index's own 1-minute bars (built from 1-second prints).
  * Four evidence groups, one vote each (no double counting). The shift is a log-odds step of at most 0.16, then cut at ±FEATURE_MAX_SHIFT.
  */
-import { FEATURE_MAX_SHIFT } from "./config";
+import { FEATURE_MAX_SHIFT, LOGIT_CONFLUENCE, LOGIT_HIGH } from "./config";
 import type { Print } from "./settlement";
 import { cvd, rvol, vwap, type Candle } from "./sniper";
 
@@ -245,8 +245,7 @@ export function features(bars: Bar[]): FeatureSnapshot {
   };
 }
 
-/** Live logit step. At a 50¢ base a full score moves the chance by 4 points and no more.
- *  +0.45 and +0.80 are not used. Those steps are about 11 and 19 points, and this book has not scored them. */
+/** Small chart vote. Still cut at 4 points. The 0.45 and 0.80 steps are tradeLogit, not this. */
 export const LIVE_LOGIT = 0.16;
 
 export function logit(p: number): number {
@@ -259,7 +258,24 @@ export function fromLogit(L: number): number {
   return 1 / (1 + Math.exp(-L));
 }
 
-/** Feature shift in probability points, ≤ FEATURE_MAX_SHIFT. Log-odds, then clamped. */
+export function applyLogit(pBase: number, delta: number): number {
+  if (!Number.isFinite(pBase) || pBase <= 0 || pBase >= 1) return pBase;
+  if (!Number.isFinite(delta) || delta === 0) return pBase;
+  return fromLogit(logit(pBase) + delta);
+}
+
+/** +0.80 when the sniper score is at least 11 or the feature score is at least 0.75.
+ *  +0.45 when the sniper score is at least 8 or the feature score is at least 0.45.
+ *  Otherwise the small 0.16 step. Sign follows the feature score, then the settlement side. */
+export function tradeLogit(featureScore: number, sniperScore: number, settlementSign: 1 | -1): { delta: number; step: number } {
+  const mag = Number.isFinite(featureScore) ? Math.min(1, Math.abs(featureScore)) : 0;
+  const sniper = Number.isFinite(sniperScore) ? sniperScore : 0;
+  const step = sniper >= 11 || mag >= 0.75 ? LOGIT_HIGH : sniper >= 8 || mag >= 0.45 ? LOGIT_CONFLUENCE : LIVE_LOGIT * mag;
+  const sign = featureScore < 0 ? -1 : featureScore > 0 ? 1 : sniper >= 8 ? settlementSign : 0;
+  return { delta: sign * step, step };
+}
+
+/** Feature shift in probability points, ≤ FEATURE_MAX_SHIFT. The small vote only. */
 export function featureShift(pBase: number, score: number) {
   if (!Number.isFinite(pBase) || !Number.isFinite(score) || pBase <= 0 || pBase >= 1) return 0;
   const s = Math.max(-1, Math.min(1, score));

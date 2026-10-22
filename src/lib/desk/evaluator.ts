@@ -23,11 +23,11 @@ import {
 } from "./config";
 import { approve, bucketFor, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
 import { strategyCall } from "./strategies";
-import { features, featureShift, flowFromBars, minuteBars, sessionTag, technicalSide, type FeatureSnapshot } from "./features";
+import { features, applyLogit, flowFromBars, minuteBars, sessionTag, technicalSide, tradeLogit, type FeatureSnapshot } from "./features";
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
-import { intelVerdict } from "./intel-gate";
+import { intelVerdict, readIntelLogit } from "./intel-gate";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { resampleComplete, evaluateSniper, sniperCanEnter, type Evidence } from "./sniper";
 import { barsForSniper, flowRefusal, researchFor } from "./research-cache";
@@ -144,7 +144,6 @@ export class Evaluator {
     out.shock = shockOf((v) => clampP(pAt(v).p), last.v, sig.sigma);
     const pBase = clampP(model.p);
     const feats = features(bars);
-    const shift = featureShift(pBase, feats.score);
     out.pBase = pBase;
     out.feats = feats;
     // One hour of live index prints cannot build 60 closed 15-minute bars.
@@ -169,8 +168,12 @@ export class Evaluator {
     }
     const flowBlock = flowRefusal(series);
     if (flowBlock) return fail(flowBlock);
-    out.shift = shift;
-    out.p = clampP(pBase + shift);
+    const settlementSign: 1 | -1 = pBase >= 0.5 ? 1 : -1;
+    const sniperScore = settlementSign > 0 ? (out.sniper?.long?.score ?? 0) : (out.sniper?.short?.score ?? 0);
+    const tilt = tradeLogit(feats.score, sniperScore, settlementSign);
+    const tilted = applyLogit(pBase, tilt.delta + readIntelLogit(series, now));
+    out.shift = tilted - pBase;
+    out.p = clampP(tilted);
     // execution guard
     out.guard = this.guard.observe(series, prints.slice(-30), sig.sigma, now);
     out.makerOk = makerWindowOk(left, out.lockFrac, ref.kind);

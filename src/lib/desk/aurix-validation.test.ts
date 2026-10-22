@@ -269,14 +269,16 @@ describe("probability validation (report-only)", () => {
   });
   it("Codex P1 price bands: asks under 4¢, over 72¢, or under 5¢ in the last minute are never booked", () => {
     const low = mk(1, 0.2, 1, { yesBid: 0.02, yesAsk: 0.035, tte: 300 });
-    expect(PRICE_MIN).toBe(0.36);
+    expect(PRICE_MIN).toBe(0.18);
     expect(takerReplay([low], (x) => x.p).trades).toBe(0);
     const lastMin = mk(2, 0.2, 1, { yesBid: 0.03, yesAsk: 0.045, tte: 40 });
     expect(takerReplay([lastMin], (x) => x.p).trades).toBe(0);
     const inside = { ...lastMin, tte: 300, p: 0.55, pBase: 0.55, yesBid: 0.35, yesAsk: 0.4 };
-    expect(takerReplay([inside], (x) => x.p).trades).toBe(1); // 40¢ with minutes left: inside the band
+    expect(takerReplay([inside], (x) => x.p).trades).toBe(1);
     const mid = { ...inside, yesBid: 0.3, yesAsk: 0.35 };
-    expect(takerReplay([mid], (x) => x.p).trades).toBe(0); // 35¢ is under the 36¢ floor
+    expect(takerReplay([mid], (x) => x.p).trades).toBe(1); // 35¢ is inside the 18¢ floor
+    const under = { ...inside, yesBid: 0.12, yesAsk: 0.17 };
+    expect(takerReplay([under], (x) => x.p).trades).toBe(0);
     const favorite = mk(4, 0.9, 1, { yesBid: 0.78, yesAsk: 0.8 });
     expect(takerReplay([favorite], (x) => x.p).trades).toBe(0);
     const high = mk(3, 0.999, 1, { yesBid: 0.94, yesAsk: 0.95 });

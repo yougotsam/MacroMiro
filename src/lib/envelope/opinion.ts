@@ -36,14 +36,14 @@ export function scoreOpinion(desk: DeskPayload, tape: Tape, cash: number): Opini
     id: "sit",
     score: 40,
     title: "Sit",
-    why: "There is no pullback, or the ticket is outside 36¢–72¢.",
+    why: "There is no pullback, or the ticket is outside 18¢–72¢.",
   };
   const scalp: Play = {
     id: "scalp",
     score: live ? 36 : 12,
     title: "15m",
     why: live
-      ? `${tape.symbol} is live. Price range: 36¢–72¢. A moving average is not an entry. The trade needs a pullback.`
+      ? `${tape.symbol} is live. Price range: 18¢–72¢. A moving average is not an entry. The trade needs a pullback.`
       : "This book is not in a live session.",
   };
   const event: Play = {
@@ -51,12 +51,12 @@ export function scoreOpinion(desk: DeskPayload, tape: Tape, cash: number): Opini
     score: shock ? 72 : 14,
     title: "Catalyst",
     why: shock
-      ? `${desk.next?.name ?? "Print"} window. Price range stays 36¢–72¢. The clip stays $3 or less. The headline is still not a direction.`
+      ? `${desk.next?.name ?? "Print"} window. Price range stays 18¢–72¢. The clip stays $3 or less. The headline is still not a direction.`
       : "No CPI, jobs, or Fed window.",
   };
   if (tape.regime === "trend" && live) {
     scalp.score += 8;
-    scalp.why = `${tape.symbol} trend is on. Trend is not the entry. The ticket still has to be a 36¢–72¢ pullback.`;
+    scalp.why = `${tape.symbol} trend is on. Trend is not the entry. The ticket still has to be a 18¢–72¢ pullback.`;
   }
   const plays = [sit, scalp, event].sort((a, b) => b.score - a.score);
   const pick = plays[0];

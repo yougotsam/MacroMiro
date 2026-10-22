@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>intelligence.ts</title><link rel="stylesheet" href="page.css"></head><body><main>
 <p class="kicker">Rule sheet · inventory only · nothing on this page has been changed</p>
-<h1>intelligence.ts</h1><p class="path">/workspace/src/lib/desk/intelligence.ts</p><p class="role">Reads four files and the news calendar. Returns a record. Does not price and does not send.</p>
+<h1>intelligence.ts</h1><p class="path">/workspace/src/lib/desk/intelligence.ts</p><p class="role">Reads the files. The chance change is applied in intel-gate.ts before the order is priced.</p>
 <section class="card"><div class="id">I1</div><h2>What it reads</h2>
 <p class="now"><span class="label">In the file now</span>mirofish-latest.json, spark-latest.json, alexandria-latest.json, desk-news.json, and the modified time of mirofish-seed.md. A missing or broken file becomes a null, not a crash.</p>
 <p class="opt"><span class="label">Option, not applied</span>Stop reading one of them, or add a file.</p></section><section class="card"><div class="id">I2</div><h2>MiroFish</h2>

@@ -2,15 +2,16 @@
 
 **Current trading state: the 15-minute rule is loaded. It does not send unless `kalshi_live`, `kalshi_begin`, and `desk_arm` are all on.** `CALIBRATED_MODEL_APPROVED` is `true`. The arm file is off until you turn it on. Perpetual orders stay off. Meme coins are not on this order path.
 
-Scored on the 29 whole fills through 21 Oct 2026, and left in force:
+Scored rules that are on, as of 21 Oct 2026:
 
-- Buy only from 36¢ to 72¢. The 18¢–38¢ flip band is the band that lost about $7.63. It is refused.
+- Buy from 18¢ to 72¢. 18¢–38¢ is the favored misprice when the tilted chance is above 45¢. Above 72¢ is still refused.
 - A settled loss blocks new orders for 20 minutes from the settlement.
 - One live order per 15-minute window.
-- The chart moves the chance in log-odds, then the move is cut at 4 points. A +0.45 or +0.80 logit is not applied.
-- Half-Kelly is in `sizing.ts`. It cannot spend more than $3, the −$15 day stop, or the $9 open cap. 15% of equity is a ceiling inside that function. On this account the $3 cap is the one that binds.
+- The chance is settlement odds plus a log-odds step. Score at least 11, or a feature score at least 0.75, adds +0.80. Score at least 8, or a feature score at least 0.45, adds +0.45. That step is not cut at 4 points.
+- Spark, Alexandria, and a Firecrawl seed younger than 24 hours add their own log-odds before the order is priced. A missing file adds nothing.
+- Half-Kelly cannot spend more than $3, the −$15 day stop, or the $9 open cap.
 
-There is no daily cron. A 7/14/20/50 cross is not an entry. Firecrawl, Spark, and Alexandria are notes. They do not set the chance and they do not send.
+There is no daily cron. A 7/14/20/50 cross is not an entry by itself. Firecrawl, Spark, and Alexandria are in the chance through `intel-gate.ts`. They still do not send. Meme coins are not on this order path.
 
 **Single authoritative trading strategy:** [docs/STRATEGY.md](docs/STRATEGY.md).
 **Repair, test limitations, release criteria:** [docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md](docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md).

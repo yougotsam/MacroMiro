@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { CALIBRATED_MODEL_APPROVED, DAILY_STOP_USD, ENABLE_RISK_OVERRIDES, MAX_ORDER_COST_USD, PRICE_MAX, TICKER_RE } from "./config";
+import { CALIBRATED_MODEL_APPROVED, DAILY_STOP_USD, ENABLE_RISK_OVERRIDES, MAX_ORDER_COST_USD, PRICE_MAX, PRICE_MIN, TICKER_RE } from "./config";
 import { orderFee, quadraticFee, quadraticFeeFills } from "./fees";
 import { featureShift } from "./features";
 import { scoreSides, sizeFor, type Book } from "./gate";
@@ -90,8 +90,8 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     const s = snap({ realizedToday: -10, openWorst: 3, restWorst: 1.2, pendingWorst: 0.4 });
     expect(dayWorstOf(s)).toBeCloseTo(-14.6, 6);
     expect(risk.check(intent({ price: 0.5, count: 2 }), s, NOW).ok).toBe(false);
-    expect(risk.check(intent({ price: 0.2, count: 2 }), s, NOW).why).toBe("price band");
-    expect(risk.check(intent({ price: 0.3, count: 1 }), s, NOW).why).toBe("price band");
+    expect(risk.check(intent({ price: 0.17, count: 2 }), s, NOW).why).toBe("price band");
+    expect(risk.check(intent({ price: 0.3, count: 1 }), s, NOW).ok).toBe(true);
     expect(risk.check(intent({ price: 0.4, count: 1 }), s, NOW).ok).toBe(true);
   });
 
@@ -613,19 +613,20 @@ describe("adverse-selection guard", () => {
     expect(scoreSides(0.7, 0.7, book, fee, { allowMaker: false, allowTaker: true }).best).toBeNull();
   });
 
-  it("never buys under 36¢, and never under 5¢ in the last minute", async () => {
+  it("never buys under 18¢, and never under 5¢ in the last minute", async () => {
     const { minPriceFor, pullReason } = await G();
     expect(minPriceFor(59)).toBe(0.05);
     expect(minPriceFor(61)).toBe(0);
     const fee = { feeType: "quadratic", multiplier: 1 };
-    // YES ask 4.5¢, P 0.30 → a huge taker edge, refused by the 36¢ floor even with minutes left
+    // YES ask 4.5¢, refused by the 18¢ floor
     const cheap: Book = { yesBid: { price: 0.04, size: 100 }, noBid: { price: 0.955, size: 100 }, ts: NOW };
     expect(scoreSides(0.3, 0.3, cheap, fee).best).toBeNull();
     expect(scoreSides(0.3, 0.3, cheap, fee).failed).toBe("no_edge_or_band");
-    const tradable: Book = { yesBid: { price: 0.35, size: 100 }, noBid: { price: 0.6, size: 100 }, ts: NOW };
-    const ok = scoreSides(0.55, 0.55, tradable, fee);
-    expect(ok.best).not.toBeNull();
-    expect(ok.best!.price).toBeGreaterThanOrEqual(0.36);
+    const eighteen: Book = { yesBid: { price: 0.15, size: 100 }, noBid: { price: 0.8, size: 100 }, ts: NOW };
+    const flipped = scoreSides(0.7, 0.7, eighteen, fee);
+    expect(flipped.best).not.toBeNull();
+    expect(flipped.best!.price).toBeGreaterThanOrEqual(0.18);
+    expect(flipped.best!.price).toBeLessThan(0.36);
     const lm = scoreSides(0.3, 0.3, cheap, fee, { allowMaker: true, allowTaker: true, minPrice: minPriceFor(30) });
     expect(lm.best).toBeNull();
     const calm = { cooling: false, dir: null, z: 0, triggered: false, until: 0 };
@@ -647,7 +648,7 @@ describe("size to room", () => {
     expect(halfKellyStake(0.6, 0.36, 10_000).stake).toBe(3);
     expect(halfKellyStake(0.55, 0.4, 40).stake).toBeLessThanOrEqual(3);
     expect(halfKellyStake(0.5, 0.18, 40).why).toBe("half kelly under the dollar cap");
-    expect(0.18).toBeLessThan(0.36);
+    expect(PRICE_MIN).toBe(0.18);
     const fee = { feeType: "quadratic", multiplier: 1 };
     const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
     const g = scoreSides(0.7, 0.7, book, fee, { allowMaker: true, allowTaker: true, budget: 1.3 });

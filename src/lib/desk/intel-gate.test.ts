@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { judgeIntel } from "./intel-gate";
+import { judgeIntel, sparkLogit } from "./intel-gate";
 
 const NOW = Date.parse("2026-10-20T01:00:00.000Z");
 const alex = { tools: [{ provider: "cmegroup-com", capability: "fedwatch" }] };
@@ -41,6 +41,13 @@ describe("spark and alexandria on the send", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear"), fish), NOW);
     expect(v.ok).toBe(true);
     expect(v.why).toContain("mirofish_noted");
+  });
+  it("a fresh bitcoin brief moves the chance, and Firecrawl scales it", () => {
+    const docsOn = { ...docs(spark("bullish", "btc")), firecrawlReady: true };
+    expect(sparkLogit("KXBTC15M", docs(spark("bullish", "btc")), NOW)).toBeCloseTo(0.25, 6);
+    expect(sparkLogit("KXBTC15M", docsOn, NOW)).toBeCloseTo(0.3125, 6);
+    expect(sparkLogit("KXBTC15M", docs(spark("bearish", "btc")), NOW)).toBeCloseTo(-0.25, 6);
+    expect(sparkLogit("KXETH15M", docs(spark("bullish", "btc")), NOW)).toBe(0);
   });
   it("does not invent a side when MiroFish is down", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs(spark("unclear", "unclear")), NOW);

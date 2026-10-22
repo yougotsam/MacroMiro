@@ -3,15 +3,15 @@ Date: 2026-10-09 | Scope: Kalshi 15m BTC/ETH/SOL/XRP/gold outcomes, separate per
 SUPERSEDED as the product spec by `docs/product/PRD.md` (2026-10-14). This file stays as the 15-minute rulebook only. If it disagrees with the PRD, the system map, the strategy registry, the venue matrix, or the risk mandate, those win.
 
 ## DECISION 21 OCT 2026
-The log-odds formula is in the code. The untested steps are not.
+The log-odds steps are on the order path.
 
-- Base chance stays the settlement distance: spot versus strike, volatility, and seconds left. Crypto is the 60-second average. Gold, silver, oil, and FX are the last 1-minute print.
-- A chart score adds a logit of at most 0.16, then the change in the chance is cut at 4 points. +0.45 and +0.80 are not applied. They were not scored on this book.
-- Half-Kelly is `0.5 × (b·p − (1−p)) / b`, then at most 15% of equity, then at most $3. The order budget is still the tighter of $3, the −$15 day room, and the $9 open room.
-- 18¢–38¢ is refused. On the 29 whole fills, 21¢–35¢ was about −$7.63.
+- Base chance stays the settlement distance: spot versus strike, volatility, and seconds left.
+- A sniper score of at least 11, or a feature score of at least 0.75, adds a logit of +0.80 in the direction of that score. A score of at least 8, or a feature score of at least 0.45, adds +0.45. This step is not cut at 4 points.
+- Spark moves the same chance by 0.25 when the brief is fresh and names the asset. Alexandria moves it when the file is under 7 days old and carries a probability. A Firecrawl seed under 24 hours scales that news step by 1.25. A missing file adds nothing.
+- Half-Kelly is `0.5 × (b·p − (1−p)) / b`, then at most 15% of equity, then at most $3.
+- The buy floor is 18¢. The ceiling is 72¢. 18¢–38¢ is the favored misprice when the tilted chance is above 45¢.
 - One settled loss pauses 20 minutes. One live order per window.
-- A confluence score is not a win probability. `setup = NONE` does not get a probability poured into it.
-- Meme coins, perps, and a fast lane do not send from this file.
+- Meme coins and perps do not send from this file.
 
 STATUS: LIVE 15-minute tickets only when the three switches are on. **CALIBRATED_MODEL_APPROVED=true** in `src/lib/desk/config.ts`. Perpetual orders stay off.
 Code truth: `src/lib/desk/engine.ts` (research decision engine), `gate.ts` (quote evaluation),

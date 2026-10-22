@@ -1,7 +1,7 @@
 /**
- * Read-only intelligence bridge. The existing Spark/Firecrawl → MiroFish and Alexandria
- * workflows are preserved; their narrative/probability outputs are NOT calibrated
- * Kalshi settlement forecasts and must never adjust pYES directly.
+ * Read-only file load. The order path applies Spark, Alexandria, and Firecrawl
+ * in intel-gate.ts (`sparkLogit` / `readIntelLogit`) before the price is judged.
+ * This file still does not send.
  */
 import { readFileSync, statSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";

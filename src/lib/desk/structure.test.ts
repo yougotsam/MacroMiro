@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { FEATURE_MAX_SHIFT } from "./config";
-import { featureShift, technicalSide, type FeatureSnapshot } from "./features";
+import { FEATURE_MAX_SHIFT, LOGIT_HIGH, PRICE_MIN } from "./config";
+import { applyLogit, featureShift, technicalSide, tradeLogit, type FeatureSnapshot } from "./features";
 
 function frame(over: Partial<FeatureSnapshot> = {}): FeatureSnapshot {
   return {
@@ -71,11 +71,13 @@ describe("structure must agree before a side is allowed", () => {
     expect(s.side).toBe("no");
   });
 
-  it("the technical score can move the chance, and not by more than 4 points", () => {
-    expect(FEATURE_MAX_SHIFT).toBe(0.04);
-    expect(featureShift(0.5, 1)).toBeCloseTo(0.04, 2);
-    expect(featureShift(0.5, 0)).toBe(0);
-    expect(featureShift(0.5, 5)).toBeCloseTo(0.04, 2);
-    expect(Math.abs(featureShift(0.9, 1))).toBeLessThanOrEqual(0.04);
+  it("a score of 11 adds a logit of 0.80 and 18¢ is inside the band", () => {
+    expect(LOGIT_HIGH).toBe(0.8);
+    expect(tradeLogit(0.8, 0, 1).step).toBe(0.8);
+    expect(tradeLogit(0, 11, 1).delta).toBe(0.8);
+    expect(tradeLogit(0.5, 0, 1).step).toBe(0.45);
+    expect(applyLogit(0.5, 0.8)).toBeCloseTo(0.6899, 3);
+    expect(PRICE_MIN).toBe(0.18);
+    expect(Math.abs(featureShift(0.5, 1))).toBeLessThanOrEqual(0.04 + 1e-9);
   });
 });
