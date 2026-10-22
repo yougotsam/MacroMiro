@@ -4,17 +4,17 @@ import { readFileSync } from "node:fs";
 import { SPARK_PROMPT, sparkBody, sparkDate, sparkPrompt, sparkRead } from "./spark.ts";
 
 describe("spark brief", () => {
-  it("uses spark-2, a medium effort, and a credit cap", () => {
+  it("uses spark-2, a high effort, and a credit cap", () => {
     const body = sparkBody();
     assert.equal(body.model, "spark-2");
-    assert.equal(body.effort, "medium");
-    assert.ok(body.maxCredits <= 80);
+    assert.equal(body.effort, "high");
+    assert.ok(body.maxCredits <= 150);
     assert.equal(body.strictConstrainToURLs, false);
     assert.ok(body.urls.every((u) => /federalreserve|bls\.gov|eia\.gov|bea\.gov|treasury\.gov|fred\.stlouisfed|sec\.gov|cftc\.gov|cmegroup\.com|nasdaq\.com|imf\.org/.test(u)));
     assert.ok(body.urls.some((u) => u.includes("fedwatch")));
     assert.ok(SPARK_PROMPT.length < 10_000);
     assert.match(SPARK_PROMPT, /Do not recommend a buy or a sell/);
-    assert.match(SPARK_PROMPT, /probability is null/);
+    assert.match(SPARK_PROMPT, /Do not leave it null/);
     assert.match(SPARK_PROMPT, /Columbus Washington subway station/);
     assert.match(SPARK_PROMPT, /NFP/);
     const poll = readFileSync(new URL("./spark.server.ts", import.meta.url), "utf8");

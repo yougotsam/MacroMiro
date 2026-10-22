@@ -90,7 +90,7 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     const s = snap({ realizedToday: -10, openWorst: 3, restWorst: 1.2, pendingWorst: 0.4 });
     expect(dayWorstOf(s)).toBeCloseTo(-14.6, 6);
     expect(risk.check(intent({ price: 0.5, count: 2 }), s, NOW).ok).toBe(false);
-    expect(risk.check(intent({ price: 0.17, count: 2 }), s, NOW).why).toBe("price band");
+    expect(risk.check(intent({ price: 0.04, count: 2 }), s, NOW).why).toBe("price band");
     expect(risk.check(intent({ price: 0.3, count: 1 }), s, NOW).ok).toBe(true);
     expect(risk.check(intent({ price: 0.4, count: 1 }), s, NOW).ok).toBe(true);
   });
@@ -150,8 +150,8 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(r.check(intent({ price: 0.5, count: 7 }), snap(), NOW).why).toContain("order cost");
     expect(r.check(intent({ price: 0.5, count: 2 }), snap({ realizedToday: 5, openWorst: 5, restWorst: 3.5 }), NOW).why).toContain("exposure");
     expect(r.check(intent(), snap({ ordersPerTicker: { [T]: 3 } }), NOW).why).toContain("ticker order cap");
-    expect(r.check(intent({ price: 0.95, count: 1 }), snap(), NOW).why).toBe("price band");
-    expect(r.check(intent({ price: 0.03, count: 1 }), snap(), NOW).why).toBe("price band");
+    expect(r.check(intent({ price: 0.96, count: 1 }), snap(), NOW).why).toBe("price band");
+    expect(r.check(intent({ price: 0.04, count: 1 }), snap(), NOW).why).toBe("price band");
     expect(r.check(intent({ ticker: "KXLLM1-26OCT12-OPEN" }), snap(), NOW).ok).toBe(false);
     expect(r.check(intent(), snap({ shard2Cash: 0.5 }), NOW).why).toContain("cash 0.50");
     expect(r.check(intent({ ticker: "KXGBPUSD15M-26OCT200015-30", exchangeIndex: 0, price: 0.4, count: 2, tickId: 3 }), snap({ shard2Cash: 10, shard0Cash: 0 }), NOW).ok).toBe(true);
@@ -394,10 +394,10 @@ describe("execution gate: YES and NO scored separately", () => {
   const table: Array<{ name: string; p: number; pBase?: number; b: Book; side: "yes" | "no" | null; mode?: "maker" | "taker"; price?: number; failed?: string }> = [
     { name: "P 0.70, YES 60/65 → YES maker 61¢", p: 0.7, b: book(0.6, 0.35), side: "yes", mode: "maker", price: 0.61 },
     { name: "P 0.30, mirror → NO maker 61¢", p: 0.3, b: book(0.35, 0.6), side: "no", mode: "maker", price: 0.61 },
-    { name: "favorite: P 0.95, YES 88/90 → no trade above 72¢", p: 0.95, b: book(0.88, 0.1), side: null, failed: "no_edge_or_band" },
+    { name: "favorite: P 0.95, YES 88/90 → maker under the ask", p: 0.95, b: book(0.88, 0.1), side: "yes", mode: "maker", price: 0.89 },
     { name: "P 0.50 fair book 49/51 → no trade", p: 0.5, b: book(0.49, 0.49), side: null, failed: "no_edge" },
     { name: "features alone cannot create a trade", p: 0.7, pBase: 0.6, b: book(0.63, 0.35), side: null },
-    { name: "above the 72¢ band → no trade", p: 0.99, b: book(0.95, 0.04), side: null, failed: "no_edge_or_band" },
+    { name: "above 95¢ → no trade", p: 0.99, b: book(0.95, 0.04), side: null, failed: "no_edge" },
   ];
   for (const c of table) {
     it(c.name, () => {
@@ -429,7 +429,7 @@ describe("execution gate: YES and NO scored separately", () => {
   });
   it("feature shift is bounded to ±4pp", () => {
     for (const p of [0.05, 0.3, 0.5, 0.8]) for (const s of [-3, -1, 0.4, 1, 5]) expect(Math.abs(featureShift(p, s))).toBeLessThanOrEqual(0.04 + 1e-12);
-    expect(PRICE_MAX).toBe(0.72);
+    expect(PRICE_MAX).toBe(0.95);
     expect(sizeFor(0.5, true, fee)).toBe(6);
   });
 });
@@ -617,19 +617,18 @@ describe("adverse-selection guard", () => {
     expect(scoreSides(0.7, 0.7, book, fee, { allowMaker: false, allowTaker: true }).best).toBeNull();
   });
 
-  it("never buys under 18¢, and never under 5¢ in the last minute", async () => {
+  it("never buys under 5¢", async () => {
     const { minPriceFor, pullReason } = await G();
     expect(minPriceFor(59)).toBe(0.05);
     expect(minPriceFor(61)).toBe(0);
     const fee = { feeType: "quadratic", multiplier: 1 };
-    // YES ask 4.5¢, refused by the 18¢ floor
     const cheap: Book = { yesBid: { price: 0.04, size: 100 }, noBid: { price: 0.955, size: 100 }, ts: NOW };
     expect(scoreSides(0.3, 0.3, cheap, fee).best).toBeNull();
-    expect(scoreSides(0.3, 0.3, cheap, fee).failed).toBe("no_edge_or_band");
+    expect(scoreSides(0.3, 0.3, cheap, fee).failed).toBe("price_band");
     const eighteen: Book = { yesBid: { price: 0.15, size: 100 }, noBid: { price: 0.8, size: 100 }, ts: NOW };
     const flipped = scoreSides(0.7, 0.7, eighteen, fee);
     expect(flipped.best).not.toBeNull();
-    expect(flipped.best!.price).toBeGreaterThanOrEqual(0.18);
+    expect(flipped.best!.price).toBeGreaterThanOrEqual(0.05);
     expect(flipped.best!.price).toBeLessThan(0.36);
     const lm = scoreSides(0.3, 0.3, cheap, fee, { allowMaker: true, allowTaker: true, minPrice: minPriceFor(30) });
     expect(lm.best).toBeNull();
@@ -652,7 +651,7 @@ describe("size to room", () => {
     expect(halfKellyStake(0.6, 0.36, 10_000).stake).toBe(3);
     expect(halfKellyStake(0.55, 0.4, 40).stake).toBeLessThanOrEqual(3);
     expect(halfKellyStake(0.5, 0.18, 40).why).toBe("half kelly under the dollar cap");
-    expect(PRICE_MIN).toBe(0.18);
+    expect(PRICE_MIN).toBe(0.05);
     const fee = { feeType: "quadratic", multiplier: 1 };
     const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
     const g = scoreSides(0.7, 0.7, book, fee, { allowMaker: true, allowTaker: true, budget: 1.3 });

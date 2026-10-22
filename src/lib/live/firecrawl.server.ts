@@ -50,7 +50,7 @@ async function scrape(url: string): Promise<{ ok: true; markdown: string } | { o
     method: "POST",
     signal: AbortSignal.timeout(20000),
     headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ url, formats: ["markdown"] }),
+    body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true, proxy: "enhanced", timeout: 30000 }),
   });
   const json = (await res.json().catch(() => ({}))) as { data?: { markdown?: string }; error?: string };
   const markdown = json.data?.markdown ?? "";

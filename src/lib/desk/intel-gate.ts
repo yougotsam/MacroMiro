@@ -31,10 +31,28 @@ export type IntelVerdict = {
 };
 
 function covers(series: Series, asset: string): boolean {
-  if (asset === "both") return series === "KXBTC15M" || series === "KXGOLD15M";
-  if (asset === "btc") return series === "KXBTC15M";
-  if (asset === "gold") return series === "KXGOLD15M";
+  const a = asset.toLowerCase();
+  if (a === "both") return series === "KXBTC15M" || series === "KXGOLD15M";
+  if (a === "btc" || a === "bitcoin") return series === "KXBTC15M";
+  if (a === "eth" || a === "ethereum") return series === "KXETH15M";
+  if (a === "gold") return series === "KXGOLD15M";
+  if (a === "silver") return series === "KXSILVER15M";
+  if (a === "oil" || a === "wti") return series === "KXWTI15M";
+  if (a === "fx" || a === "gbp") return series === "KXGBPUSD15M" || series === "KXEURUSD15M";
+  if (a === "jpy") return series === "KXUSDJPY15M";
+  if (a === "rates") return series === "KXGOLD15M" || series === "KXSILVER15M" || series === "KXGBPUSD15M" || series === "KXEURUSD15M" || series === "KXUSDJPY15M";
   return false;
+}
+
+function rateProbability(docs: IntelDocs): number | null {
+  const alex = docs.alexandria;
+  const direct = Number(alex?.probability);
+  if (direct > 0 && direct < 1) return direct;
+  const fed = (alex?.fed ?? docs.news?.fed) as { ease?: number; hike?: number } | undefined;
+  const ease = Number(fed?.ease);
+  const hike = Number(fed?.hike);
+  if (!Number.isFinite(ease) || !Number.isFinite(hike)) return null;
+  return Math.min(0.95, Math.max(0.05, 0.5 + (ease - hike) / 200));
 }
 
 function miroRead(m: Record<string, unknown> | null, now: number): { state: string; side: "yes" | "no" | null } {
@@ -107,8 +125,9 @@ export function sparkLogit(series: Series, docs: IntelDocs, now: number): number
   const alex = docs.alexandria;
   const alexAt = Date.parse(String(alex?.at ?? ""));
   const alexFresh = docs.controls?.alexandria !== false && Number.isFinite(alexAt) && now >= alexAt && now - alexAt < 7 * 24 * 3600_000;
-  const p = Number(alex?.probability);
-  if (alexFresh && p >= 0 && p <= 1) alexL = Math.max(-0.8, Math.min(0.8, logit(p) - logit(0.5)));
+  const p = rateProbability(docs);
+  const rateSeries = covers(series, "rates");
+  if (alexFresh && p != null && (Number(docs.alexandria?.probability) > 0 || rateSeries)) alexL = Math.max(-0.8, Math.min(0.8, logit(p) - logit(0.5)));
   let L = sparkL + alexL;
   if (docs.controls?.firecrawl !== false && docs.firecrawlReady === true && L !== 0) L *= 1.25;
   return L;

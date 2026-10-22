@@ -77,7 +77,7 @@ describe("structure must agree before a side is allowed", () => {
     expect(tradeLogit(0, 11, 1).delta).toBe(0.8);
     expect(tradeLogit(0.5, 0, 1).step).toBe(0.45);
     expect(applyLogit(0.5, 0.8)).toBeCloseTo(0.6899, 3);
-    expect(PRICE_MIN).toBe(0.18);
+    expect(PRICE_MIN).toBe(0.05);
     expect(Math.abs(featureShift(0.5, 1))).toBeLessThanOrEqual(0.04 + 1e-9);
   });
 });

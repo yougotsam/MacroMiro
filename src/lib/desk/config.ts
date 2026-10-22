@@ -89,8 +89,8 @@ export const POST_LOSS_PAUSE_MS = 20 * 60_000;
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
 export const UNCERTAINTY = 0.02; // subtracted from P on every side
-export const PRICE_MIN = 0.18; // Floor is 18¢. The favored misprice is 18¢–38¢ when the tilted chance is above 45¢. Above 72¢ stays refused.
-export const PRICE_MAX = 0.72; // a bought contract above 72¢ is a favorite. Those won often and lost money after fees.
+export const PRICE_MIN = 0.05; // Below 5¢ is a dead contract. The account size is not a price.
+export const PRICE_MAX = 0.95; // Above 95¢ the fee eats the favorite. 72¢ was refusing the side the model was sure about.
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;
 export const BASE_MIN_EDGE = 0.01; // the settlement model alone (no features) must show this much on the chosen side/price

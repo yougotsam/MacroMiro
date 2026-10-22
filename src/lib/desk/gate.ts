@@ -100,7 +100,8 @@ export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeI
   };
   if (!book.yesBid && !book.noBid) return { best: null, all, failed: "no_quote", quotes };
   const failed = "no_edge";
-  let bandHit = false;
+  let sawInBand = false;
+  let sawOutside = false;
   for (const side of ["yes", "no"] as const) {
     const p = side === "yes" ? pYes : 1 - pYes;
     const pBase = side === "yes" ? pYesBase : 1 - pYesBase;
@@ -109,8 +110,9 @@ export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeI
     const ask = opp ? r4(1 - opp.price) : null;
     // taker
     if (opts.allowTaker && ask != null && opp) {
-      if (ask < lo || ask > PRICE_MAX) bandHit = true;
+      if (ask < lo || ask > PRICE_MAX) sawOutside = true;
       else {
+        sawInBand = true;
         const byBudget = sizeFor(ask, false, fee, budget);
         if (byBudget < 1) roomHit = true;
         const count = Math.min(byBudget, Math.floor(opp.size));
@@ -133,9 +135,10 @@ export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeI
       if (ask != null && price >= ask) price = r4(bid?.price ?? 0); // join the bid if improving would cross
       if (price <= 0 || (ask != null && price >= ask)) continue;
       if (price < lo || price > PRICE_MAX) {
-        bandHit = true;
+        sawOutside = true;
         continue;
       }
+      sawInBand = true;
       const count = sizeFor(price, true, fee, budget);
       if (count < 1) {
         roomHit = true;
@@ -148,7 +151,7 @@ export function scoreSides(pYes: number, pYesBase: number, book: Book, fee: FeeI
       if (edge >= makerMin && edgeBase >= BASE_MIN_EDGE) all.push({ side, mode: "maker", price, count, fee: f, feePer, edge, edgeBase, pSide: p });
     }
   }
-  if (!all.length) return { best: null, all, failed: roomHit ? "no_room_or_edge" : bandHit ? "no_edge_or_band" : failed, quotes };
+  if (!all.length) return { best: null, all, failed: !sawInBand && sawOutside ? "price_band" : roomHit ? "no_room_or_edge" : failed, quotes };
   // rank by expected dollars (edge × count), taker first on ties because it fills
   all.sort((a, b) => b.edge * b.count - a.edge * a.count || (a.mode === "taker" ? -1 : 1));
   return { best: all[0], all, failed: null, quotes };

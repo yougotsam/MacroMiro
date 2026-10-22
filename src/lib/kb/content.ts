@@ -12,7 +12,7 @@ Gold, silver, and oil settle on Pyth. Pound, euro, and yen settle on Pyth too.
 All of them spend the same dollars. There is no second wallet.
 A perp price does not settle the ticket. One quiet market does not freeze the others.
 
-Every order is a resting bid under the ask. A filled ticket is held to the clock. Price range: 18¢–72¢. Nothing under 18¢. Nothing above 72¢. A score of 11 adds a logit of 0.80. Three settled losses in a row pause new orders for 20 minutes. One loss does not. One live order per contract. Clock: 5s after open to 30s before close. The perpetual book is a separate Kalshi margin order. It can send when the desk is on and one contract is inside the $3 cap. Meme coins are a third button on the same cash and do not send until a pool check passes. The live rule is the desk code. This page only repeats it.`,
+Every order is a resting bid under the ask. A filled ticket is held to the clock. Price range: 5¢–95¢. Nothing under 5¢. Nothing above 95¢. The chance still has to beat the price and the fee. A score of 11 adds a logit of 0.80. Three settled losses in a row pause new orders for 20 minutes. One loss does not. One live order per contract. Clock: 5s after open to 30s before close. The perpetual book is a separate Kalshi margin order. It can send when the desk is on and one contract is inside the $3 cap. Meme coins are a third button on the same cash and do not send until a pool check passes. The live rule is the desk code. This page only repeats it.`,
   },
   {
     id: "entry",

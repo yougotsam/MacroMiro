@@ -9,7 +9,7 @@ The log-odds steps are on the order path.
 - A sniper score of at least 11, or a feature score of at least 0.75, adds a logit of +0.80 in the direction of that score. A score of at least 8, or a feature score of at least 0.45, adds +0.45. This step is not cut at 4 points.
 - Spark moves the same chance by 0.25 when the brief is fresh and names the asset. Alexandria moves it when the file is under 7 days old and carries a probability. A Firecrawl seed under 24 hours scales that news step by 1.25. A missing file adds nothing.
 - Half-Kelly is `0.5 × (b·p − (1−p)) / b`, then at most 15% of equity, then at most $3.
-- The buy floor is 18¢. The ceiling is 72¢. 18¢–38¢ is the favored misprice when the tilted chance is above 45¢.
+- The buy range is 5¢–95¢. Under 5¢ is refused. Over 95¢ is refused. The order still needs the chance to beat the price and the fee. The dollar cap stays $3 until money is added.
 - Three settled losses in a row pause 20 minutes. One loss does not. One live order per contract. A second series in the same 15 minutes is allowed. Spark, Alexandria, and Firecrawl stay on and run when a ticket clears the gate.
 - Meme coins and perps do not send from this file.
 

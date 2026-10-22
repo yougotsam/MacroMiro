@@ -643,7 +643,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
               >
                 {deskOn.live && deskOn.begin && deskOn.arm ? "LIVE" : "OFF"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-muted">18¢–72¢ · $3 · −$15 · 3 losses then 20 min</p>
+              <p className="mt-1 font-mono text-[10px] text-muted">5¢–95¢ · edge after the fee · $3 · −$15 · 3 losses then 20 min</p>
               <div className="mt-2 flex gap-1">
                 {([
                   ["spark", "Spark"],
@@ -742,7 +742,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         {gear ? (
           <div className="mt-3 rounded-sm border border-border bg-card p-4">
             <p className="font-mono text-xs uppercase tracking-widest text-primary">Broker</p>
-            <p className="mt-1 text-sm text-muted">Kalshi orders leave from the desk engine. Band 18¢–72¢. Cap $3 an order, $9 open, day stop −$15. Three losses in a row sit out 20 minutes. Spark, Alexandria, and Firecrawl run on a real ticket. They are not a switch.</p>
+            <p className="mt-1 text-sm text-muted">Kalshi orders leave from the desk engine. A contract from 5¢ to 95¢ can pass when the chance beats the price and the fee. Cap $3 an order until the deposit is in. Three losses in a row sit out 20 minutes. Spark writes a probability. Alexandria reads the rate odds. Firecrawl pulls the page in enhanced mode.</p>
             <div className="mt-3">
               <BrokerPanel selected={brokerId} onSelect={setBrokerId} />
             </div>

@@ -58,8 +58,8 @@ const SPARK_LINES = [
   "headlines repeats those up to three headlines as title, url (the article page you opened, not a home page), and published (the date printed on the page, or null).",
   "released is true only when that release has already been published.",
   "actual, forecast, and previous are copied only when those numbers are printed. Otherwise null.",
-  "asset is btc, gold, both, or unclear. A calendar date alone is unclear.",
-  "probability is null when the pages do not support a direction. When a page prints a likelihood, such as a FedWatch percent, copy that number as a fraction between 0.05 and 0.95. Otherwise leave probability null. It is a read, not an order. Do not guess 0.64 to look complete.",
+  "asset is btc, eth, gold, silver, oil, fx, or unclear. Name the asset the pages are about.",
+  "probability is a calibrated chance from 0.05 to 0.95 that the named asset is higher by the next release. Use a fraction. Base it on a number printed on the page, such as a FedWatch percent. If the pages do not support a number, write 0.50 and say why. Do not leave it null. Do not guess 0.64 to look complete.",
   "bias is bullish, bearish, mixed, or unclear. Unclear unless the pages support it.",
   "quote is one short sentence copied from a page, or empty.",
   "agree is false when two pages disagree.",
@@ -81,8 +81,8 @@ export function sparkBody(now: Date = new Date()) {
     urls: SPARK_URLS,
     schema: SPARK_SCHEMA,
     model: "spark-2" as const,
-    effort: "medium" as const,
-    maxCredits: 80,
+    effort: "high" as const,
+    maxCredits: 150,
     strictConstrainToURLs: false,
   };
 }
