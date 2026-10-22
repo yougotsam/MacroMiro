@@ -82,9 +82,9 @@ export const MAX_TICKER_WORST_USD = RISK_LIMITS.usd.perTicker;
 export const MAX_CORRELATED_WORST_USD = RISK_LIMITS.usd.correlated;
 export const MAX_ORDERS_PER_TICKER_WINDOW = 1; // one send per contract. A second series in the same 15 minutes is allowed.
 export const MAX_ORDERS_PER_TICK = 1;
-export const LOSS_STREAK_PAUSE = 9999; // a count of losses is not a separate stop. One settled loss pauses the clock below.
-export const LOSS_STREAK_PAUSE_MS = 60 * 60_000;
-/** After a losing settlement, no new order for 20 minutes. Measured on the 29 whole fills through 21 Oct 2026, using settlement time (no lookahead): the 7 it would have skipped were −$13.46. It is not a 3-loss streak. */
+export const LOSS_STREAK_PAUSE = 3; // three settled losses in a row, then sit out. A win resets the count.
+export const LOSS_STREAK_PAUSE_MS = 20 * 60_000;
+/** Three back-to-back losing settlements block new orders for 20 minutes from the third settlement. One loss does not. */
 export const POST_LOSS_PAUSE_MS = 20 * 60_000;
 
 // ── Gate ─────────────────────────────────────────────────────────────────────

@@ -172,17 +172,21 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(r.check({ ...i, tickId: 78 }, snap(), NOW).ok).toBe(true);
   });
 
-  it("one settled loss pauses 20 minutes; a loss count is not a second stop", () => {
+  it("three settled losses pause 20 minutes; one loss does not", () => {
     const recent = NOW - 10 * 60_000;
     const old = NOW - 21 * 60_000;
     const L = (settledMs: number, pnl = -1) => ({ ticker: T, pnl, settledMs });
-    expect(streakPauseUntil([L(recent), L(recent + 1000), L(recent + 2000)])).toBe(0);
-    expect(settledLossPauseUntil([L(recent)], NOW)).toBe(recent + 20 * 60_000);
-    expect(settledLossPauseUntil([L(old)], NOW)).toBe(0);
-    expect(settledLossPauseUntil([{ ticker: T, pnl: 1, settledMs: recent }], NOW)).toBe(0);
+    const three = [L(recent), L(recent + 1000), L(recent + 2000)];
+    expect(streakPauseUntil(three)).toBe(recent + 2000 + 20 * 60_000);
+    expect(settledLossPauseUntil([L(recent)], NOW)).toBe(0);
+    expect(settledLossPauseUntil([L(recent), L(recent + 1000)], NOW)).toBe(0);
+    expect(settledLossPauseUntil(three, NOW)).toBe(recent + 2000 + 20 * 60_000);
+    expect(settledLossPauseUntil([L(old), L(old + 1000), L(old + 2000)], NOW)).toBe(0);
+    expect(settledLossPauseUntil([L(recent), { ticker: T, pnl: 1, settledMs: recent + 1000 }, L(recent + 2000)], NOW)).toBe(0);
     const r = new RiskEngine(tmp("loss-pause"), ON);
-    expect(r.check(intent(), snap({ settledToday: [L(recent)] }), NOW).why).toContain("settled loss pause");
-    expect(r.check(intent(), snap({ settledToday: [L(old)] }), NOW).ok).toBe(true);
+    expect(r.check(intent(), snap({ settledToday: [L(recent)] }), NOW).ok).toBe(true);
+    expect(r.check(intent(), snap({ settledToday: three }), NOW).why).toContain("three-loss pause");
+    expect(r.check(intent(), snap({ settledToday: [L(old), L(old + 1000), L(old + 2000)] }), NOW).ok).toBe(true);
   });
 
   it("a live position in this window does not block the other series", () => {

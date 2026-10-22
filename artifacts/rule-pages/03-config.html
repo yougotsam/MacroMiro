@@ -13,9 +13,9 @@
 <p class="opt"><span class="label">Option, not applied</span>Tie the approved flag to a score, instead of a constant set to true.</p></section><section class="card"><div class="id">C5</div><h2>How many orders</h2>
 <p class="now"><span class="label">In the file now</span>One order per contract. One order per engine tick.</p>
 <p class="opt"><span class="label">Option, not applied</span>Allow a second only after the first is flat, or leave both at one.</p></section><section class="card"><div class="id">C6</div><h2>Loss count</h2>
-<p class="now"><span class="label">In the file now</span>LOSS_STREAK_PAUSE is 9999. A count of losses is not a stop. The unused pause length next to it is 60 minutes.</p>
+<p class="now"><span class="label">In the file now</span>LOSS_STREAK_PAUSE is 3. Three settled losses in a row sit out 20 minutes. One loss does not. A win resets the count.</p>
 <p class="opt"><span class="label">Option, not applied</span>Set the count to 2 or 3, or delete the unused constant.</p></section><section class="card"><div class="id">C7</div><h2>Settled-loss pause</h2>
-<p class="now"><span class="label">In the file now</span>POST_LOSS_PAUSE_MS is 20 minutes, measured from the settlement.</p>
+<p class="now"><span class="label">In the file now</span>POST_LOSS_PAUSE_MS is 20 minutes, measured from the third losing settlement.</p>
 <p class="opt"><span class="label">Option, not applied</span>0, 15, 45 minutes, or the rest of that window only.</p></section><section class="card"><div class="id">C8</div><h2>Chance haircut</h2>
 <p class="now"><span class="label">In the file now</span>UNCERTAINTY is 0.02. Two cents come off the chance on every side. The chance is never stated above 0.98.</p>
 <p class="opt"><span class="label">Option, not applied</span>0, 1¢, or 2¢.</p></section><section class="card"><div class="id">C9</div><h2>Price band</h2>

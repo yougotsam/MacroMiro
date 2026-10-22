@@ -19,7 +19,6 @@ import {
   MAX_ORDERS_PER_TICKER_WINDOW,
   PRICE_MAX,
   PRICE_MIN,
-  POST_LOSS_PAUSE_MS,
   RISK_LIMITS,
   SECRETS_DIR,
   TICKER_RE,
@@ -82,7 +81,7 @@ export function dayWorstOf(s: AccountSnapshot) {
   return Number((s.realizedToday - s.openWorst - s.restWorst - s.pendingWorst).toFixed(4));
 }
 
-/** Kept so a loss count cannot become a back door. It does not fire while LOSS_STREAK_PAUSE is 9999. The live pause is settledLossPauseUntil. */
+/** Three settled losses in a row. The pause starts at the third settlement and lasts 20 minutes. A win resets the count. Losses inside the pause do not add. */
 export function streakPauseUntil(settled: Settled[]): number {
   const s = [...settled].sort((a, b) => a.settledMs - b.settledMs);
   let streak = 0;
@@ -116,17 +115,12 @@ export function windowAlreadyOpen(ticker: string, tickerWorst: Record<string, nu
 }
 
 /**
- * One settled loss blocks new orders for 20 minutes from that settlement.
- * The pause starts when the result is known, not when the order was sent.
- * A later win does not erase a loss that is still inside the 20 minutes.
+ * Three back-to-back losing settlements block new orders for 20 minutes.
+ * The pause starts when the third result is known. One or two losses do not sit the book.
+ * A win resets the count. After the 20 minutes the count starts over.
  */
 export function settledLossPauseUntil(settled: Settled[], now = Date.now()): number {
-  let lastLoss = 0;
-  for (const x of settled) {
-    if (x.pnl < 0 && Number.isFinite(x.settledMs) && x.settledMs <= now && x.settledMs > lastLoss) lastLoss = x.settledMs;
-  }
-  if (!lastLoss) return 0;
-  const until = lastLoss + POST_LOSS_PAUSE_MS;
+  const until = streakPauseUntil(settled);
   return until > now ? until : 0;
 }
 
@@ -237,10 +231,8 @@ export class RiskEngine {
     if (l) return no(`daily stop latched: ${l.latchReason}`);
     const dayWorst = this.observe(s, now);
     if (this.latched(now)) return no(`daily stop latched: day worst ${dayWorst.toFixed(2)}`, dayWorst);
-    const pause = streakPauseUntil(s.settledToday);
-    if (pause > now) return no(`loss streak pause until ${new Date(pause).toISOString()}`, dayWorst);
-    const lossPause = settledLossPauseUntil(s.settledToday, now);
-    if (lossPause > now) return no(`settled loss pause until ${new Date(lossPause).toISOString()}`, dayWorst);
+    const pause = settledLossPauseUntil(s.settledToday, now);
+    if (pause > now) return no(`three-loss pause until ${new Date(pause).toISOString()}`, dayWorst);
     if (!TICKER_RE.test(o.ticker)) return no("ticker not a desk 15m series", dayWorst);
     if (!(o.count >= 1) || !Number.isFinite(o.price)) return no("bad size/price", dayWorst);
     if (o.price < PRICE_MIN || o.price > PRICE_MAX) return no("price band", dayWorst);

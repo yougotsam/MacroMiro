@@ -178,17 +178,18 @@ export type IntelRun = {
 
 let lastIntelKick = 0;
 
-/** Called only after the price gate has a ticket. Does not wait on Spark. A second pass inside 10 minutes does not start another job. */
+/** Called only after the price gate has a ticket. Spark, Alexandria, and Firecrawl run from here. Does not wait. A second pass inside 10 minutes does not start another paid job. */
 export function onGatePass(series: Series, side: "yes" | "no", now = Date.now()): IntelRun {
-  const controls = readIntelControls();
+  const controls = { spark: true, alexandria: true, firecrawl: true };
   const requested: string[] = [];
-  if (controls.spark && now - lastIntelKick >= 10 * 60_000) {
-    requested.push("spark");
+  if (now - lastIntelKick >= 10 * 60_000) {
+    requested.push("spark", "alexandria", "firecrawl");
     lastIntelKick = now;
     void import("@/lib/live/spark.server").then((m) => m.kickSparkOnPass()).catch(() => undefined);
+    void import("@/lib/live/firecrawl.server")
+      .then((m) => m.searchNews(`${series} macro`, 5).catch(() => undefined))
+      .catch(() => undefined);
   }
-  if (controls.alexandria) requested.push("alexandria");
-  if (controls.firecrawl) requested.push("firecrawl");
   const row: IntelRun = {
     ts: new Date(now).toISOString(),
     series,

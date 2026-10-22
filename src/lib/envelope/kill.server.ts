@@ -11,7 +11,7 @@ export const MAX_PER_TICKER_USD = 5;
 export const LIVE_CLIP_USD = 1;
 export const SCALE_AFTER_RESOLVED = 100;
 export const LOSS_STREAK = 3;
-export const LOSS_PAUSE_MS = 60 * 60_000;
+export const LOSS_PAUSE_MS = 20 * 60_000;
 
 export type KillState = {
   armed: boolean;
@@ -100,7 +100,7 @@ export function recordPnl(delta: number) {
     if (k.consecutiveLosses >= LOSS_STREAK) {
       k.pauseUntil = Date.now() + LOSS_PAUSE_MS;
       k.consecutiveLosses = 0;
-      k.reason = `${LOSS_STREAK} losses in a row · pause 60 min`;
+      k.reason = `${LOSS_STREAK} losses in a row · pause 20 min`;
     }
   } else if (delta > 0) {
     k.consecutiveLosses = 0;

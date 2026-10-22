@@ -37,7 +37,7 @@ describe("pilot acceptance", () => {
     assert.doesNotMatch(heart, /submitBinary|placeEventOrder|kalshi-order|executeHeart|closeEventPosition/);
   });
 
-  it("three settled losses in a row pause new entries for 60 minutes; a win resets the streak", () => {
+  it("three settled losses in a row pause new entries for 20 minutes; a win resets the streak", () => {
     saveKill({ ...readKill(), consecutiveLosses: 0, pauseUntil: 0 });
     recordPnl(-1);
     recordPnl(-1);
@@ -49,7 +49,7 @@ describe("pilot acceptance", () => {
     recordPnl(-1);
     recordPnl(-1);
     const k = readKill();
-    assert.ok(k.pauseUntil >= t0 + 59 * 60_000 && k.pauseUntil <= Date.now() + 60 * 60_000);
+    assert.ok(k.pauseUntil >= t0 + 19 * 60_000 && k.pauseUntil <= Date.now() + 20 * 60_000);
   });
 
   it("does not hardcode an expired ticker", () => {

@@ -15,9 +15,9 @@
 <p class="opt"><span class="label">Option, not applied</span>Keep.</p></section><section class="card"><div class="id">R6</div><h2>Day stop</h2>
 <p class="now"><span class="label">In the file now</span>If a latch is already stored, refuse. If today's worst case is through the day stop, latch it and refuse. Worst case is realized minus open, resting, and unconfirmed sends.</p>
 <p class="opt"><span class="label">Option, not applied</span>A smaller number. Or a latch that stays until you turn it off by hand.</p></section><section class="card"><div class="id">R7</div><h2>Loss-count pause</h2>
-<p class="now"><span class="label">In the file now</span>streakPauseUntil still runs. It only fires if losses reach LOSS_STREAK_PAUSE, which is 9999. A win resets the count. Losses inside an existing pause do not add.</p>
+<p class="now"><span class="label">In the file now</span>streakPauseUntil fires at 3 settled losses. The pause is 20 minutes from the third settlement. A win resets the count. Losses inside the pause do not add.</p>
 <p class="opt"><span class="label">Option, not applied</span>Delete the function, or set the count to 3.</p></section><section class="card"><div class="id">R8</div><h2>Settled-loss pause</h2>
-<p class="now"><span class="label">In the file now</span>settledLossPauseUntil takes the most recent losing settlement at or before now. If that time plus 20 minutes is still ahead, refuse. A later win does not erase a loss still inside the 20 minutes.</p>
+<p class="now"><span class="label">In the file now</span>settledLossPauseUntil uses that same three-loss clock. One or two losses do not refuse.</p>
 <p class="opt"><span class="label">Option, not applied</span>Same choices as C7. This is the line that enforces it.</p></section><section class="card"><div class="id">R9</div><h2>Identity and band</h2>
 <p class="now"><span class="label">In the file now</span>Ticker must match the 11-series pattern. Count at least 1. Price inside PRICE_MIN and PRICE_MAX.</p>
 <p class="opt"><span class="label">Option, not applied</span>Same choices as C1 and C9.</p></section><section class="card"><div class="id">R10</div><h2>Dollars</h2>

@@ -87,6 +87,7 @@ type HeartPayload = {
   begun?: boolean;
   dayLoss?: number;
   intel?: { spark: boolean; alexandria: boolean; firecrawl: boolean };
+  desk?: { live: boolean; begin: boolean; arm: boolean };
 };
 
 export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
@@ -112,7 +113,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
   const [gear, setGear] = useState(false);
   const [showLoop, setShowLoop] = useState(false);
   const [heartNote, setHeartNote] = useState("idle");
-  const [intelOn, setIntelOn] = useState({ spark: true, alexandria: true, firecrawl: true });
+  const [deskOn, setDeskOn] = useState({ live: false, begin: false, arm: false });
   const [heartTick, setHeartTick] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const [board, setBoard] = useState<BookScan[]>([]);
@@ -155,11 +156,11 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       r: h.round ? `${h.round.slug}:${h.round.leftSec}:${h.round.up}:${h.round.take}` : "",
       live: h.live,
       loss: h.dayLoss,
-      intel: h.intel,
+      desk: h.desk,
     });
     if (sig === heartSig.current) return;
     heartSig.current = sig;
-    if (h.intel) setIntelOn(h.intel);
+    if (h.desk) setDeskOn(h.desk);
     if (typeof h.cash === "number") setCash(h.cash);
     if (h.positions) {
       setPositions(h.positions);
@@ -195,7 +196,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         if (gone) return;
         if (h && typeof h.cash === "number") {
           applyHeart(h);
-        }
+        } else if (h?.desk) setDeskOn(h.desk);
         setHydrated(true);
       })
       .catch(() => {
@@ -278,6 +279,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       void fetch("/api/live/heart")
         .then((r) => r.json())
         .then((h: HeartPayload) => {
+          if (h?.desk) setDeskOn(h.desk);
           if (typeof h.cash !== "number") return;
           applyHeart(h);
         })
@@ -628,43 +630,31 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
           <div className="flex items-center gap-4">
             <EtClock />
             <div className="text-right">
-              <p className="font-mono text-xs uppercase tracking-widest text-subtle">{begun ? "Orders on" : "Orders off"}</p>
+              <p className="font-mono text-xs uppercase tracking-widest text-subtle">
+                {deskOn.live && deskOn.begin && deskOn.arm ? "Desk live" : "Desk off"}
+              </p>
               <p className="font-display text-2xl italic tabular-nums tracking-tight">{cash == null ? "…" : `$${equity.toFixed(2)}`}</p>
-              <button
-                type="button"
+              <p
                 className={cn(
-                  "mt-1 h-9 rounded-sm px-3 font-mono text-xs",
-                  begun ? "bg-armed text-primary-foreground" : "border border-border",
+                  "mt-1 inline-block h-9 rounded-sm px-3 font-mono text-xs leading-9",
+                  deskOn.live && deskOn.begin && deskOn.arm ? "bg-armed text-primary-foreground" : "border border-border",
                 )}
-                onClick={() => setBegin(!begun)}
               >
-                {begun ? "LIVE" : "OFF"}
-              </button>
+                {deskOn.live && deskOn.begin && deskOn.arm ? "LIVE" : "OFF"}
+              </p>
+              <p className="mt-1 font-mono text-[10px] text-muted">18¢–72¢ · $3 · −$15 · 3 losses then 20 min</p>
               <div className="mt-2 flex gap-1">
                 {([
                   ["spark", "Spark"],
                   ["alexandria", "Alex"],
                   ["firecrawl", "Crawl"],
                 ] as const).map(([key, label]) => (
-                  <button
+                  <span
                     key={key}
-                    type="button"
-                    className={cn(
-                      "h-7 rounded-sm px-2 font-mono text-[10px]",
-                      intelOn[key] ? "bg-primary text-primary-foreground" : "border border-border text-muted",
-                    )}
-                    onClick={() => {
-                      const next = { ...intelOn, [key]: !intelOn[key] };
-                      setIntelOn(next);
-                      void fetch("/api/live/heart", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ intel: { [key]: next[key] }, tick: true }),
-                      }).catch(() => undefined);
-                    }}
+                    className="h-7 rounded-sm bg-primary px-2 font-mono text-[10px] leading-7 text-primary-foreground"
                   >
-                    {label}
-                  </button>
+                    {label} on
+                  </span>
                 ))}
               </div>
             </div>
@@ -751,7 +741,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         {gear ? (
           <div className="mt-3 rounded-sm border border-border bg-card p-4">
             <p className="font-mono text-xs uppercase tracking-widest text-primary">Broker</p>
-            <p className="mt-1 text-sm text-muted">Orders leave only when live is on. Size is $1, $2 if the lean matches, $5 only at 35¢ or cheaper.</p>
+            <p className="mt-1 text-sm text-muted">Kalshi orders leave from the desk engine. Band 18¢–72¢. Cap $3 an order, $9 open, day stop −$15. Three losses in a row sit out 20 minutes. Spark, Alexandria, and Firecrawl run on a real ticket. They are not a switch.</p>
             <div className="mt-3">
               <BrokerPanel selected={brokerId} onSelect={setBrokerId} />
             </div>
