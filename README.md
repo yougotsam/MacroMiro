@@ -58,7 +58,7 @@ Two products. One repo. Leverage belongs only to the perpetual.
 | 13 | src/lib/perps/oms.ts | A perpetual entry with a plan attaches the stop. |
 | 14 | src/lib/perps/manage.ts | Stop, target, and the half-size target. |
 | 15 | src/lib/scan/perp-desk.ts | Uses the leverage on that perpetual. A pass may send. |
-| 16 | src/routes/api/live/perp-fire.ts | The perpetual button. Requires leverage and attaches the stop. |
+| 16 | src/routes/api/live/perp-fire.ts | The perpetual button. Cash checked is the quote divided by leverage, capped at $3. |
 | 17 | src/components/envelope.tsx | The button sends the contract's leverage. |
 | 18 | docs/operations/ORDER_PATH.md | Says the two paths apart. |
 | 19 | docs/operations/RISK_MANDATES.md | $3 clip on the perpetual button. No leverage on a 15-minute contract. |

@@ -25,13 +25,13 @@ export const Route = createFileRoute("/api/live/perp-fire")({
         const body = (await request.json().catch(() => ({}))) as { ticker?: string; side?: "bid" | "ask"; price?: number; clipUsd?: number; leverage?: number };
         const ticker = String(body.ticker ?? "");
         const price = Number(body.price);
-        const clip = Number(body.clipUsd ?? price);
         const side = body.side === "ask" ? "ask" : "bid";
         const lev = Number(body.leverage);
         if (!/^KX[A-Z0-9]+PERP$/.test(ticker)) return Response.json({ ok: false, why: "perp ticker" }, { status: 400 });
-        if (!(price > 0) || !(clip > 0)) return Response.json({ ok: false, why: "price" }, { status: 400 });
+        if (!(price > 0)) return Response.json({ ok: false, why: "price" }, { status: 400 });
         if (!(lev >= 2)) return Response.json({ ok: false, why: "perpetual leverage unread" }, { status: 400 });
-        if (clip > CAP || price > CAP) return Response.json({ ok: false, why: `one contract is above the $${CAP} cap` }, { status: 400 });
+        const margin = price / lev;
+        if (!(margin > 0) || margin > CAP) return Response.json({ ok: false, why: `one contract posts $${margin.toFixed(2)} of margin, above the $${CAP} cap` }, { status: 400 });
         const oms = new PerpsOms(liveMarginTransport, `${dataDir()}/perps-journal.jsonl`, true);
         const sent = await oms.submit({
           kind: "entry",

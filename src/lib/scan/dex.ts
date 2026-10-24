@@ -149,23 +149,19 @@ export async function loadDexTape(force = false): Promise<DexTape> {
   const jupOut = quote?.outAmount ? Number(quote.outAmount) / 1e6 : null;
 
   const solProfiles = (profiles ?? []).filter((p) => p.chainId === "solana").slice(0, 6);
-  for (const p of solProfiles) {
-    pairs.push({
-      chainId: "solana",
-      dexId: "profile",
-      url: p.url || `https://dexscreener.com/solana/${p.tokenAddress}`,
-      pairAddress: p.tokenAddress || "",
-      base: (p.description || "new").slice(0, 24),
-      quote: "SOL",
-      priceUsd: 0,
-      liqUsd: 0,
-      vol24: 0,
-      chg5m: null,
-      chg1h: null,
-      boosted: boosted.has((p.tokenAddress || "").toLowerCase()),
-      fresh: true,
-    });
-  }
+  const priced = await Promise.all(
+    solProfiles.map(async (p) => {
+      const address = p.tokenAddress || "";
+      if (!address) return null;
+      const hit = await grabJson<{ pairs?: RawPair[] }>(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+      const best = (hit?.pairs ?? [])
+        .filter((row) => !row.chainId || row.chainId === "solana")
+        .sort((a, b) => (Number(b.liquidity?.usd) || 0) - (Number(a.liquidity?.usd) || 0))[0];
+      const row = best ? asPair(best, { boosted: boosted.has(address.toLowerCase()), fresh: true }) : null;
+      return row;
+    }),
+  );
+  for (const row of priced) if (row) pairs.push(row);
 
   const jupReady = Boolean(jupKey());
   const err =
