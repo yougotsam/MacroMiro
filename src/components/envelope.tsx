@@ -927,6 +927,7 @@ function PerpsLater() {
   const [rows, setRows] = useState<Array<{ ticker: string; bid: number; ask: number; lev: number; contractSize: number }>>([]);
   const [note, setNote] = useState("Reading the margin book…");
   const [cash, setCash] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
   const [fireNote, setFireNote] = useState("");
   useEffect(() => {
     let stop = false;
@@ -951,7 +952,7 @@ function PerpsLater() {
       clearInterval(id);
     };
   }, []);
-  const book = rows.find((r) => r.ticker === "KXGOLDPERP") ?? rows[0];
+  const book = rows.find((r) => r.ticker === picked) ?? rows[0];
   const price = book ? (book.bid + book.ask) / 2 || book.ask || book.bid : 0;
   return (
     <section className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
@@ -961,7 +962,7 @@ function PerpsLater() {
       <ul className="mt-4 divide-y divide-border border-y border-border font-mono text-sm tabular-nums">
         {rows.map((r) => (
           <li key={r.ticker} className="flex items-baseline justify-between gap-3 py-2">
-            <span>{r.ticker}</span>
+            <button type="button" className={r.ticker === book?.ticker ? "text-fg" : "text-subtle"} onClick={() => setPicked(r.ticker)}>{r.ticker}</button>
             <span className="text-subtle">
               {r.bid.toFixed(2)} / {r.ask.toFixed(2)} · size {r.contractSize || "—"} · {r.lev ? `${r.lev.toFixed(1)}x` : "lev unread"}
             </span>
@@ -970,18 +971,26 @@ function PerpsLater() {
       </ul>
       <div className="mt-4">
         <PerpCockpit
-          key={book?.ticker ?? "KXGOLDPERP"}
-          ticker={book?.ticker ?? "KXGOLDPERP"}
+          key={book?.ticker ?? "perp"}
+          ticker={book?.ticker ?? ""}
           maxLeverage={book && book.lev >= 1 ? book.lev : 1}
           currentPrice={price > 0 ? price : 0}
           balanceUsd={cash}
           dailyPnL={0}
-          onDispatchOrder={(cfg: { side: "bid" | "ask"; clipSizeUsd: number }) => {
-            const price = book ? (book.ask || book.bid) : 0;
+          onDispatchOrder={(cfg: { side: "bid" | "ask"; clipSizeUsd: number; leverage?: number; tpMultiple?: number; slPercent?: number }) => {
+            const px = book ? (cfg.side === "ask" ? book.ask : book.bid) : 0;
             void fetch("/api/live/perp-fire", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ticker: book?.ticker ?? "KXGOLDPERP", side: cfg.side, price, clipUsd: cfg.clipSizeUsd || price, leverage: book?.lev }),
+              body: JSON.stringify({
+                ticker: book?.ticker,
+                side: cfg.side,
+                price: px,
+                clipUsd: cfg.clipSizeUsd,
+                leverage: cfg.leverage || book?.lev,
+                tpMultiple: cfg.tpMultiple,
+                slPercent: cfg.slPercent,
+              }),
             })
               .then((r) => r.json())
               .then((d: { ok?: boolean; why?: string; status?: string }) => {

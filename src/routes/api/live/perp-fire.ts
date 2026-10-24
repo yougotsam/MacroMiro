@@ -3,47 +3,53 @@ import { switchState } from "@/lib/desk/risk";
 import { liveMarginTransport } from "@/lib/perps/live-transport";
 import { PerpsOms } from "@/lib/perps/oms";
 import type { ManagePlan } from "@/lib/perps/manage";
-import { perpStops } from "@/lib/scan/perp-desk";
 import { dataDir } from "@/lib/desk/config";
 
-const CAP = 3;
-
-function perpPlan(price: number, side: "bid" | "ask", lev: number): ManagePlan {
-  const stops = perpStops(price, side, lev);
+function bracket(price: number, side: "bid" | "ask", lev: number, slPercent: number, tpMultiple: number, qty: number): ManagePlan {
+  const risk = slPercent / 100 / lev;
+  const reward = risk * tpMultiple;
   const dir = side === "ask" ? "short" : "long";
-  const t1 = dir === "long" ? price + (stops.takeProfit - price) / 2 : price - (price - stops.takeProfit) / 2;
-  return { dir, qty: 1, entry: price, stop: stops.stop, t1, t2: stops.takeProfit, partialFrac: 0.5, trailR: 1, maxHoldMs: 8 * 3_600_000 };
+  const stop = dir === "long" ? price * (1 - risk) : price * (1 + risk);
+  const take = dir === "long" ? price * (1 + reward) : price * (1 - reward);
+  return { dir, qty, entry: price, stop, t1: (price + take) / 2, t2: take, partialFrac: 0.5, trailR: 1, maxHoldMs: 8 * 3_600_000 };
 }
 
 export const Route = createFileRoute("/api/live/perp-fire")({
   server: {
     handlers: {
-      GET: async () => Response.json({ book: "perp", locked: false, capUsd: CAP, switches: switchState() }),
+      GET: async () => Response.json({ book: "perp", locked: false, switches: switchState() }),
       POST: async ({ request }) => {
         const sw = switchState();
         if (!sw.live || !sw.begin || !sw.arm) return Response.json({ ok: false, why: "desk switches are off" }, { status: 409 });
-        const body = (await request.json().catch(() => ({}))) as { ticker?: string; side?: "bid" | "ask"; price?: number; clipUsd?: number; leverage?: number };
+        const body = (await request.json().catch(() => ({}))) as {
+          ticker?: string; side?: "bid" | "ask"; price?: number; clipUsd?: number; leverage?: number; tpMultiple?: number; slPercent?: number;
+        };
         const ticker = String(body.ticker ?? "");
         const price = Number(body.price);
         const side = body.side === "ask" ? "ask" : "bid";
         const lev = Number(body.leverage);
+        const clip = Number(body.clipUsd);
+        const sl = Number(body.slPercent);
+        const tp = Number(body.tpMultiple);
         if (!/^KX[A-Z0-9]+PERP$/.test(ticker)) return Response.json({ ok: false, why: "perp ticker" }, { status: 400 });
         if (!(price > 0)) return Response.json({ ok: false, why: "price" }, { status: 400 });
         if (!(lev >= 2)) return Response.json({ ok: false, why: "perpetual leverage unread" }, { status: 400 });
+        if (!(clip > 0) || !(sl > 0) || !(tp > 0)) return Response.json({ ok: false, why: "clip, stop, or target missing" }, { status: 400 });
         const margin = price / lev;
-        if (!(margin > 0) || margin > CAP) return Response.json({ ok: false, why: `one contract posts $${margin.toFixed(2)} of margin, above the $${CAP} cap` }, { status: 400 });
-        const oms = new PerpsOms(liveMarginTransport, `${dataDir()}/perps-journal.jsonl`, true);
+        const qty = Math.floor(clip / margin);
+        if (qty < 1) return Response.json({ ok: false, why: `one contract posts $${margin.toFixed(2)}, more than the $${clip.toFixed(2)} clip` }, { status: 400 });
+        const oms = new PerpsOms(liveMarginTransport, `${dataDir()}/perps-journal.jsonl`, true, () => ({ ok: true, why: "desk switches already checked" }));
         const sent = await oms.submit({
           kind: "entry",
           ticker,
           dir: side === "ask" ? "short" : "long",
-          qty: 1,
+          qty,
           price,
           maker: true,
-          plan: perpPlan(price, side, lev),
+          plan: bracket(price, side, lev, sl, tp, qty),
           decisionId: `perp-${ticker}-${Date.now()}`,
         });
-        return Response.json({ ok: sent.status === "ACK", ...sent, leverage: lev });
+        return Response.json({ ok: sent.status === "ACK", ...sent, leverage: lev, qty, margin });
       },
     },
   },

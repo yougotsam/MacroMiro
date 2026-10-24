@@ -350,12 +350,12 @@ never:   build an app for a greeting/number/question; invent imagine_* calls;
          ask the user to run commands; delete or abandon /workspace/startup.sh
 ```
 
-## Sniper Desk V1
-- Strategy: Kalshi 15-minute settlement model. Buy band is 36¢–95¢ (`PRICE_MIN` / `PRICE_MAX` in `src/lib/desk/config.ts`). The 36¢ floor is a measured loss cut, not a proven edge above it. Chart disagreement sits a ticket. No chart setup does not. Fib 38.2–61.8 and the 20/50 pullback can agree. They do not set the chance.
-- Commands: `npm run dev` (UI at /paper), `npm run paper` / `npm run paper:loop`, `bun scripts/paper/confluence-diag.ts`, `bun scripts/paper/recover-outcomes.ts`, `bun scripts/ops/no-orders-check.ts`, `bun scripts/ops/mode.ts status`. Collector: `scripts/desk-observe.ts`, which is GET-only. Run one instance only.
-- Risk (approved): −$15 daily stop, $9 total, $3 per ticker, $4 same-direction correlated crypto. Never change these dollar caps, `CALIBRATED_MODEL_APPROVED`, or the switch files. Never run `/workspace/startup.sh`. Paid Firecrawl needs an open operator round (`scripts/ops/round.ts`).
-- Guide: docs/LAUNCH_GUIDE.md.
+## Trading desk
 
-## MacroMiro canonical docs
-For the trading desk, read `AGENTS.project.md` → `docs/product/PRD.md` first. `docs/archive/` is historical only.
-Loop engineering (STATE.md memory, blind checker, risk watchdog, AI maker A/B): `docs/operations/LOOP_ENGINEERING.md`. Loop memory lives in `/workspace/data/loop/STATE.md`; read it at the start of desk work.
+File 1 is `README.md`. This section is file 2. The archive and the old dollar caps are not rules.
+
+One deposit. Kalshi keeps a prediction balance and a margin balance. They do not spend each other. A move in the Portfolio tab is how cash changes sides.
+
+A 15-minute contract is a ticket with no leverage. Its order goes through `src/lib/desk/oms.ts`. Crypto settles on 60 one-second prints. Gold and currencies settle on Pyth.
+
+A perpetual order goes through `POST /api/live/perp-fire`. Entry: the three switches are on, you picked the contract, a buy rests on the bid, a sell rests on the ask. Post-only at the other side's price is rejected by Kalshi. Size is how many contracts fit in the clip. The stop and target are the ones on the sliders. Exit is that stop, that target, or a later close. Liquidation is not a stop. The button does not wait on the paper heartbeat file.
