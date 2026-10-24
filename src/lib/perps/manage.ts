@@ -1,9 +1,9 @@
 /**
- * Position-management plan, shared by the simulator and the OMS. The OMS turns it into native Kalshi exit triggers
- * (PUT /margin/cross/positions/{ticker}/exit_trigger): a full-size bracket {stop_loss_price, take_profit_price=T2}
- * and a partial bracket {count=half, take_profit_price=T1, client_trigger_id}. After T1 the stop moves to break-even
- * (PUT …/exit_trigger/{trigger_id}) and a trailing stop starts (kind="trailing", trail_amount). Every exit is reduce-only
- * and can never open the opposite side.
+ * Position-management plan, shared by the simulator and the OMS.
+ * The venue call is PUT /trade-api/v2/margin/cross/positions/{ticker}/exit_trigger.
+ * A new entry sends one anchored bracket (stop and final target). count and anchor_order_id
+ * are never on the same body. The half take-profit is only built once a position is open.
+ * The trailing stop is a separate body and is not sent with the entry.
  */
 export type ManagePlan = { dir: "long" | "short"; qty: number; entry: number; stop: number; t1: number; t2: number; partialFrac: number; trailR: number; maxHoldMs: number };
 export type ManageState = { open: number; stop: number; partialDone: boolean; trailRef: number | null; realized: number; exits: ExitEvent[]; closed: boolean };
@@ -48,11 +48,34 @@ export function stepBar(p: ManagePlan, s: ManageState, bar: { t: number; o: numb
   return st;
 }
 
-/** The native trigger requests the OMS will send for a plan (fields from perps_openapi.yaml SetCrossExitTriggerRequest). */
-export function nativeTriggerRequests(p: ManagePlan, anchorOrderId: string, cidBase: string) {
+/** Bracket bodies the OMS can PUT. A fresh entry has no position yet, so only the anchored stop goes out. */
+export function nativeTriggerRequests(p: ManagePlan, anchorOrderId: string, cidBase: string, positionOpen = false) {
+  const clip = (s: string) => s.slice(0, 64);
+  const out: Record<string, unknown>[] = [{
+    kind: "bracket",
+    anchor_order_id: anchorOrderId,
+    client_trigger_id: clip(`${cidBase}-full`),
+    stop_loss_price: p.stop.toFixed(4),
+    take_profit_price: p.t2.toFixed(4),
+  }];
   const half = Math.floor(p.qty * p.partialFrac);
-  return [
-    { kind: "bracket", anchor_order_id: anchorOrderId, client_trigger_id: `${cidBase}-full`, stop_loss_price: p.stop.toFixed(4), take_profit_price: p.t2.toFixed(4) },
-    ...(half >= 1 ? [{ kind: "bracket", anchor_order_id: anchorOrderId, client_trigger_id: `${cidBase}-t1`, count: String(half), take_profit_price: p.t1.toFixed(4) }] : []),
-  ];
+  if (positionOpen && half >= 1) out.push({
+    kind: "bracket",
+    client_trigger_id: clip(`${cidBase}-t1`),
+    count: String(half),
+    take_profit_price: p.t1.toFixed(4),
+  });
+  return out;
+}
+
+/** Trailing distance in dollars. Not sent with the entry bracket. One of trail_amount or trail_bps, never both. */
+export function trailingStopBody(p: ManagePlan): { kind: "trailing"; trail_amount: string } | null {
+  const dist = p.trailR * Math.abs(p.entry - p.stop);
+  if (!(dist > 0)) return null;
+  return { kind: "trailing", trail_amount: dist.toFixed(4) };
+}
+
+/** Move one bracket's stop to the entry. The other leg is left alone. */
+export function breakEvenStopBody(entry: number) {
+  return { stop_loss_price: entry.toFixed(4) };
 }

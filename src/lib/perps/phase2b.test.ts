@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { marginView, maxOpenLeverage, type MarginSpec } from "./margin";
 import { aggressiveProfile, sizePosition, drawdownState, CONSERVATIVE_V1_REJECTED } from "./mandate";
-import { startState, stepBar, nativeTriggerRequests, type ManagePlan } from "./manage";
+import { startState, stepBar, nativeTriggerRequests, trailingStopBody, breakEvenStopBody, type ManagePlan } from "./manage";
 import { PerpsOms, FakeExchange, clientOrderId, toCreateReq, lockedTransport, PERPS_ORDERS_LOCKED, type Intent } from "./oms";
 import { LocalBook, SeqTracker, CandleBuilder, eligibleMarkets } from "./stream";
 import { pairCost, takerFee } from "../desk/pair-scan";
@@ -50,7 +50,18 @@ describe("management (shared by sim and OMS)", () => {
   it("gap through stop fills at the open", () => { const s = stepBar(p, startState(p), { t: 0, o: 98, h: 98.5, l: 97, c: 98 }, 0, 0); expect(s.exits[0].reason).toBe("gap_stop"); expect(s.realized).toBe(-20); });
   it("native trigger bodies only use documented fields", () => {
     const allowed = new Set(["kind", "anchor_order_id", "client_trigger_id", "count", "stop_loss_price", "take_profit_price", "trail_amount", "trail_bps"]);
-    for (const b of nativeTriggerRequests(p, "ord-1", "mm-perps-x")) for (const k of Object.keys(b)) expect(allowed.has(k)).toBe(true);
+    const fresh = nativeTriggerRequests(p, "ord-1", "mm-perps-x");
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]).not.toHaveProperty("count");
+    const open = nativeTriggerRequests(p, "ord-1", "mm-perps-x", true);
+    expect(open).toHaveLength(2);
+    for (const b of open) {
+      for (const k of Object.keys(b)) expect(allowed.has(k)).toBe(true);
+      expect(b.count != null && b.anchor_order_id != null).toBe(false);
+      expect(String(b.client_trigger_id).length).toBeLessThanOrEqual(64);
+    }
+    expect(trailingStopBody(p)).toEqual({ kind: "trailing", trail_amount: "1.0000" });
+    expect(breakEvenStopBody(100)).toEqual({ stop_loss_price: "100.0000" });
   });
 });
 

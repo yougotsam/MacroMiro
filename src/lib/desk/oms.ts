@@ -89,6 +89,20 @@ export function postMarginOrder(body: Record<string, unknown>) {
   return kalshiOrderPost("/trade-api/v2/margin/orders", body);
 }
 
+/** Margin exit trigger. PUT is a write, so it stays in this file with the other signed writes. */
+export async function putMargin(path: string, body: Record<string, unknown>) {
+  const res = await fetch(`${KALSHI_HOST}${path}`, {
+    method: "PUT",
+    headers: kalshiSignedHeaders("PUT", path),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8_000),
+  });
+  const text = await res.text();
+  let parsed: Record<string, unknown> = {};
+  try { parsed = text ? JSON.parse(text) as Record<string, unknown> : {}; } catch { /* raw */ }
+  return { status: res.status, body: parsed, text: text.slice(0, 400) };
+}
+
 /** Dollars Kalshi reported on this reply. A missing field stays unknown. Zero is a real zero. */
 function recordedFee(src: unknown): Pick<JournalRow, "fee" | "feeSource"> {
   const top = src && typeof src === "object" ? (src as Record<string, unknown>) : null;

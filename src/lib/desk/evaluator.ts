@@ -224,20 +224,27 @@ export class Evaluator {
         out.strategy = call.name;
       }
     }
-    if (tech.side) tech.why = `${tech.why} · ${sessionTag(now)}`;
-    // A chart that names the other side sits the ticket. A chart that names nothing does not. The settlement chance is enough.
-    if (tech.side != null && tech.side !== g.best.side) {
+    // A chart that names nothing sits. A chart that names the other side sits. An upper wick is not a long. A lower wick is not a short.
+    if (tech.side == null) {
+      out.shadow = g.best;
+      out.best = null;
+      return fail("G2_structure_no_setup");
+    }
+    if (tech.side !== g.best.side) {
       out.shadow = g.best;
       out.best = null;
       return fail(`G2_structure_${tech.why.replace(/\s+/g, "_")}`);
     }
-    if (tech.side == null) tech.why = `settlement edge, chart had no opposing setup · ${sessionTag(now)}`;
-    // Chase is not a side. technicalSide never names an EMA location. strategyCall only
-    // returns a 38.2–61.8 retrace or a 20/50 pullback, and only when it matches the priced side.
-    if (feats?.candle === "upper_wick") {
+    if (tech.side) tech.why = `${tech.why} · ${sessionTag(now)}`;
+    if (feats?.candle === "upper_wick" && g.best.side === "yes") {
       out.shadow = g.best;
       out.best = null;
       return fail("G2_structure_upper_wick");
+    }
+    if (feats?.candle === "lower_wick" && g.best.side === "no") {
+      out.shadow = g.best;
+      out.best = null;
+      return fail("G2_structure_lower_wick");
     }
     const intel = intelVerdict(series, g.best.side, now);
     if (!intel.ok) {

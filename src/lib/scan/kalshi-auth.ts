@@ -78,7 +78,7 @@ export function signKalshi(rawPem: string, msg: string) {
  * Signed headers. There is deliberately NO generic POST/PUT helper in this file: the only code that may
  * send a write to Kalshi is src/lib/desk/oms.ts (orders, behind the risk engine). See desk/static-order-path.test.ts.
  */
-export function kalshiSignedHeaders(method: "GET" | "DELETE" | "POST", path: string) {
+export function kalshiSignedHeaders(method: "GET" | "DELETE" | "POST" | "PUT", path: string) {
   return headers(method, path);
 }
 

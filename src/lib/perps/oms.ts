@@ -30,6 +30,7 @@ export type CreateReq = {
 export type VenueOrder = { order_id: string; client_order_id: string; ticker: string; side: "bid" | "ask"; price: string; fill_count: string; remaining_count: string; last_update_reason?: string };
 export type VenueFill = { fill_id: string; order_id: string; is_taker: boolean; side: "bid" | "ask"; count: string; price: string; fees: string; realized_pnl: string; ticker: string; created_time: string };
 export type VenuePosition = { market_ticker: string; position: string; entry_price: string; unrealized_pnl: string; fees: string };
+export type ExitTrigger = { id: string; kind: string; stop: string | null; take: string | null; count: string | null; trail: string | null };
 export interface PerpsTransport {
   createOrder(r: CreateReq): Promise<{ order_id: string; client_order_id?: string; fill_count: string; remaining_count: string; average_fill_price?: string; average_fee_paid?: string }>;
   cancelOrder(orderId: string): Promise<void>;
@@ -39,6 +40,10 @@ export interface PerpsTransport {
   positions(): Promise<VenuePosition[]>;
   setCrossExitTrigger(ticker: string, body: Record<string, unknown>): Promise<{ id: string }>;
   updateCrossExitTrigger(ticker: string, id: string, body: Record<string, unknown>): Promise<{ id: string }>;
+  /** Live brackets and the trailing stop on one ticker. Empty means Kalshi returned none. */
+  getCrossExitTriggers(ticker: string): Promise<ExitTrigger[]>;
+  /** Clears every exit trigger on the ticker. A ticker with none still succeeds. */
+  cancelCrossExitTriggers(ticker: string): Promise<void>;
 }
 /** The only transport wired to the real venue path. Every method refuses. */
 export const lockedTransport: PerpsTransport = {
@@ -50,6 +55,8 @@ export const lockedTransport: PerpsTransport = {
   positions: async () => { throw new PerpsOrdersLocked("positions"); },
   setCrossExitTrigger: async () => { throw new PerpsOrdersLocked("setCrossExitTrigger"); },
   updateCrossExitTrigger: async () => { throw new PerpsOrdersLocked("updateCrossExitTrigger"); },
+  getCrossExitTriggers: async () => { throw new PerpsOrdersLocked("getCrossExitTriggers"); },
+  cancelCrossExitTriggers: async () => { throw new PerpsOrdersLocked("cancelCrossExitTriggers"); },
 };
 
 export type Intent = { kind: "entry" | "exit" | "flatten"; ticker: string; dir: "long" | "short"; qty: number; price: number; maker: boolean; plan?: ManagePlan; decisionId: string };
@@ -97,7 +104,18 @@ export class PerpsOms {
     try {
       const r = await this.t.createOrder(req);
       this.log({ cid, state: "ACK", order_id: r.order_id, note: `filled ${r.fill_count} remaining ${r.remaining_count}` });
-      if (i.kind === "entry" && i.plan) for (const body of nativeTriggerRequests(i.plan, r.order_id, cid)) await this.t.setCrossExitTrigger(i.ticker, body);
+      if (i.kind === "entry" && i.plan) {
+        const notes: string[] = [];
+        for (const body of nativeTriggerRequests(i.plan, r.order_id, cid, pos !== 0)) {
+          try {
+            const trg = await this.t.setCrossExitTrigger(i.ticker, body);
+            notes.push(trg.id);
+          } catch (e) {
+            notes.push(`failed ${String((e as Error).message).slice(0, 120)}`);
+          }
+        }
+        if (notes.length) this.log({ cid, state: "ACK", order_id: r.order_id, note: `triggers ${notes.join(",")}` });
+      }
       return { cid, status: "ACK", order_id: r.order_id };
     } catch (e) {
       // network/timeout/5xx: the order may or may not exist. Never resend; reconcile instead.
@@ -136,6 +154,14 @@ export class PerpsOms {
   async killAndFlatten(operatorToken: string, expectedToken: string, books: Record<string, { bestBid: number | null; bestAsk: number | null }>, decisionId: string) {
     if (!operatorToken || operatorToken !== expectedToken) return { ok: false, why: "unauthenticated kill request" };
     this.blocked = "KILL engaged";
+    const tickers = new Set<string>();
+    try {
+      for (const o of await this.t.listOrders({})) if (o.ticker) tickers.add(o.ticker);
+      for (const p of await this.t.positions()) if (Number(p.position) !== 0) tickers.add(p.market_ticker);
+      for (const t of tickers) await this.t.cancelCrossExitTriggers(t);
+    } catch (e) {
+      this.log({ cid: `kill-${decisionId}`, state: "UNKNOWN", note: `trigger cancel ${String((e as Error).message).slice(0, 160)}` });
+    }
     await this.t.cancelAll();
     const out: string[] = [];
     for (const p of await this.t.positions()) {
@@ -187,4 +213,6 @@ export class FakeExchange implements PerpsTransport {
   async positions() { return [...this.pos.entries()].map(([t, p]) => ({ market_ticker: t, position: String(p.q), entry_price: String(p.e), unrealized_pnl: "0", fees: "0" })); }
   async setCrossExitTrigger(ticker: string, body: Record<string, unknown>) { this.triggers.push({ ticker, body }); return { id: `trg-${this.triggers.length}` }; }
   async updateCrossExitTrigger(ticker: string, id: string, body: Record<string, unknown>) { this.triggers.push({ ticker, body: { ...body, id } }); return { id }; }
+  async getCrossExitTriggers() { return []; }
+  async cancelCrossExitTriggers() { this.triggers.length = 0; }
 }

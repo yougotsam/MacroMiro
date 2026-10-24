@@ -1,8 +1,13 @@
-/** Kalshi margin perps. Not the 15-minute ticket. Not Hyperliquid.
- * This file is a shadow lean (three finished minutes). It does not authorize an order.
- * The research selector is src/lib/perps/candidates.ts. Live sends stay in src/lib/perps/oms.ts, which is locked.
+/** Kalshi margin perps. Not the 15-minute ticket.
+ * A lean is not an order. This file never sets authorizesOrder. Live sends stay in perps/oms.ts and need a stop plan.
+ * Leverage stays at 3x. Kalshi treats liquidation as not a stop, and a higher multiple moves that price closer.
  */
 export const PERP_DESK_AUTHORIZES_ORDERS = false;
+export const PERP_MAX_LEVERAGE = 3;
+/** Sit when the book is wider than this. 8 bps. A 20-dollar gap on a 4,000-dollar price is about 50 bps and sits. */
+export const PERP_MAX_SPREAD_BPS = 8;
+/** Sit when 8-hour funding charges this side more than 5 bps. Same bound as the research candidate. */
+export const PERP_MAX_FUNDING_AGAINST = 0.0005;
 
 export const PERP_TICKERS = ["KXGOLDPERP", "KXBTCPERP", "KXETHPERP", "KXSOLPERP", "KXXRPPERP", "KXBNBPERP", "KXSILVERPERP", "KXUS500PERP"] as const;
 
@@ -38,19 +43,21 @@ function stdev(xs: number[]) {
   return Math.sqrt(v);
 }
 
-/** 3x rides noise. 5x is a normal push. The contract max is only for a sniper push. */
+/** Never above 3x. A louder push does not earn more leverage. */
 export function pickLeverage(maxLev: number, pushOverNoise: number) {
-  const max = Math.min(20, Math.max(1, maxLev));
-  if (pushOverNoise >= 3) return Number(max.toFixed(2));
-  if (pushOverNoise >= 2.4) return Number(Math.min(5, max).toFixed(2));
-  return Number(Math.min(3, max).toFixed(2));
+  if (!(pushOverNoise >= 2) || !(maxLev >= 2)) return 0;
+  return Number(Math.min(PERP_MAX_LEVERAGE, maxLev).toFixed(2));
 }
 
-/** Three finished minutes, all the same way, and the push is at least twice the recent noise. Spread width does not sit. */
-export function perpDecision(ticker: string, bid: number, ask: number, lev: number): PerpCall {
+/** Three finished minutes, same way, push at least twice the noise, spread at most 8 bps, funding known and not charging this side. */
+export function perpDecision(ticker: string, bid: number, ask: number, lev: number, funding8h: number | null = null): PerpCall {
   const sit = (why: string): PerpCall => ({ take: false, ticker, side: null, pushOverNoise: 0, useLev: 0, why, authorizesOrder: false });
   if (!(bid > 0) || !(ask > 0) || ask < bid) return sit("no book");
+  const mid = (bid + ask) / 2;
+  const spreadBps = ((ask - bid) / mid) * 10_000;
+  if (spreadBps > PERP_MAX_SPREAD_BPS) return sit(`spread ${spreadBps.toFixed(1)} bps`);
   if (!(lev >= 2)) return sit("leverage unread");
+  if (funding8h == null || !Number.isFinite(funding8h)) return sit("funding unread");
   const rows = tapes.get(ticker) ?? [];
   if (rows.length < 4) return sit("need three finished minutes");
   const closes = rows.slice(-8).map((r) => r.price);
@@ -61,18 +68,21 @@ export function perpDecision(ticker: string, bid: number, ask: number, lev: numb
   const up = last3.every((r) => r > 0);
   const down = last3.every((r) => r < 0);
   if (!up && !down) return sit("no three-minute push");
+  if (up && funding8h > PERP_MAX_FUNDING_AGAINST) return sit("funding charges longs");
+  if (down && funding8h < -PERP_MAX_FUNDING_AGAINST) return sit("funding charges shorts");
   const noise = stdev(returns);
   const push = Math.abs(last3.reduce((a, b) => a + b, 0));
   const ratio = noise > 0 ? push / noise : 0;
   if (!(noise > 0) || ratio < 2) return sit("push inside the noise");
   const useLev = pickLeverage(lev, ratio);
+  if (!(useLev > 0)) return sit("leverage capped at zero");
   return {
     take: true,
     ticker,
     side: up ? "bid" : "ask",
     pushOverNoise: ratio,
     useLev,
-    why: `${up ? "long" : "short"} · ${(push * 100).toFixed(2)}% / noise ${(noise * 100).toFixed(2)}% · ${useLev.toFixed(1)}x of ${lev.toFixed(1)}x max`,
+    why: `${up ? "long" : "short"} · ${(push * 100).toFixed(2)}% / noise ${(noise * 100).toFixed(2)}% · ${useLev.toFixed(1)}x · funding ${(funding8h * 100).toFixed(3)}%`,
     authorizesOrder: false,
   };
 }
