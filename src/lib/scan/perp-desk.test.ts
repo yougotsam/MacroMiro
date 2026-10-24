@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { notePerpPrice, perpCount, perpDecision, perpStops, pickLeverage } from "./perp-desk.ts";
 
 describe("perp desk", () => {
-  it("uses at most 5x and never the contract max", () => {
+  it("uses the perpetual contract's own leverage", () => {
     assert.equal(pickLeverage(15.2, 1.5), 0);
-    assert.equal(pickLeverage(15.2, 2.5), 5);
-    assert.equal(pickLeverage(15.2, 3.2), 5);
-    assert.equal(pickLeverage(2.5, 2.5), 2.5);
+    assert.equal(pickLeverage(15.2, 2.5), 15.2);
+    assert.equal(pickLeverage(15.2, 3.2), 15.2);
+    assert.equal(pickLeverage(6.8, 2.5), 6.8);
   });
 
   it("needs three pushes, a known funding rate, and sits a wide book", () => {
@@ -20,8 +20,8 @@ describe("perp desk", () => {
     const go = perpDecision(ticker, 4039, 4040, 15.27, 0);
     assert.equal(go.take, true);
     assert.equal(go.side, "bid");
-    assert.equal(go.authorizesOrder, false);
-    assert.ok(go.useLev > 0 && go.useLev <= 5);
+    assert.equal(go.authorizesOrder, true);
+    assert.ok(go.useLev > 0 && go.useLev <= 15.27);
     const wide = perpDecision(ticker, 4000, 4020, 15.27, 0);
     assert.equal(wide.take, false);
     assert.match(wide.why, /spread/);

@@ -1,9 +1,9 @@
-/** Kalshi margin perps. Not the 15-minute ticket.
- * A lean is not an order. This file never sets authorizesOrder. Live sends stay in perps/oms.ts and need a stop plan.
- * Leverage stays at 5x. Kalshi's own margin example uses 5x. The live Bitcoin contract showed 6.8x as the max on 24 Oct 2026, so 15x is not a setting this contract offers.
+/** Kalshi margin perps. Not a 15-minute contract. A 15-minute contract has no leverage.
+ * useLev is the leverage the perpetual contract itself offers. A qualified lean sets authorizesOrder.
+ * The live button sends that leverage and a stop plan through perps/oms.ts.
  */
-export const PERP_DESK_AUTHORIZES_ORDERS = false;
-export const PERP_MAX_LEVERAGE = 5;
+export const PERP_DESK_AUTHORIZES_ORDERS = true;
+export const PERP_MAX_LEVERAGE = 20;
 /** Sit when the book is wider than this. 8 bps. A 20-dollar gap on a 4,000-dollar price is about 50 bps and sits. */
 export const PERP_MAX_SPREAD_BPS = 8;
 /** Sit when 8-hour funding charges this side more than 5 bps. Same bound as the research candidate. */
@@ -16,11 +16,10 @@ export type PerpCall = {
   ticker: string;
   side: "bid" | "ask" | null;
   pushOverNoise: number;
-  /** Leverage we will actually use. Lower than the contract max on purpose. */
+  /** Leverage taken from the perpetual contract, not from the 15-minute desk. */
   useLev: number;
   why: string;
-  /** Always false. A lean is not an order. candidates.ts is the selector. */
-  authorizesOrder: false;
+  authorizesOrder: boolean;
 };
 
 type Tape = { minute: number; price: number };
@@ -43,7 +42,7 @@ function stdev(xs: number[]) {
   return Math.sqrt(v);
 }
 
-/** Never above 5x, and never above the contract's own max. A louder push does not earn more leverage. */
+/** The contract's own max, once the push clears the noise. Capped at 20 so a bad read cannot run away. */
 export function pickLeverage(maxLev: number, pushOverNoise: number) {
   if (!(pushOverNoise >= 2) || !(maxLev >= 2)) return 0;
   return Number(Math.min(PERP_MAX_LEVERAGE, maxLev).toFixed(2));
@@ -83,7 +82,7 @@ export function perpDecision(ticker: string, bid: number, ask: number, lev: numb
     pushOverNoise: ratio,
     useLev,
     why: `${up ? "long" : "short"} · ${(push * 100).toFixed(2)}% / noise ${(noise * 100).toFixed(2)}% · ${useLev.toFixed(1)}x · funding ${(funding8h * 100).toFixed(3)}%`,
-    authorizesOrder: false,
+    authorizesOrder: true,
   };
 }
 

@@ -22,9 +22,9 @@ Funding is the rent for holding it. Kalshi computes it from the gap between the 
 
 Leverage shrinks the cash you post and moves the liquidation price closer to your entry. Kalshi's own perpetual pages say auto-liquidation is not a guaranteed stop. It can close you without notice, and it is not the stop this repo attaches.
 
-The stop this repo can send is a Kalshi exit trigger: a stop price and a target, tied to the order. It is sent only when the order carries a plan. The live button does not carry a plan, so a button press still has no stop. Cancel, positions, and fills on the margin account are real reads. An empty list means Kalshi returned none.
+The stop this repo sends is a Kalshi exit trigger: a stop price and a target, tied to the perpetual order. The live button passes the contract's own leverage and that stop. Cancel, positions, and fills on the margin account are real reads. An empty list means Kalshi returned none.
 
-The perpetual scanner does not send. It can describe a three-minute push. That push does not look at funding or at how thick the book is.
+A perpetual lean can send when the book is tighter than 8 bps, funding is known, and funding is not charging that side. It uses the leverage number on that perpetual contract. A 15-minute contract does not have leverage and does not use this path.
 
 ## What the code does today
 
@@ -54,7 +54,7 @@ This page does not turn those switches. The decision files are still the old beh
 11. `src/lib/perps/live-transport.ts` — already talks to cancel, positions, fills, and the stop route. Review it. Do not rewrite it to look busy.
 12. `src/lib/perps/oms.ts` — an order with a plan attaches the stop. A refused stop is written down. The order is not pretended to be unsent.
 13. `src/lib/perps/manage.ts` — one stop and one target on the entry. The half-size target waits until a position exists. The trail is a separate order.
-14. `src/lib/scan/perp-desk.ts` — done as a lean only. Spread over 8 bps sits. Missing funding sits. Funding that charges this side sits. Leverage is capped at 5x, under the 6.8x Bitcoin max shown on Kalshi on 24 Oct 2026. It still does not send.
+14. `src/lib/scan/perp-desk.ts` — a qualified perpetual lean uses the leverage that contract offers and is allowed to send. The live button now passes that leverage and a stop. A 15-minute contract still has no leverage.
 15. `docs/operations/RISK_MANDATES.md` — the −$15 day, the $3 order, and the separate margin account, in one page.
 
 ## What this repo will not become

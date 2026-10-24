@@ -981,7 +981,7 @@ function PerpsLater() {
             void fetch("/api/live/perp-fire", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ticker: book?.ticker ?? "KXGOLDPERP", side: cfg.side, price, clipUsd: cfg.clipSizeUsd || price }),
+              body: JSON.stringify({ ticker: book?.ticker ?? "KXGOLDPERP", side: cfg.side, price, clipUsd: cfg.clipSizeUsd || price, leverage: book?.lev }),
             })
               .then((r) => r.json())
               .then((d: { ok?: boolean; why?: string; status?: string }) => {
