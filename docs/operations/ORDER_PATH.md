@@ -27,12 +27,12 @@ A quote is not an order. It still has to pass, in this order:
 5. Watchdog pulse is fresh.
 6. Account snapshot is fresh and the exchange is open.
 7. Today's worst case is still above −$15. The stop is dollars, not a count of losses. A new ET day clears the prior day's latch.
-8. Price is 36¢–95¢. Under 36¢ is refused. Above 95¢ is refused. A chart that names the other side sits the ticket. A chart that names nothing does not. Three settled losses in a row block new orders for 20 minutes from the third settlement. One loss does not. One contract, one live order. A second series in the same 15 minutes is allowed. A sniper score of at least 11, or a feature score of at least 0.75, adds a logit of 0.80 before the price is judged. Spark must return a probability. Alexandria’s rate odds move gold, silver, and FX. Firecrawl scrapes in enhanced mode. A paid call starts only after a ticket clears the gate.
+8. Price is 36¢–95¢. Under 36¢ is refused. Above 95¢ is refused. A chart that names nothing sits. A chart that names the other side sits. An old or missing Spark card sits. Three settled losses in a row block new orders for 20 minutes from the third settlement. One contract, one live order.
 9. One ticker ≤ $3, same-direction crypto ≤ $4, everything open ≤ $9. If that room is under one contract, the currency markets sit on `no_room` before any order is sent.
-10. The structure side agrees with the priced side. A chart that names the other side sits. A chart that names nothing does not. The last closed 1-minute price must sit on the same side of the 200 EMA as the order. Above it, only yes. Below it, only no. If the 200 EMA is not ready, the ticket sits. A line cross with no structure is not a sit.
+10. The structure side agrees with the priced side. A chart that names nothing sits. The last closed 1-minute price must sit on the same side of the 200 EMA as the order. If the 200 EMA is not ready, the ticket sits.
 11. A currency ticket files on shard 0. If that board is short, the order moves event-contract cash from shard 2 first. The body must name `source` and `destination` as `event_contract`. A blank source is a 400 and the order is not sent.
 
-The 15-minute engine does not send a perp. `PERPS_ORDERS_LOCKED` is false. A perp can leave only through the separate margin route, under the same dollar caps.
+The 15-minute engine does not send a perpetual. A perpetual leaves through `POST /api/live/perp-fire`, on the margin account, with the contract's own leverage and a stop plan. The dollar cap on that button is $3. `PERPS_ORDERS_LOCKED` is false. `lockedTransport` still throws. The live sender is `live-transport.ts`.
 
 ## Firecrawl, Spark, Alexandria
 

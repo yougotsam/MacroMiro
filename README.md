@@ -37,25 +37,38 @@ The 15-minute engine sends only when `kalshi_live`, `kalshi_begin`, and `desk_ar
 - Three losses in a row pause new 15-minute orders for 20 minutes. One contract, one live order. The order size cannot spend more than $3, the −$15 day, or the $9 open cap.
 - Meme coins are not on this order path. No pair is approved. There is no wallet and no swap.
 
-## What changes next, and only after you approve the file
+## File track
 
-This page does not turn those switches. The decision files are still the old behavior until each one is approved.
+Two products. One repo. Leverage belongs only to the perpetual.
 
-1. `docs/STRATEGY.md` — say the same settlement rules as this page. Remove any sentence that treats old fills as proof.
-2. `src/lib/desk/config.ts` — keep the band and the caps visible in one place. Do not flip the approval switch until that file's turn says what it refuses.
-3. `src/lib/desk/evaluator.ts` — done. A quiet chart sits. An upper wick sits only the up bet.
-4. `src/lib/desk/gate.ts` — a taker pays the fee and the spread. A maker does not get to cross.
-5. `src/lib/desk/settlement.ts` — crypto uses the 60-print average. Gold and currencies do not borrow that formula.
-6. `src/lib/desk/features.ts` — the long average must have a source that survives a restart, or the ticket sits.
-7. `src/lib/desk/intel-gate.ts` — done for the stale note. An old or missing Spark card sits the ticket. The job still starts after a pass, so it cannot rescue the ticket it just blocked.
-8. `src/lib/desk/intelligence.ts` — a note can shrink the chance. It cannot invent one.
-9. `src/lib/desk/risk.ts` — dollar caps stay in front of every send, including a perpetual.
-10. `src/lib/desk/oms.ts` — the only signer for a write.
-11. `src/lib/perps/live-transport.ts` — already talks to cancel, positions, fills, and the stop route. Review it. Do not rewrite it to look busy.
-12. `src/lib/perps/oms.ts` — an order with a plan attaches the stop. A refused stop is written down. The order is not pretended to be unsent.
-13. `src/lib/perps/manage.ts` — one stop and one target on the entry. The half-size target waits until a position exists. The trail is a separate order.
-14. `src/lib/scan/perp-desk.ts` — a qualified perpetual lean uses the leverage that contract offers and is allowed to send. The live button now passes that leverage and a stop. A 15-minute contract still has no leverage.
-15. `docs/operations/RISK_MANDATES.md` — the −$15 day, the $3 order, and the separate margin account, in one page.
+| # | File | Where it stands |
+|---|---|---|
+| 1 | README.md | This page. |
+| 2 | docs/STRATEGY.md | Quiet chart sits. The old fill story is out. |
+| 3 | src/lib/desk/config.ts | 36¢–95¢, −$15 day, $3 order. Approval switch is off. |
+| 4 | src/lib/desk/gate.ts | Prices the 15-minute ticket. Does not touch a perpetual. |
+| 5 | src/lib/desk/risk.ts | Dollar caps in front of a 15-minute send. |
+| 6 | src/lib/desk/oms.ts | The only signer for a 15-minute order. |
+| 7 | src/lib/desk/evaluator.ts | A quiet chart sits. An upper wick sits only the up bet. |
+| 8 | src/lib/desk/intelligence.ts | A note can shrink a chance. It does not send. |
+| 9 | src/lib/desk/intel-gate.ts | An old or missing Spark card sits the 15-minute ticket. |
+| 10 | src/lib/desk/features.ts | The long average. Unread means the ticket sits. |
+| 11 | src/lib/desk/settlement.ts | Crypto uses 60 prints. Gold and currencies do not. |
+| 12 | src/lib/perps/live-transport.ts | Cancel, positions, fills, and the stop, on the margin account. |
+| 13 | src/lib/perps/oms.ts | A perpetual entry with a plan attaches the stop. |
+| 14 | src/lib/perps/manage.ts | Stop, target, and the half-size target. |
+| 15 | src/lib/scan/perp-desk.ts | Uses the leverage on that perpetual. A pass may send. |
+| 16 | src/routes/api/live/perp-fire.ts | The perpetual button. Requires leverage and attaches the stop. |
+| 17 | src/components/envelope.tsx | The button sends the contract's leverage. |
+| 18 | docs/operations/ORDER_PATH.md | Says the two paths apart. |
+| 19 | docs/operations/RISK_MANDATES.md | $3 clip on the perpetual button. No leverage on a 15-minute contract. |
+| 20 | docs/architecture/SYSTEM_MAP.md | The live sender is named. The old locked row is gone. |
+| 21 | docs/strategies/EXECUTION_EVAL.md | A candle replay is still not a fill. |
+| 22 | AGENTS.project.md | Perpetuals are not described as locked. |
+| 23 | docs/operations/BUILD_TO_BOT_HANDOFF.md | The old "locked" lines are gone. |
+| 24 | docs/skills/perps-scalper.skill.md | Points at the live button. |
+
+`src/lib/perps/order-adapter.ts` used to answer "ok" without sending. It now throws. `docs/archive/` is old paper. It does not win over this table.
 
 ## What this repo will not become
 

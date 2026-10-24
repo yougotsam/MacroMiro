@@ -4,7 +4,7 @@
 Find Kalshi perps scalps (BTC, ETH, GOLD first) whose after-cost expectancy is positive; paper/demo only until the owner approves live.
 
 ## Rules
-- Paper/demo only. Real orders are locked (PERPS_ORDERS_LOCKED, CALIBRATED_MODEL_APPROVED=false).
+- The live path is `POST /api/live/perp-fire`. It needs the three desk switches, the contract's leverage, and a stop. `PERPS_ORDERS_LOCKED` is false. `order-adapter.ts` does not send.
 - Only trade a candidate the code engine already qualified (setup present, data ready, stop defined).
 - Skip when the net-if-win is not clearly larger than the net-if-loss after fees and funding.
 - Never reverse an open position; exits are reduce-only.

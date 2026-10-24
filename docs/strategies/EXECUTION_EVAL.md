@@ -16,9 +16,9 @@ A venue book (`src/lib/perps/execution.ts`) can say how many contracts are displ
 
 `src/lib/perps/candidates.ts` is the research selector. It reports a break-even win rate and `winProbability: UNKNOWN`.
 
-`src/lib/scan/perp-desk.ts` is a three-minute lean. `authorizesOrder` is false. It does not send.
+`src/lib/scan/perp-desk.ts` is the live lean. A pass sets `authorizesOrder`. It uses the leverage on that perpetual contract.
 
-Live sends go through `src/lib/perps/oms.ts`. `PERPS_ORDERS_LOCKED` is true.
+Live sends go through `src/lib/perps/oms.ts` and `src/lib/perps/live-transport.ts`. `PERPS_ORDERS_LOCKED` is false. The object in `order-adapter.ts` is not a sender. It throws.
 
 ## Price unit
 

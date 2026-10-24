@@ -123,7 +123,7 @@ export function buildPerpsCandidate(input: {
     costs: { winCostUsd: winCost == null ? null : +winCost.toFixed(4), lossCostUsd: lossCost == null ? null : +lossCost.toFixed(4) },
     payoff: { winUsdNet: winNet, lossUsdNet: lossNet, breakEvenWinRate: be, winProbability: null, winProbabilityState: "UNKNOWN" },
     gates, decision: failed.length ? "NO_TRADE" : "RESEARCH_CANDIDATE",
-    reason: failed.length ? `failed: ${failed.join(", ")}` : "all research gates pass (paper only; live orders locked; win probability UNKNOWN — break-even is not a win rate)",
+    reason: failed.length ? `failed: ${failed.join(", ")}` : "all research gates pass (research row; the live path is /api/live/perp-fire; win probability UNKNOWN — break-even is not a win rate)",
     timeSource: stamped ? "caller" : "construction_clock",
     sizingProfile: input.sizingProfile ?? RESEARCH_CLIP_ID,
   };

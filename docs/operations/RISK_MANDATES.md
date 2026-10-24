@@ -7,7 +7,7 @@ Kept only as a record. The $100 equity/notional caps, 3× leverage, $1 per trade
 maker-only entries and news/funding blackouts are **not** in force. Code: `CONSERVATIVE_V1_REJECTED` in `src/lib/perps/mandate.ts`.
 
 ## Kalshi perps AGGRESSIVE_EXPERIMENTAL v1: `aggressive-experimental/v1` (PROPOSED; paper/demo only; live needs explicit owner approval)
-Code: `src/lib/perps/mandate.ts` (sizing), `margin.ts` (margin/liquidation math), `manage.ts` (exits), `oms.ts` (locked order manager).
+Code: `src/lib/perps/mandate.ts` (sizing), `margin.ts` (liquidation math), `manage.ts` (the stop and the target), `oms.ts` plus `live-transport.ts` (the sender). The button uses the leverage printed on that perpetual and refuses a clip over $3. A 15-minute contract has no leverage.
 | Rule | Value |
 |---|---|
 | Leverage | dynamic, up to the venue's per-asset max *open* leverage = `leverage_estimates[notional]` ÷ `initial_margin_multiplier` (GOLD ≈ 11.7×, BTC ≈ 4.9×, ETH ≈ 3.8×, SOL/XRP lower) |

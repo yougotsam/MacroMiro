@@ -24,10 +24,9 @@ Checked against GitHub on 2026-10-15, after PR #3 merged.
 
 ## What the code does
 
-- Kalshi 15-minute predictions stay as they are. Live model approval is off: `CALIBRATED_MODEL_APPROVED = false` in `src/lib/desk/config.ts`.
-- Perps orders are locked: `PERPS_ORDERS_LOCKED = true` in `src/lib/perps/order-adapter.ts`.
-- The perps selector is `src/lib/perps/candidates.ts`, schema `perps-candidate/v2`.
-- `src/lib/scan/perp-desk.ts` does not send orders.
+- Kalshi 15-minute predictions send through `src/lib/desk/oms.ts` when the three switches are on. `CALIBRATED_MODEL_APPROVED` is true. A quiet chart sits.
+- Perpetuals send through `POST /api/live/perp-fire`. `PERPS_ORDERS_LOCKED` is false. The button passes the contract leverage and a stop.
+- `src/lib/scan/perp-desk.ts` can authorize that lean. It does not use the 15-minute settlement average.
 - Candle replay label must be exactly `CANDLE_ONLY_NOT_EXECUTABLE`. Older sim files are quarantined.
 - Sizing: `aggressive-experimental/v1` in `src/lib/perps/mandate.ts` is PROPOSED, not approved. A candidate that does not name a profile uses `research-clip/not-a-mandate` ($1 risk, $100 notional). That clip is not the aggressive profile and not a live rule. The old conservative profile is `REJECTED_SUPERSEDED`.
 

@@ -102,7 +102,7 @@ The live dollar caps are in `src/lib/desk/config.ts` and enforced again in `risk
 - Compare price-only settlement model and market quote vs full-feature stack; reject added features without incremental net EV.
 - Full order-book bid/ask, tick-grid, fee rounding, exchange shard, timeout replay and WebSocket reconnect tests.
 - 200 simulated ambiguous/timeout sends, zero duplicate positions; unknowns remain reserved.
-- The three switches can send. That is not a profitability claim. Through 2026-10-22 the journal had 49 settled fills, 14 wins, about −$28. The buys under 36¢ were 26 of those. The floor is there because both halves of that cell lost. Buys at or above 36¢ were 23 fills and about +$1, and the newer half of that cell lost. Do not describe that as an edge.
+- The three switches can send a 15-minute contract. That is not a profitability claim. Old journal counts are not a score.
 - After every deployment: actual fills, Brier/log loss, EV after fees, slippage, risk, drawdown, maker selection, and model drift by instrument/expiry bucket.
 
 ## OWNERSHIP / STATUS
@@ -111,7 +111,7 @@ Desk: market structure / regime / feature definitions. Quillgate: code and tests
 ## IMPLEMENTATION STATUS AS OF 2026-10-21
 - The 15-minute path can send when the three switch files are on, the −$15 day is not latched, and `gate.ts` plus `risk.ts` both pass. `CALIBRATED_MODEL_APPROVED` is true. `APPROVAL_POLICY_ENFORCED` is false.
 - Settlement chance, maker/taker edge, the 36¢–95¢ band, the three-loss pause, and the logit steps are in `config.ts`, `gate.ts`, `features.ts`, and `risk.ts`.
-- A chart that names the other side sits the ticket. A chart that names nothing does not. The last closed 1-minute price must be on the same side of the 200 EMA as the order. Above it, only yes. Below it, only no. Fewer than 200 closed minutes sits. Fib 38.2–61.8 and the 20/50 pullback can agree with a priced side. They do not set the chance.
+- A chart that names nothing sits. A chart that names the other side sits. An upper wick sits only an up bet. A lower wick sits only a down bet. The last closed 1-minute price must be on the same side of the 200 EMA as the order. Fewer than 200 closed minutes sits. Fib 38.2–61.8 and the 20/50 pullback can agree with a priced side. They do not set the chance.
 - A fresh disagreeing Spark, Alexandria, or MiroFish read sits the ticket (`intel-gate.ts`). A stale or missing Spark card also sits the ticket.
 - Not in the settlement math: exchange-traded volume, CVD, and a calibrated event model. Missing tape does not invent a side. It does not, by itself, turn the three switches off.
 - `docs/archive/` is history. A sentence there that says the day stop is −$5 is not the rule.

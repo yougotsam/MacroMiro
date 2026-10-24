@@ -7,14 +7,14 @@ Status key: REUSE = works as is · ADAPT = needs a venue adapter · LOCKED = pre
 | Bar data | `src/lib/desk/market-data.ts` (Coinbase public candles/trades/signed delta) | REUSE | Signals for BTC/ETH/SOL/XRP. Coinbase has no gold. |
 | Perps data | `src/lib/perps/kalshi-perps-read.ts` | NEW, REUSE | Signed GET only: markets, book, trades, candles, funding estimate/history, fee tiers, risk params, balance, exchange status, price band. |
 | Perps candidates | `src/lib/perps/candidates.ts` | NEW, RESEARCH | Maker entry, swing/ATR stop, 1R/2R targets, fees + funding, depth/funding gates, break-even win rate. Never TRADE. |
-| Perps orders | `src/lib/perps/order-adapter.ts`, `oms.ts` | LOCKED | OMS logic is real (idempotent cid, journal, reconcile, unknown-order block, recovery, kill/flatten, native triggers) and tested against `FakeExchange`. The only venue transport is `lockedTransport`, which throws. |
+| Perps orders | `src/lib/perps/live-transport.ts`, `oms.ts`, `routes/api/live/perp-fire.ts` | LIVE PATH | Cancel, positions, fills, and the stop route are signed margin calls. The button sends one contract when the three switches are on, with that contract's leverage and a stop. `order-adapter.ts` is not a sender. `lockedTransport` still throws and is not the live path. |
+| Kalshi 15m model | `src/lib/desk/settlement.ts`, `evaluator.ts`, `gate.ts`, `approval.ts` | REUSE | Crypto settles on a 60-print average. A quiet chart sits. `CALIBRATED_MODEL_APPROVED` is true. `APPROVAL_POLICY_ENFORCED` is false. |
 | Perps collector | `src/lib/perps/stream.ts`, `scripts/perps/collect.ts` | NEW | Margin WS: ticker/trade/orderbook_delta, per-sid seq check, 1m/5m/15m candles from trades, REST status/balance/risk every 60 s. Writes `$DATA_ROOT/perps/stream/`. |
 | Perps sizing/margin/exits | `mandate.ts`, `margin.ts`, `manage.ts` | NEW | Shared by sim and OMS. |
 | Perps sim / rank / intel | `sim.ts`, `rank.ts`, `intel.ts`, `scripts/perps/{sim,report,intel-trace}.ts` | NEW, RESEARCH | Causal replay on venue 1m candles. Intel reuses macro-calendar, grid/features, spark-templates, research files. |
 | Pair scanner | `src/lib/desk/pair-scan.ts`, `scripts/kalshi-pair-scan.ts` | NEW, read-only | |
 | Kalshi 15m data | `src/lib/desk/feeds.ts`, `observe.ts`, `kalshi-read.ts`, `scripts/desk-observe.ts` | REUSE | GET-only collector. Outcome recovery on restart. Shard-2 fails closed. |
-| Kalshi 15m model | `src/lib/desk/settlement.ts`, `evaluator.ts`, `gate.ts`, `approval.ts` | REUSE (Kalshi only) | Uncalibrated. `CALIBRATED_MODEL_APPROVED=false`. |
-| Kalshi OMS / risk | `src/lib/desk/oms.ts`, `risk.ts`, `exposure.ts`, `recovery.ts` | LOCKED (Kalshi only) | Sole order writer for event contracts. Do not reuse its $ limits for perps. |
+| Kalshi OMS / risk | `src/lib/desk/oms.ts`, `risk.ts`, `exposure.ts`, `recovery.ts` | LIVE PATH | The only writer for a 15-minute contract. Dollar caps stay here. A perpetual does not use this writer. |
 | Paper / selection | `src/lib/paper/*`, `scripts/paper/run.ts` | REUSE | A–E configs, realistic portfolio replay. |
 | Ops | `src/lib/ops/operating-mode.ts`, `scripts/ops/*` | REUSE | Mode file. Firecrawl gated. `no-orders-check.ts`. |
 | Research | `src/lib/grid/*`, `intel/*`, `research/*`, MiroFish, Spark 2, Alexandria | RESEARCH | Weight 0 in decisions. Paid calls need an open round. |

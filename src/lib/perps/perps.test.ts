@@ -275,7 +275,7 @@ describe("execution and bars", () => {
 describe("perps order adapter is unlocked", () => {
   it("the flag is off and this file still has no network call", () => {
     expect(PERPS_ORDERS_LOCKED).toBe(false);
-    expect(perpsOrders.create({})).toEqual({ ok: true, locked: false });
+    expect(() => perpsOrders.create({})).toThrow(/live-transport/);
     const src = readFileSync(new URL("./order-adapter.ts", import.meta.url), "utf8");
     expect(src).not.toMatch(/fetch\(|kalshiSignedHeaders|WebSocket/);
   });
