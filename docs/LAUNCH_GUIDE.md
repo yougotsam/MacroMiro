@@ -1,6 +1,8 @@
-# MacroMiro Sniper Desk V1: launch guide (paper only)
+# MacroMiro desk
 
-Real orders are impossible in this version: `CALIBRATED_MODEL_APPROVED=false`, the live/begin/arm switch files are off, the collector can only send GET requests, and no trading engine is started. Never run `/workspace/startup.sh` for this.
+This page is the paper screen. It does not send an order.
+
+Live sends are elsewhere. A 15-minute contract leaves through the desk engine when the three switches are on. `CALIBRATED_MODEL_APPROVED` is true. A perpetual leaves through `POST /api/live/perp-fire` with that contract's leverage and a stop. The two balances do not share cash.
 
 ## 1. Start (one time per machine restart)
 

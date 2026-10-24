@@ -89,7 +89,7 @@ export const POST_LOSS_PAUSE_MS = 20 * 60_000;
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
 export const UNCERTAINTY = 0.02; // subtracted from P on every side
-export const PRICE_MIN = 0.36; // 26 settled fills under 36¢ through 2026-10-22: 3 wins, about −$29.50, both time halves negative. Not a claim that 36¢+ is a proven edge.
+export const PRICE_MIN = 0.36; // Floor on a 15-minute contract. Not a claim that the price above it wins.
 export const PRICE_MAX = 0.95; // Above 95¢ the fee eats the favorite.
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;

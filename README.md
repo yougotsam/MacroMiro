@@ -70,6 +70,16 @@ Two products. One repo. Leverage belongs only to the perpetual.
 
 `src/lib/perps/order-adapter.ts` used to answer "ok" without sending. It now throws. `docs/archive/` is old paper. It does not win over this table.
 
+These pages were still saying the desk was locked. They now match the code: [docs/LAUNCH_GUIDE.md](docs/LAUNCH_GUIDE.md), [docs/product/PRD.md](docs/product/PRD.md), [docs/strategies/STRATEGY_REGISTRY.md](docs/strategies/STRATEGY_REGISTRY.md), [docs/operations/PROBABILITY_MATRIX.md](docs/operations/PROBABILITY_MATRIX.md), [docs/operations/INTELLIGENCE_AUDIT.md](docs/operations/INTELLIGENCE_AUDIT.md), [src/routes/paper.tsx](src/routes/paper.tsx).
+
+## Not built yet
+
+| Gap | What the code does today |
+|---|---|
+| News before the window | A stale card sits the 15-minute ticket. The research job still starts after a ticket exists. Nothing on a clock refreshes the card before the window opens. |
+| Extra approval switch | `APPROVAL_POLICY_ENFORCED` is false. There is no signed `calibrator.json`. With the switch on and no signed file, every 15-minute ticket would sit. |
+| Meme coins | No wallet, no swap, no rug check. The paid-boost reader does not buy. |
+
 ## What this repo will not become
 
 A feeling is not an entry. Fear, greed, and a headline are not a side. The measurable version of a crowd is the funding rate and the book, with a timestamp. If those numbers are missing, the perpetual sits.

@@ -1,5 +1,8 @@
 # MacroMiro: Autonomous Opportunity Hunter. PRD (canonical)
-Version 0.2, 2026-10-12. Source: Sameer's PRD draft v0.1 (verbatim in `PRD-v0.1-source.md`). This file is the single product spec. Related docs: [SYSTEM_MAP](../architecture/SYSTEM_MAP.md), [STRATEGY_REGISTRY](../strategies/STRATEGY_REGISTRY.md), [VENUE_MATRIX](../venues/VENUE_MATRIX.md), [RISK_MANDATES](../operations/RISK_MANDATES.md), [RUNBOOK](../operations/RUNBOOK.md), [ADR-001](../decisions/ADR-001-OPPORTUNITY-HUNTER.md).
+
+Current, 24 Oct 2026. Two products. A 15-minute contract has no leverage and settles on a published average (60 prints for crypto, Pyth for gold and currencies). A perpetual uses the leverage on that contract, a separate margin balance, and a stop on the live button. `docs/archive/` does not override this paragraph. The phase notes below are the October 12 record. Where they say the order adapter is locked, the live sender is now `src/lib/perps/live-transport.ts`.
+
+Version 0.2, 2026-10-12. Source: Sameer's PRD draft v0.1 (verbatim in `PRD-v0.1-source.md`). Related docs: [SYSTEM_MAP](../architecture/SYSTEM_MAP.md), [STRATEGY_REGISTRY](../strategies/STRATEGY_REGISTRY.md), [VENUE_MATRIX](../venues/VENUE_MATRIX.md), [RISK_MANDATES](../operations/RISK_MANDATES.md), [RUNBOOK](../operations/RUNBOOK.md), [ADR-001](../decisions/ADR-001-OPPORTUNITY-HUNTER.md).
 
 ## Mission
 An experimental, aggressive, autonomous selector of executable long/short and event-contract trades across authorized venues. The goal is after-cost realized net profit. There is no claim of a guaranteed edge. We reuse the existing code, do not create a new repo, and do not delete code early.

@@ -52,7 +52,7 @@ function PaperPage() {
       </header>
       {!d ? <p className="p-6 text-sm text-neutral-300">No paper file yet. Run <code>npm run paper</code>.</p> : (
         <div className="grid gap-6 p-4 sm:p-6">
-          <p role="alert" className="rounded border-2 border-red-500 bg-red-950 p-3 text-base font-semibold text-red-100">LIVE ORDERS DISABLED. Paper research only: CALIBRATED_MODEL_APPROVED=false, switch files off, collector is GET-only.</p>
+          <p role="alert" className="rounded border-2 border-amber-500 bg-amber-950 p-3 text-base font-semibold text-amber-100">This page is paper. It does not send. Live 15-minute orders use the desk engine. Live perpetuals use the margin button. CALIBRATED_MODEL_APPROVED is true.</p>
           <p className="rounded border border-border p-3 text-sm">{d.label} Updated {new Date(d.generatedAt).toLocaleTimeString()}.</p>
           <section aria-label="Mode" className="rounded border border-border p-4">
             <h2 className="mb-2 text-lg">Research mode: {d.mode.mode === "RESEARCH_PAPER" ? "PAPER_RESEARCH" : d.mode.mode === "MARKET_DATA_ONLY" ? "OBSERVATION" : "STANDBY"}</h2>

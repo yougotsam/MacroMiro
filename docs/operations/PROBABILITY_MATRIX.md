@@ -14,7 +14,7 @@ Sources checked: the repo, MiroFish `report_agent.py`, OASIS arXiv 2411.11581, t
 | Perps chance | Not estimated. The scorer labels every report UNKNOWN | `src/lib/perps/prob-edge.ts` | No. Break-even is a cost identity, not a win rate |
 | Report claim | A labeled sentence scraped from a MiroFish story | `probabilityFromReport` in `src/lib/intel/mirofish.ts` | No. The order files are not allowed to import it |
 
-`FEATURE_MAX_SHIFT` is 0.04 and only caps `featureShift`. The live tilt is `tradeLogit`: 0.80, 0.45, or 0.16 times the feature magnitude. A chart that names the other side sits the ticket. A chart that names nothing does not. The nine names in `src/lib/grid/features.ts` are a different list. Each of those weights is hardcoded 0.
+`FEATURE_MAX_SHIFT` is 0.04 and only caps `featureShift`. The live tilt is `tradeLogit`: 0.80, 0.45, or 0.16 times the feature magnitude. A chart that names nothing sits the ticket. A chart that names the other side sits. The nine names in `src/lib/grid/features.ts` are a different list. Each of those weights is hardcoded 0.
 
 ## What MiroFish really does
 

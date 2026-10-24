@@ -91,7 +91,7 @@ function once() {
   for (const r of lastRows) feed[r.series] = { at: r.ts, ticker: r.ticker, yesAsk: r.exec?.yes_ask ?? null, noAsk: r.exec?.no_ask ?? null, spot: r.spot, indexAgeMs: r.index?.age_ms ?? null, gate: r.failed_gate, stale: r.exec == null || r.index?.age_ms == null || (r.index.age_ms ?? 1e9) > 5000 };
   const out = {
     generatedAt: new Date().toISOString(),
-    label: "PAPER ONLY. Real orders are disabled (CALIBRATED_MODEL_APPROVED=false). Scores and probabilities are EXPERIMENTAL unless marked CALIBRATED.",
+    label: "PAPER ONLY. This script does not send. Live orders are the desk engine and the perpetual button. Scores here are not a live fill.",
     mode: readMode(), collector: { pid: status.pid ?? null, lastTickAt: status.lastTickAt ?? null, rows: status.rows ?? null, errors: status.errors ?? null, lastError: status.lastError ?? null },
     watchdog: { ...wd, paperKill: kill }, feed, weights: WEIGHTS, scansWithModelAndQuotes: obs.length, candidates: all.length, ranked,
     configs: results,
