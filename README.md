@@ -29,6 +29,10 @@ For a perpetual: what is being measured, how much cash is posted, and what close
 
 Neither product has an entry rule yet. The next pages do not get to invent one.
 
-## File 2
+## File order
 
-`AGENTS.md` is next. What it says today is not a rule. It gets rewritten after this page is accepted. No other file is touched in this pass.
+1. This page. What is decided, and what is not.
+2. The trading section at the bottom of `AGENTS.md`. How an order is sent so Kalshi does not reject it. That is mechanics, not an entry signal.
+3. `AGENTS.project.md`. The holes that are still open.
+4. `docs/STRATEGY.md` is not a rule. It points here.
+5. The next code file is `src/lib/desk/config.ts`. It still contains the old dollar caps. They are not rules.

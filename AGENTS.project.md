@@ -1,20 +1,26 @@
-# AURIX-X project rules
-Read `docs/STRATEGY.md` and `docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md` first.
-One canonical evidence-based Kalshi settlement-probability strategy;
-technical indicators provide independently tested structure and timing
-evidence, never heuristic percentage boosts. MiroFish, Firecrawl, Spark2
-and Alexandria contribute timestamped context; their narrative confidence
-is not a calibrated contract win probability.
+# MacroMiro project rules
 
-All orders on the 15-minute book go through `src/lib/desk/oms.ts`. Perpetual orders go through `src/lib/perps/oms.ts` and `POST /api/live/perp-fire`. Neither path may invent a price. `CALIBRATED_MODEL_APPROVED` is true. `APPROVAL_POLICY_ENFORCED` is false.
+File 3. Read `README.md` first, then the trading section at the bottom of `AGENTS.md`, then this page. Do not read `docs/archive/` or `docs/STRATEGY.md` as rules. A sentence in those files does not win.
 
-No fabricated tests, fill prices, profitability claims, or source certainty.
-Unrelated NFC/transit features remain unless explicitly authorized for removal.
+## What is decided
 
-## How to work (2026-10-14)
-`main` is the only line. Branch from the latest `origin/main`. Pull requests target `main`, never `desk-brain-mirofish`. Do not keep committing on `fix/aurix-x`. One writer at a time. PR #2 is already contained in `main`; do not merge it.
-Superseded: `docs/archive/**` and any note that says the day stop is −$5 or that `src/lib/scan/edge.ts` is the order brain. Those files stay on disk. They do not win over the six docs above.
+One deposit. Kalshi keeps a prediction balance and a margin balance. They do not spend each other. Cash moves in the Portfolio tab. This repo does not move it. Kalshi's API transfer was not the path the help page gave.
 
-## Perps
-A perpetual is not a 15-minute contract. It has leverage. The 15-minute contract does not.
-`src/lib/scan/perp-desk.ts` may authorize a lean when the book, the funding, and the push agree. The button sends that contract's leverage and a stop. Cancel, positions, and fills are real margin calls in `live-transport.ts`. Candle replay is still not a fill. `docs/archive/**` is history. A sentence there that says perps are locked does not win.
+A 15-minute contract has no leverage. Its order, when one is sent, goes through `src/lib/desk/oms.ts`. Crypto settles on 60 one-second prints. Gold and currencies settle on a Pyth price.
+
+A perpetual has the leverage printed on that contract. Cash posted for one contract is the price divided by that leverage. The live button is `POST /api/live/perp-fire`. A buy rests on the bid. A sell rests on the ask. Kalshi rejects a post-only order that would trade immediately. Size is how many contracts fit in the clip. The stop and the target are the slider values. Liquidation is not a stop. The button does not wait on the paper heartbeat file.
+
+## What is not decided
+
+When to enter. When to sell a 15-minute ticket before the window ends. How much of the deposit one trade may lose. A formula for a chance. A quiet chart. An old news card. A fixed dollar cap. This page does not invent those.
+
+## Holes, on purpose
+
+- The 15-minute engine still enforces the old dollar caps and the old sits. That code is `src/lib/desk/config.ts`, then `src/lib/desk/evaluator.ts`. They are not rules. They are the next code files.
+- A resting perpetual order can sit there and never fill. An instant order that is allowed to cross is not built.
+- The perpetual button has no day stop. One click can post the whole clip.
+- The two balances are not one pile. If the margin balance is empty, the perpetual is rejected even when the prediction balance has cash.
+
+## How to work
+
+`main` is the only line. Do not invent a fill, a price, or a profit.
