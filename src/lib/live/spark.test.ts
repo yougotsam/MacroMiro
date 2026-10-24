@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { SPARK_PROMPT, sparkBody, sparkDate, sparkPrompt, sparkRead } from "./spark.ts";
+import { AGENT_CREDIT_CAP, capAgentBody, finishedAgentData } from "./firecrawl.server.ts";
 
 describe("spark brief", () => {
   it("uses spark-2, a high effort, and a credit cap", () => {
@@ -21,6 +22,18 @@ describe("spark brief", () => {
     assert.match(poll, /attempt < POLLS/);
     assert.match(poll, /POLLS = 48/);
     assert.match(poll, /POLL_EVERY_MS = 10_000/);
+  });
+
+  it("a credit stop is not a brief, and an agent job cannot inherit the 2,500 default", () => {
+    assert.equal(finishedAgentData({ status: "failed", stopReason: "credit_limit_reached", partial: { probability: 0.9 }, data: { probability: 0.9 } }), null);
+    assert.equal(finishedAgentData({ status: "completed", data: { event: "CPI" } }) != null, true);
+    assert.equal(finishedAgentData({ status: "completed", stopReason: "credit_limit_reached", data: { event: "CPI" } }), null);
+    const capped = capAgentBody({ prompt: "x", maxCredits: 2500, exchange: { toolkits: ["a", "b", "c", "d", "e", "f"], onTermsRequired: "ask" } });
+    assert.equal(capped.model, "spark-2");
+    assert.equal(capped.maxCredits, AGENT_CREDIT_CAP);
+    assert.equal((capped.exchange as { onTermsRequired: string; toolkits: string[] }).onTermsRequired, "skip");
+    assert.equal((capped.exchange as { toolkits: string[] }).toolkits.length, 5);
+    assert.equal(capAgentBody({}).maxCredits, 150);
   });
 
   it("asks about today, never a hard-coded day", () => {

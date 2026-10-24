@@ -9,12 +9,12 @@ Sources checked: the repo, MiroFish `report_agent.py`, OASIS arXiv 2411.11581, t
 
 | Name | What it actually is | Where | Can it send an order today? |
 |---|---|---|---|
-| 15-minute chance | Math on the settlement index versus the strike | `src/lib/desk/settlement.ts` | No. Approval wants a calibrator, and `CALIBRATED_MODEL_APPROVED` is false |
+| 15-minute chance | Math on the settlement index versus the strike, then `tradeLogit` and `intelligenceLogit` | `src/lib/desk/settlement.ts`, `features.ts`, `intel-gate.ts` | Yes, when the three switches are on, the edge clears, and `risk.check` passes. `CALIBRATED_MODEL_APPROVED` is true. `APPROVAL_POLICY_ENFORCED` is false, so the calibrator file is not required |
 | Technical score | 0–13 setup points, including one official-calendar point | `src/lib/desk/sniper.ts` | No. Points are not a probability |
 | Perps chance | Not estimated. The scorer labels every report UNKNOWN | `src/lib/perps/prob-edge.ts` | No. Break-even is a cost identity, not a win rate |
 | Report claim | A labeled sentence scraped from a MiroFish story | `probabilityFromReport` in `src/lib/intel/mirofish.ts` | No. The order files are not allowed to import it |
 
-`FEATURE_MAX_SHIFT` is 0.04 and lives in `src/lib/desk/features.ts`. The 1-minute score can move the 15-minute chance by at most 4 points. A trade still needs `technicalSide` to agree with that side. The nine names in `src/lib/grid/features.ts` are a different list. Each of those weights is hardcoded 0.
+`FEATURE_MAX_SHIFT` is 0.04 and only caps `featureShift`. The live tilt is `tradeLogit`: 0.80, 0.45, or 0.16 times the feature magnitude. A chart that names the other side sits the ticket. A chart that names nothing does not. The nine names in `src/lib/grid/features.ts` are a different list. Each of those weights is hardcoded 0.
 
 ## What MiroFish really does
 

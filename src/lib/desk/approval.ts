@@ -19,7 +19,7 @@ export type TimingPolicy = { id: string; status: "active_default" | "proposal"; 
 const B = (name: string, minSec: number, maxSec: number, o: Partial<TteBucket> = {}): TteBucket => ({ name, minSec, maxSec, allow: true, allowMaker: true, allowTaker: true, extraEdge: 0, minPrice: 0, ...o });
 
 export const TIMING_POLICIES: Record<"current" | "final10_proposal", TimingPolicy> = {
-  /** Reproduces the pre-round-3 behaviour exactly (maker final-seconds pull and the 5¢ last-minute floor live in guard.ts). */
+  /** Reproduces the pre-round-3 timing buckets. The 36¢ floor and the final-seconds pull live in guard.ts and gate.ts. */
   current: {
     id: "current-v1",
     status: "active_default",
@@ -27,7 +27,7 @@ export const TIMING_POLICIES: Record<"current" | "final10_proposal", TimingPolic
   },
   /**
    * PROPOSAL (not active): enter only in the final 10 minutes, demand more edge as the window shortens, taker-only with
-   * a 5¢ floor in the final minute. Numbers are placeholders for the owner; activate via TIMING_POLICY after a shadow run.
+   * the live price floor in the final minute. Numbers are placeholders for the owner; activate via TIMING_POLICY after a shadow run.
    */
   final10_proposal: {
     id: "final10-proposal-v1",

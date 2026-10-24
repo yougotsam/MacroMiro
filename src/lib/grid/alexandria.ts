@@ -2,6 +2,7 @@
  * Alexandria (Firecrawl data-provider exchange) helpers. Discovery is free. Paid execution only through
  * executeApproved(), which needs an explicit approval record and respects a per-round paid-call cap.
  * Provider terms are NEVER accepted here: a THIRD_PARTY_DATA_TERMS_REQUIRED answer is recorded as TERMS_REQUIRED.
+ * A government search hit is not a release time and not a veto. A credit-limit partial is not a finished read.
  */
 export type ProviderStatus = "AVAILABLE" | "TERMS_REQUIRED" | "NOT_ENTITLED" | "UNSUITABLE" | "BROKEN";
 

@@ -68,7 +68,7 @@ describe("timing policy by time-to-expiry bucket (configurable, not hard-coded)"
     expect(bucketFor(cur, 2)!.allow).toBe(false);
     expect(bucketFor(cur, -1)).toBeNull();
   });
-  it("final-10-minute PROPOSAL: no entries >10 min, extra edge as the window shortens, taker-only ≥5¢ in the last minute", () => {
+  it("final-10-minute PROPOSAL: no entries >10 min, extra edge as the window shortens, taker-only at the live floor in the last minute", () => {
     const p = TIMING_POLICIES.final10_proposal;
     expect(p.status).toBe("proposal");
     const c = cal();

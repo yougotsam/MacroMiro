@@ -71,7 +71,7 @@ export type GateOpts = {
   budget?: number;
   /** maker edge floor (1¢ + vol shock); default MAKER_MIN_EDGE */
   makerMinEdge?: number;
-  /** lowest price allowed (5¢ in the last minute) */
+  /** lowest price allowed this window (the 36¢ floor; the last minute does not go lower) */
   minPrice?: number;
   priceRanges?: PriceRange[];
 };

@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { firecrawlKey, firecrawlReady } from "@/lib/live/firecrawl.server";
+import { firecrawlKey, firecrawlReady, finishedAgentData } from "@/lib/live/firecrawl.server";
 import { sparkBody, sparkDate, sparkRead } from "@/lib/live/spark";
 import { armClerks } from "@/lib/intel/run.server";
 import { DATA_ROOT } from "@/lib/data-root";
@@ -60,13 +60,14 @@ async function finishSpark(id: string, forDate: string) {
       headers: { Authorization: `Bearer ${firecrawlKey()}` },
     }).catch(() => null);
     if (!polled) continue;
-    const job = (await polled.json().catch(() => ({}))) as { status?: string; data?: unknown; creditsUsed?: number; error?: string };
+    const job = (await polled.json().catch(() => ({}))) as { status?: string; data?: unknown; creditsUsed?: number; error?: string; stopReason?: string; partial?: unknown };
     // A rate-limit or gateway answer has no job status. Keep polling.
     if (!polled.ok && !job.status) continue;
     status = job.status || "processing";
     creditsUsed = job.creditsUsed ?? creditsUsed;
-    error = job.error || "";
-    if (status === "completed") card = sparkRead(job.data);
+    error = job.stopReason || job.error || "";
+    // Credit-limit and cancelled runs report failed. Their partial is not a brief.
+    if (status === "completed") card = sparkRead(finishedAgentData(job));
     if (status === "completed" || status === "failed") break;
   }
   if (status !== "completed" && status !== "failed") {

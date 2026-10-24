@@ -5,7 +5,7 @@
  * and a base-rate benchmark — separately for every model version in the ledger.
  *
  * The taker replay runs the LIVE gate (`scoreSides`, taker only) on each recorded book, so it inherits
- * the exact edge rules, the 4–72¢ band, the last-minute 5¢ floor, the $3 budget and the displayed top-of-
+ * the exact edge rules, the 36¢–95¢ band, the $3 budget and the displayed top-of-
  * book size, and it charges the event's actual fee multiplier. Rows without a recorded fee multiplier or
  * displayed size are NOT booked (counted as skipped). One entry per contract (the first that qualifies,
  * as the engine would), and uncertainty is clustered by 15-minute close window.

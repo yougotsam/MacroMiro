@@ -13,9 +13,9 @@ This is an inventory. It does not turn research into a live order.
 
 | Piece | State | Where | Can it send an order? | Does it change a decision today? |
 |---|---|---|---|---|
-| Kalshi 15-minute predictions | IMPLEMENTED_AND_CONNECTED | `src/lib/desk/evaluator.ts`, `settlement.ts`, `features.ts`, `oms.ts` | Yes, when the three switches are on and the day has room | Index-versus-strike chance, moved by at most 4 points, and only if the 1-minute structure agrees |
+| Kalshi 15-minute predictions | IMPLEMENTED_AND_CONNECTED | `src/lib/desk/evaluator.ts`, `settlement.ts`, `features.ts`, `oms.ts` | Yes, when the three switches are on and the day has room | Index-versus-strike chance. A score of 11 adds a logit of 0.80. A score of 8 adds 0.45. The small chart vote is still cut at 4 points. A chart that names the other side sits the ticket. A chart that names nothing does not |
 | Kalshi side-quest board | IMPLEMENTED read-only rank | `src/lib/omni/board.ts`, `GET /api/live/omni`, Board tab | No. Locks stay on. A shadow row is not an order | Ranks 8¢–30¢ repricing targets and bracket-sum checks across sectors. Win probability stays UNKNOWN |
-| Kalshi perps | IMPLEMENTED_AND_CONNECTED as research | `src/lib/perps/candidates.ts`, `book-replay.ts`, `scripts/perps/collect.ts` | LOCKED. `PERPS_ORDERS_LOCKED` is true | Sniper gates can say NO_TRADE. They cannot send |
+| Kalshi perps | IMPLEMENTED. `PERPS_ORDERS_LOCKED` is false | `src/lib/perps/oms.ts`, `src/routes/api/live/perp-fire.ts` | Not from the 15-minute engine. `POST /api/live/perp-fire` can send one contract at most $3 when the three switches are on | `lockedTransport` still throws. A send needs a real transport |
 | Official macro calendar | IMPLEMENTED_AND_CONNECTED to the sniper point | `src/lib/perps/intel.ts` → `macroClear` → `evaluateSniper` in `src/lib/desk/sniper.ts` | No | Yes, one point. A clear calendar can add the macro point toward 9 of 13. A blocked or missing calendar does not. This is not a news score |
 | Firecrawl | IMPLEMENTED_BUT_RESEARCH_ONLY | The JSONL is read by `scripts/perps/intel-trace.ts`. `src/lib/perps/intel.ts` only receives the rows it is given | No | Not in the live selector. The 0.25 rank weight is used by that diagnostic script, not by `buildPerpsCandidate` |
 | Spark 2 | IMPLEMENTED_BUT_NOT_CONNECTED to orders | `src/lib/grid/spark-templates.ts`, `freshSparkCard` in `src/lib/intel/mirofish.ts` | No | Context. Last local file was still "processing". An AI card is not an official release |
@@ -28,7 +28,7 @@ This is an inventory. It does not turn research into a live order.
 | Polymarket | IMPLEMENTED read-only connector | `src/lib/scan/server.ts` loads markets and `loadPolyUs()` in `src/lib/scan/polyus.ts`. `/api/live/pmus` is an account probe | No send found | A market list is not a funded trade |
 | Solana / meme | IMPLEMENTED read-only tape | `loadDexTape()` in `src/lib/scan/dex.ts` | No wallet send found | A price tape is not a trade |
 | Technical score | IMPLEMENTED_AND_CONNECTED | `src/lib/desk/indicators.ts`, `src/lib/desk/sniper.ts` | No | 0–13 points. Not a probability. It cannot approve a 15-minute order by itself |
-| 15-minute probability | IMPLEMENTED | `src/lib/desk/settlement.ts`, `features.ts`, `evaluator.ts` | Only through the 15-minute order path | The chance can move by at most 4 points, and `technicalSide` has to agree or the order is dropped |
+| 15-minute probability | IMPLEMENTED | `src/lib/desk/settlement.ts`, `features.ts`, `evaluator.ts` | Only through the 15-minute order path | Settlement chance, plus `tradeLogit` (0.80 / 0.45 / 0.16×magnitude). `technicalSide` sits a ticket only when it names the other side |
 | Perps win probability | NOT a model | `src/lib/perps/prob-edge.ts` | Blocked | Scores rows it is given and still labels `modelProbability: "UNKNOWN"`. It does not estimate a win chance |
 | Nine research features | IMPLEMENTED_BUT_RESEARCH_ONLY | `src/lib/grid/features.ts` | No | Each weight is hardcoded 0. They are not `FEATURE_MAX_SHIFT` and they do not touch settlement |
 | Grok / Gemini | IMPLEMENTED_BUT_RESEARCH_ONLY | `src/lib/loop/maker.ts` | No | Paper notes. Not a send |
@@ -40,10 +40,10 @@ This is an inventory. It does not turn research into a live order.
 15-minute yes/no:
 
 1. `settlement.ts` makes a probability from the index versus the strike. Its inputs are the prints, the strike, the time left, and volatility.
-2. `src/lib/desk/features.ts` moves that chance by at most 4 points. It cannot flip the side. A moving-average location cannot approve a trade at any price. `technicalSide` allows a side only for an RSI bounce or fade with a candle, a 62%–79% fib pocket that also has a wick or a gap, or a return into a gap. Nothing above 72¢ is bought.
-3. The sniper score blocks an order only when the other side has a full setup and this side does not. Missing 15-minute or 1-hour history does not invent a block.
-4. `oms.ts` sends when `CALIBRATED_MODEL_APPROVED` is true and the day still has room. The calibrator file is not required while `APPROVAL_POLICY_ENFORCED` is false.
-5. The send reads Spark and the last MiroFish file in `src/lib/desk/intel-gate.ts`. It does not import the Firecrawl client. A fresh brief or a fresh MiroFish probability is written on the reason. Neither one cancels the ticket. A stale, missing, or unclear brief does not sit the desk. A MiroFish error does not invent a side. Neither number replaces the settlement chance. `scripts/spark-keep.ts` refreshes the brief on its own clock.
+2. `src/lib/desk/features.ts` stores the chart. `tradeLogit` adds 0.80 at a sniper score of 11 or a feature score of at least 0.75, and 0.45 at 8 or 0.45. The small `featureShift` path is still cut at 4 points and is not what the evaluator adds. `technicalSide` can name sweep, fib pocket with a reaction, gap return, demand, or supply. It returns null when it has no setup. Null does not sit the ticket. An upper wick does. The price band is 36¢–95¢.
+3. The sniper score changes the logit. It does not by itself block an order. Missing 15-minute or 1-hour history does not invent a block.
+4. `oms.ts` sends when `risk.check` passes and `CALIBRATED_MODEL_APPROVED` is true. The calibrator file is not required while `APPROVAL_POLICY_ENFORCED` is false.
+5. The send reads Spark, Alexandria, and the last MiroFish file in `src/lib/desk/intel-gate.ts`. A fresh disagreeing brief, a fresh MiroFish side, or a scheduled major print sits the ticket. A stale, missing, or unclear brief does not. Neither number replaces the settlement chance. `scripts/spark-keep.ts` refreshes the brief on its own clock.
 
 Perps:
 

@@ -89,8 +89,8 @@ export const POST_LOSS_PAUSE_MS = 20 * 60_000;
 
 // ── Gate ─────────────────────────────────────────────────────────────────────
 export const UNCERTAINTY = 0.02; // subtracted from P on every side
-export const PRICE_MIN = 0.05; // Below 5¢ is a dead contract. The account size is not a price.
-export const PRICE_MAX = 0.95; // Above 95¢ the fee eats the favorite. 72¢ was refusing the side the model was sure about.
+export const PRICE_MIN = 0.36; // 26 settled fills under 36¢ through 2026-10-22: 3 wins, about −$29.50, both time halves negative. Not a claim that 36¢+ is a proven edge.
+export const PRICE_MAX = 0.95; // Above 95¢ the fee eats the favorite.
 export const MAKER_MIN_EDGE = 0.01;
 export const TAKER_MIN_EDGE = 0.04;
 export const BASE_MIN_EDGE = 0.01; // the settlement model alone (no features) must show this much on the chosen side/price
@@ -126,7 +126,7 @@ export const HOLD_SHOCK_FRAC = 0.5; // keep a resting bid while edge ≥ this ×
 export const FINAL_PULL_SEC = 45; // in the last N s resting bids are pulled…
 export const LOCK_MIN_FRAC = 0.6; // …unless ≥ 60 % of the 60 s average is already printed (crypto only)
 export const LAST_MINUTE_SEC = 60;
-export const LAST_MINUTE_MIN_PRICE = 0.05; // never buy under 5¢ in the last minute
+export const LAST_MINUTE_MIN_PRICE = 0.36; // same floor as PRICE_MIN. The last minute does not reopen cheap contracts.
 export const TICK_MS = 1_000;
 export const SNAPSHOT_EVERY_MS = 2_000; // account snapshot cadence (refreshed immediately after any send)
 export const GUARD_EVERY_MS = 250; // fast-move guard reads the websocket prints, no REST

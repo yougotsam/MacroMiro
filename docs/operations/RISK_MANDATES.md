@@ -1,6 +1,6 @@
 # Risk mandates (per venue)
 ## Kalshi 15m YES/NO: APPROVED by owner (enforced in `src/lib/desk/config.ts` + `risk.ts`)
-Daily stop −$15 · max open risk $9 · max $3 per order until a deposit changes it · max $3 per ticker · correlated crypto $4 · price band 5¢–95¢ · one order per contract, not per window · three settled losses then 20 minutes off · a logit of 0.80 at a score of 11 · snapshot stale after 20 s · 1 order per tick. The chance still has to beat the price and the fee. Spark returns a probability. Alexandria’s rate odds apply to gold, silver, and FX. Firecrawl scrapes in enhanced mode.
+Daily stop −$15 · max open risk $9 · max $3 per order until a deposit changes it · max $3 per ticker · correlated crypto $4 · price band 36¢–95¢ · one order per contract, not per window · three settled losses then 20 minutes off · a logit of 0.80 at a score of 11 · snapshot stale after 20 s · 1 order per tick. The chance still has to beat the price and the fee. The 36¢ floor is the settled-loss cut in `config.ts`. Spark returns a probability. Alexandria’s rate odds apply to gold, silver, and FX. Firecrawl scrapes in enhanced mode.
 
 ## Kalshi perps CONSERVATIVE v1 (2026-10-12): REJECTED BY OWNER, SUPERSEDED
 Kept only as a record. The $100 equity/notional caps, 3× leverage, $1 per trade, −$5/day, −$15/week, 2 positions,
@@ -43,4 +43,4 @@ In practice, for tight scalp stops, the **single-market margin cap binds before 
 - Perps hard drawdown limit: **50% (paper default, = top existing warning). PENDING OWNER DECISION.** On breach: cancel-all + reduce-only flatten via `PerpsOms.killAndFlatten` (paper exchange) and a SEV1 incident.
 - Kalshi 15m −$15 day stop now also FLATTENS open paper positions (at our-side bid − 1¢), not just blocks new entries.
 - Fail-closed: if the watchdog heartbeat is older than 3 minutes, every engine refuses NEW entries (exits allowed).
-- CALIBRATED_MODEL_APPROVED can only be *proposed* after the blind strategy gate returns PASS (≥ 200 OOS trades, mean > 0 after costs, Newey–West t > 2, DD ≤ 50%, Sharpe floor).
+- `CALIBRATED_MODEL_APPROVED` is true in `src/lib/desk/config.ts`. The blind-gate checklist (200 out-of-sample trades, mean above 0 after costs, Newey–West t above 2, drawdown at most 50%) is not a runtime lock. `APPROVAL_POLICY_ENFORCED` is false.

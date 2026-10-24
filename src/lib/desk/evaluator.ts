@@ -23,7 +23,7 @@ import {
 } from "./config";
 import { approve, bucketFor, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
 import { strategyCall } from "./strategies";
-import { features, applyLogit, flowFromBars, minuteBars, sessionTag, technicalSide, tradeLogit, type FeatureSnapshot } from "./features";
+import { features, applyLogit, ema200Side, flowFromBars, minuteBars, sessionTag, technicalSide, tradeLogit, type FeatureSnapshot } from "./features";
 import type { FeeInfo } from "./fees";
 import { type Feeds, officialMatches } from "./feeds";
 import { type Book, type Candidate, scoreSides } from "./gate";
@@ -112,7 +112,7 @@ export class Evaluator {
     // One hour of index prints cannot build 60 closed 15-minute bars. Stored Coinbase
     // candles are used for the sniper when they are long enough. They do not enter the settlement price.
     const prints = this.feeds.prints(ref.index, now - 3600_000);
-    const bars = minuteBars(prints, now);
+    const bars = minuteBars(this.feeds.prints(ref.index, now - 210 * 60_000), now);
     const lastBar = bars[bars.length - 1];
     if (!lastBar || now - (lastBar.t * 60_000 + 60_000) > BAR_MAX_AGE_MS) return fail("G1_bars_stale");
     const sig = sigmaFromPrints(prints, now, SIGMA_FLOOR[ref.index] ?? 2e-5);
@@ -197,6 +197,12 @@ export class Evaluator {
     out.quotes = g.quotes;
     out.best = g.best;
     if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
+    const emaSide = ema200Side(lastBar?.c ?? null, feats.ema200);
+    if (emaSide !== g.best.side) {
+      out.shadow = g.best;
+      out.best = null;
+      return fail(emaSide == null ? "G2_ema200_unread" : "G2_ema200_against");
+    }
     const blockedWindow = windowRefusal(series, left);
     if (blockedWindow) {
       out.shadow = g.best;
@@ -226,12 +232,8 @@ export class Evaluator {
       return fail(`G2_structure_${tech.why.replace(/\s+/g, "_")}`);
     }
     if (tech.side == null) tech.why = `settlement edge, chart had no opposing setup · ${sessionTag(now)}`;
-    // A moving-average location is not an entry at any price. ICT enters on a pullback, not because price is already past the average.
-    if (tech.why.startsWith("20-EMA")) {
-      out.shadow = g.best;
-      out.best = null;
-      return fail("G2_structure_ema_chase");
-    }
+    // Chase is not a side. technicalSide never names an EMA location. strategyCall only
+    // returns a 38.2–61.8 retrace or a 20/50 pullback, and only when it matches the priced side.
     if (feats?.candle === "upper_wick") {
       out.shadow = g.best;
       out.best = null;
@@ -291,7 +293,7 @@ export function decisionRowOf(e: SeriesEval, action: Decision["action"], fee: Fe
     shadow_best: e.shadow ? { side: e.shadow.side, mode: e.shadow.mode, price: e.shadow.price, count: e.shadow.count, fee: e.shadow.fee, edge: Number(e.shadow.edge.toFixed(4)), edge_base: Number(e.shadow.edgeBase.toFixed(4)) } : null,
     action,
     failed_gate: e.failed,
-    features: e.feats ? { ...e.feats.groups, group_votes: e.feats.groups, flow: e.feats.flow, score: e.feats.score, ema7: e.feats.ema7, ema14: e.feats.ema14, ema50: e.feats.ema50, rsi14: e.feats.rsi14, candle: e.feats.candle, structure: e.feats.structure } : null,
+    features: e.feats ? { ...e.feats.groups, group_votes: e.feats.groups, flow: e.feats.flow, score: e.feats.score, ema7: e.feats.ema7, ema14: e.feats.ema14, ema50: e.feats.ema50, ema200: e.feats.ema200, rsi14: e.feats.rsi14, candle: e.feats.candle, structure: e.feats.structure } : null,
     model: `${MODEL_VERSION}+${MODEL_REV}`,
     order,
     approval: e.approval ? { ok: e.approval.ok, why: e.approval.why, p_cal: e.approval.pCal, ev_per_contract: e.approval.evPerContract, cushion: e.approval.cushion } : null,

@@ -9,7 +9,7 @@ The log-odds steps are on the order path.
 - A sniper score of at least 11, or a feature score of at least 0.75, adds a logit of +0.80 in the direction of that score. A score of at least 8, or a feature score of at least 0.45, adds +0.45. This step is not cut at 4 points.
 - Spark moves the same chance by 0.25 when the brief is fresh and names the asset. Alexandria moves it when the file is under 7 days old and carries a probability. A Firecrawl seed under 24 hours scales that news step by 1.25. A missing file adds nothing.
 - Half-Kelly is `0.5 × (b·p − (1−p)) / b`, then at most 15% of equity, then at most $3.
-- The buy range is 5¢–95¢. Under 5¢ is refused. Over 95¢ is refused. The order still needs the chance to beat the price and the fee. The dollar cap stays $3 until money is added.
+- The buy range is 36¢–95¢. Under 36¢ is refused. Over 95¢ is refused. The order still needs the chance to beat the price and the fee. The dollar cap stays $3 until money is added. The 36¢ floor comes from the settled journal through 2026-10-22: 26 buys under 36¢, 3 wins, about −$29.50, and both time halves lost. That sample is under 30. It cuts a measured loss. It does not prove the band above 36¢.
 - Three settled losses in a row pause 20 minutes. One loss does not. One live order per contract. A second series in the same 15 minutes is allowed. Spark, Alexandria, and Firecrawl stay on and run when a ticket clears the gate.
 - Meme coins and perps do not send from this file.
 
@@ -92,9 +92,7 @@ Spark2 parses sourced events (time, consensus, actual, surprise, direction candi
 Default major scheduled macro veto: new trades 30m before and until at least 15m after release, subject to spread/vol normalizing. Crypto exchange outages and oracle/source anomalies hard veto. News model relevance is asset- and horizon-specific.
 
 ## RISK / ALLOCATION
-Live is disabled until human approval and unit/integration/shadow tests. Research cap for the previously cited ~$36 account: $3/order, $9 aggregate planned worst loss, -$5 daily new-risk latch; these are changeable only in a reviewed config release. Split same-underlying opportunities into ONE aggregate risk budget.
-Optional high-risk promotion is a separate reviewed release and must be justified by demonstrated net edge and real fills, not a 13/13 score. Avoid grid, martingale, uncapped leverage. Pending unknown orders keep maximum-loss reserves until reconciled.
-STOP persists across restarts. An override file must not be allowed to silently rebase losses. Perps require an independent margin/liquidation/stop policy.
+The live dollar caps are in `src/lib/desk/config.ts` and enforced again in `risk.ts` before any POST. Day stop −$15. Open worst-case $9. One order $3. One ticker $3. Same-direction crypto $4. The −$5 latch is not in force. `ENABLE_RISK_OVERRIDES` is false, so a file on disk cannot rebase the day's loss. Three settled losses pause new orders for 20 minutes. One loss does not. Pending unknown orders keep their worst-case reserve until reconciled. Avoid grid, martingale, and uncapped leverage. Perps are a separate route (`PERPS_ORDERS_LOCKED` is false; the 15-minute engine does not call it).
 
 ## PROOF BEFORE PROMOTION
 - Source and exact settlement rule for each series verified.
@@ -104,15 +102,16 @@ STOP persists across restarts. An override file must not be allowed to silently 
 - Compare price-only settlement model and market quote vs full-feature stack; reject added features without incremental net EV.
 - Full order-book bid/ask, tick-grid, fee rounding, exchange shard, timeout replay and WebSocket reconnect tests.
 - 200 simulated ambiguous/timeout sends, zero duplicate positions; unknowns remain reserved.
-- No live orders until calibrated probabilities, complete data, independent OMS risk checks, and profitable shadow/executable pricing metrics exist.
+- The three switches can send. That is not a profitability claim. Through 2026-10-22 the journal had 49 settled fills, 14 wins, about −$28. The buys under 36¢ were 26 of those. The floor is there because both halves of that cell lost. Buys at or above 36¢ were 23 fills and about +$1, and the newer half of that cell lost. Do not describe that as an edge.
 - After every deployment: actual fills, Brier/log loss, EV after fees, slippage, risk, drawdown, maker selection, and model drift by instrument/expiry bucket.
 
 ## OWNERSHIP / STATUS
 Desk: market structure / regime / feature definitions. Quillgate: code and tests. Rail: requirement→file→test map. Spark2: live news events. Alexandria: historical calibration evidence. Risk Sentinel: independent approval. OMS: only permitted execution path, audited. The LLM narrates; deterministic code trades.
 
-## IMPLEMENTATION STATUS AS OF 2026-10-09
-- PRESENT in source: settlement-model partial last-minute logic, index feed, maker/taker edge, exchange shard and price grids, three-signal guard, risk/OMS, final-market outcome recorder.
-- ADDED: `sniper.ts` parameterized feature/evidence diagnostics, read-only `intelligence.ts` bridge to Spark/MiroFish/Alexandria/Firecrawl-backed artifacts.
-- NOT AVAILABLE from the supplied source data: true exchange market order flow, 205 confirmed 1h OHLCV bars, CVD, traded-volume VWAP/POC, calibrated historical event probabilities, full broker-perp margin safety, production keys and live exchange validation.
-- Correct behavior while unavailable: NO LIVE TRADE; preserve missing-data reasons and continue data collection.
-- `docs/archive/AURIX_RELEASE_REPORT-2026-10-09.md` is authoritative for testing/provisional fixes.
+## IMPLEMENTATION STATUS AS OF 2026-10-21
+- The 15-minute path can send when the three switch files are on, the −$15 day is not latched, and `gate.ts` plus `risk.ts` both pass. `CALIBRATED_MODEL_APPROVED` is true. `APPROVAL_POLICY_ENFORCED` is false.
+- Settlement chance, maker/taker edge, the 36¢–95¢ band, the three-loss pause, and the logit steps are in `config.ts`, `gate.ts`, `features.ts`, and `risk.ts`.
+- A chart that names the other side sits the ticket. A chart that names nothing does not. The last closed 1-minute price must be on the same side of the 200 EMA as the order. Above it, only yes. Below it, only no. Fewer than 200 closed minutes sits. Fib 38.2–61.8 and the 20/50 pullback can agree with a priced side. They do not set the chance.
+- A fresh disagreeing Spark, Alexandria, or MiroFish read sits the ticket (`intel-gate.ts`). A stale or missing file does not.
+- Not in the settlement math: exchange-traded volume, CVD, and a calibrated event model. Missing tape does not invent a side. It does not, by itself, turn the three switches off.
+- `docs/archive/` is history. A sentence there that says the day stop is −$5 is not the rule.

@@ -1,6 +1,8 @@
 /**
- * Kalshi perps ORDER MANAGER — LOCKED. All logic is real and tested against an in-memory exchange, but the only live
- * transport (`lockedTransport`) throws on every write, and PERPS_ORDERS_LOCKED is a const `true`.
+ * Kalshi perps order manager. `PERPS_ORDERS_LOCKED` in `order-adapter.ts` is false.
+ * `lockedTransport` still throws on every write. A live send has to pass a real transport
+ * and `allowSend`. `POST /api/live/perp-fire` does that when the three desk switches are on.
+ * The 15-minute engine does not construct this class.
  * Field names follow docs.kalshi.com perps_openapi.yaml (CreateMarginOrderRequest, MarginOrder, MarginFill,
  * MarginPosition, SetCrossExitTriggerRequest). Verified rules:
  *  - client_order_id, side (bid|ask), count, price, time_in_force, self_trade_prevention_type are required.

@@ -60,6 +60,7 @@ export type FeatureSnapshot = {
   ema14: number | null;
   ema20: number | null;
   ema50: number | null;
+  ema200: number | null;
   rsi14: number | null;
   ret5mBps: number | null;
   candle: string;
@@ -87,6 +88,7 @@ export function features(bars: Bar[]): FeatureSnapshot {
   const e14 = ema(closes, 14);
   const e20 = ema(closes, 20);
   const e50 = ema(closes, 50);
+  const e200 = ema(closes, 200);
   const r = rsi(closes, 14);
   const last = bars[bars.length - 1];
   const prev = bars[bars.length - 2];
@@ -235,6 +237,7 @@ export function features(bars: Bar[]): FeatureSnapshot {
     ema14: e14,
     ema20: e20,
     ema50: e50,
+    ema200: e200,
     rsi14: r,
     ret5mBps: ret5,
     candle: candleTag,
@@ -309,6 +312,14 @@ export function flowFromBars(
 /** No venue prints a tape for this market. Nulls, not zeros. */
 export function unavailableFlow(): FlowVote {
   return { rvol: null, cvd: null, vwap: null, ofi: null, book: null, source: null, stale: true, why: "unavailable: no venue tape" };
+}
+
+/** Last closed 1-minute price against the 200 EMA. Above is yes, below is no. Unread or equal is not a pass. */
+export function ema200Side(close: number | null, ema200: number | null): "yes" | "no" | null {
+  if (close == null || ema200 == null || !Number.isFinite(close) || !Number.isFinite(ema200)) return null;
+  if (close > ema200) return "yes";
+  if (close < ema200) return "no";
+  return null;
 }
 
 /** The side the 1-minute structure allows. Null means sit. A settlement chance cannot enter against this. */

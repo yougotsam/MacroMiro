@@ -85,6 +85,31 @@ export async function pullOfficial(): Promise<{ live: boolean; events: InboxEven
   return { live: true, events, errors };
 }
 
+/** A desk agent job never inherits Firecrawl's 2,500-credit default, and never accepts provider terms by itself. */
+export const AGENT_CREDIT_CAP = 400;
+
+export function capAgentBody(body: unknown): Record<string, unknown> {
+  const row = body && typeof body === "object" && !Array.isArray(body) ? { ...(body as Record<string, unknown>) } : {};
+  const n = Number(row.maxCredits);
+  row.model = "spark-2";
+  row.maxCredits = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), AGENT_CREDIT_CAP) : 150;
+  if (row.exchange && typeof row.exchange === "object" && !Array.isArray(row.exchange)) {
+    const ex = { ...(row.exchange as Record<string, unknown>) };
+    ex.onTermsRequired = "skip";
+    if (Array.isArray(ex.toolkits)) ex.toolkits = ex.toolkits.slice(0, 5);
+    delete ex.approve;
+    row.exchange = ex;
+  }
+  return row;
+}
+
+/** A finished card exists only on status completed. A credit stop has no data. A partial is not a result. */
+export function finishedAgentData(job: { status?: string; data?: unknown; stopReason?: string | null; partial?: unknown }): unknown | null {
+  if (job.status !== "completed") return null;
+  if (job.stopReason) return null;
+  return job.data ?? null;
+}
+
 export async function startAgent(body: unknown) {
   if (!firecrawlReady()) return { ok: false as const, id: null, error: "no key" };
   const gate = spendAllowed("intel_clerks");
@@ -93,7 +118,7 @@ export async function startAgent(body: unknown) {
     method: "POST",
     signal: AbortSignal.timeout(15000),
     headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(capAgentBody(body)),
   });
   const json = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
   if (!res.ok || !json.id) return { ok: false as const, id: null, error: json.error || `http ${res.status}` };
@@ -102,8 +127,8 @@ export async function startAgent(body: unknown) {
 
 export async function agentStatus(id: string) {
   const res = await fetch(`${API}/agent/${id}`, { signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${key()}` } });
-  const json = (await res.json().catch(() => ({}))) as { status?: string; data?: unknown; creditsUsed?: number; error?: string; expiresAt?: string };
-  return { ok: res.ok, status: json.status || "failed", data: json.data ?? null, creditsUsed: json.creditsUsed ?? null, error: json.error || "", expiresAt: json.expiresAt ?? null };
+  const json = (await res.json().catch(() => ({}))) as { status?: string; data?: unknown; creditsUsed?: number; error?: string; expiresAt?: string; stopReason?: string };
+  return { ok: res.ok, status: json.status || "failed", data: finishedAgentData(json), creditsUsed: json.creditsUsed ?? null, error: json.stopReason || json.error || "", expiresAt: json.expiresAt ?? null };
 }
 
 export async function agentTrace(id: string) {

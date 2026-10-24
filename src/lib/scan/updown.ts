@@ -31,7 +31,7 @@ export type UpDownRound = {
   series?: string;
   /** Index already through the line. Pay the ask. Quiet books rest. */
   cross?: boolean;
-  /** Calendar shock. Same 18¢–72¢ band. Does not raise the $3 cap. */
+  /** Calendar shock. Same 36¢–95¢ band as config.ts. Does not raise the $3 cap. */
   catalyst?: boolean;
   /** 1 when the 30-minute lean matches the print. 0.5 when that lean is flat, opposed, or the tape is the perp mark. */
   clipScale?: number;
@@ -119,7 +119,7 @@ export function scanLines(r: UpDownRound): string[] {
     else if (/momentum_against/.test(text)) status = "[STATUS] -> SIT: momentum_against";
     else if (/payout not worth it/.test(text)) {
       const ticket = text.match(/ticket (\d+)¢/);
-      status = `[STATUS] -> SIT: price_band${ticket ? ` (${ticket[1]}¢ outside 18¢–72¢)` : ""}`;
+      status = `[STATUS] -> SIT: price_band${ticket ? ` (${ticket[1]}¢ outside 36¢–95¢)` : ""}`;
     }
     else if (/no quote/.test(text)) status = "[STATUS] -> SIT: no_quote";
     else if (/volatility extreme/.test(text)) status = "[STATUS] -> SIT: volatility_extreme (>200bps)";

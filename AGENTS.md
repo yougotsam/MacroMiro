@@ -350,10 +350,10 @@ never:   build an app for a greeting/number/question; invent imagine_* calls;
          ask the user to run commands; delete or abandon /workspace/startup.sh
 ```
 
-## Sniper Desk V1 (paper only)
-- Strategy: Kalshi 15-minute BTC/ETH/SOL/XRP/gold settlement model, 13-pt sniper confluence (Coinbase 15m/1h), 8 named setups, and an EV after Kalshi fees at the executable ask. The probability stays EXPERIMENTAL until an owner-approved calibrator exists.
+## Sniper Desk V1
+- Strategy: Kalshi 15-minute settlement model. Buy band is 36¢–95¢ (`PRICE_MIN` / `PRICE_MAX` in `src/lib/desk/config.ts`). The 36¢ floor is a measured loss cut, not a proven edge above it. Chart disagreement sits a ticket. No chart setup does not. Fib 38.2–61.8 and the 20/50 pullback can agree. They do not set the chance.
 - Commands: `npm run dev` (UI at /paper), `npm run paper` / `npm run paper:loop`, `bun scripts/paper/confluence-diag.ts`, `bun scripts/paper/recover-outcomes.ts`, `bun scripts/ops/no-orders-check.ts`, `bun scripts/ops/mode.ts status`. Collector: `scripts/desk-observe.ts`, which is GET-only. Run one instance only.
-- Risk (approved): −$15 daily stop, $9 total, $3 per ticker, $4 same-direction correlated crypto. Never change these, `CALIBRATED_MODEL_APPROVED`, or the switch files. Never run `/workspace/startup.sh`. Paid Firecrawl needs an open operator round (`scripts/ops/round.ts`).
+- Risk (approved): −$15 daily stop, $9 total, $3 per ticker, $4 same-direction correlated crypto. Never change these dollar caps, `CALIBRATED_MODEL_APPROVED`, or the switch files. Never run `/workspace/startup.sh`. Paid Firecrawl needs an open operator round (`scripts/ops/round.ts`).
 - Guide: docs/LAUNCH_GUIDE.md.
 
 ## MacroMiro canonical docs

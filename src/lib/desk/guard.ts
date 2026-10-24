@@ -3,7 +3,8 @@
  *  - fast move: log return over the last 2–5 s of settlement-index prints vs K·σ·√L, σ = the model's σ
  *  - shock: how far P moves on a 1σ index move over SHOCK_LATENCY_SEC → extra edge a resting bid must carry
  *  - final seconds: resting bids are pulled in the last FINAL_PULL_SEC unless the 60 s average is mostly locked
- *  - last minute: never buy under 5¢
+ *  - price floor: a resting bid under PRICE_MIN is pulled at any time left
+ *  - last minute uses the same floor. It does not reopen a cheaper band.
  */
 import {
   FAST_COOLDOWN_MS,
@@ -15,6 +16,7 @@ import {
   LAST_MINUTE_MIN_PRICE,
   LAST_MINUTE_SEC,
   LOCK_MIN_FRAC,
+  PRICE_MIN,
   SHOCK_LATENCY_SEC,
 } from "./config";
 import { restingEdge, type Side } from "./gate";
@@ -115,7 +117,7 @@ export function pullReason(x: {
 }): string | null {
   if (x.guard.dir && against(x.guard.dir, x.side)) return `fast move ${x.guard.dir} z=${x.guard.z.toFixed(1)}`;
   if (x.tte != null && !makerWindowOk(x.tte, x.lockFrac, x.kind)) return `final ${Math.round(x.tte)}s, average ${Math.round(x.lockFrac * 100)}% locked`;
-  if (x.tte != null && x.price < minPriceFor(x.tte)) return "under 5¢ in the last minute";
+  if (x.price < PRICE_MIN || (x.tte != null && x.price < minPriceFor(x.tte))) return "below 36¢";
   if (x.p == null) return `data gate ${x.failed}`;
   const edge = restingEdge(x.p, x.side, x.price);
   const hold = HOLD_SHOCK_FRAC * x.shock;

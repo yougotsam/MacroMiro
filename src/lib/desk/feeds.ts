@@ -16,7 +16,7 @@ const WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2";
 export const RTI = ["BRTI", "ETHUSD_RTI", "SOLUSD_RTI", "XRPUSD_RTI", "DOGEUSD_RTI"] as const;
 export const GOLD = "Metal.Index.1OZGOLD/USD";
 export const PYTH = [GOLD, "Metal.Index.SILVER/USD", "Commodities.Index.PYTHOIL/USD", "FX.GBP/USD", "FX.EUR/USD", "FX.USD/JPY"] as const;
-const KEEP_MS = 2 * 3600_000;
+const KEEP_MS = 210 * 60_000; // 200 closed 1-minute bars for the 200 EMA, plus the forming minute
 
 type Buf = { bySec: Map<number, number>; lastTs: number; lastRecv: number };
 
@@ -100,7 +100,7 @@ export class Feeds {
     }
   }
 
-  /** Reload the recorder's own prints (last 2 h) so a restart keeps σ/bars warm — gold has no REST history. */
+  /** Reload the recorder's own prints (last 210 minutes) so a restart keeps σ, the 1-minute bars, and the 200 EMA warm. Gold has no REST history. */
   reloadRecorded(now = Date.now()) {
     const was = this.record;
     this.record = false;

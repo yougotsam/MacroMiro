@@ -2,7 +2,7 @@
  * Desk engine v1 — the one process that trades. Loop (every 1 s, single-flight):
  *   G0 exchange open → G1 data fresh (index ≤5 s, book ≤3 s, bars ≤90 s, σ warm)
  *   → settlement P (martingale, 60-print average / Pyth close) → features (±4 pp max)
- *   → execution guard (fast-move cooldown, vol-scaled maker edge, final-seconds pull, 5¢ last-minute floor)
+ *   → execution guard (fast-move cooldown, vol-scaled maker edge, final-seconds pull, 36¢ floor)
  *   → YES/NO executable edge sized to room → risk engine → OMS (1 order per tick, limit orders only)
  * A 250 ms guard loop reads the websocket prints and pulls resting bids the moment the index moves fast against them.
  * Every decision is written to the decision ledger; settled outcomes are joined for calibration.
@@ -186,7 +186,7 @@ export class Engine {
     }
   }
 
-  /** Cancel desk resting bids per the guard rules (fast move, final seconds, 5¢ last minute, edge < hold) or outbid 90 s. */
+  /** Cancel desk resting bids per the guard rules (fast move, final seconds, 36¢ floor, edge < hold) or outbid 90 s. */
   private async manageResting(evals: SeriesEval[], now: number) {
     for (const o of this.resting) {
       try {

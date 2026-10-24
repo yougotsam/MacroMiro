@@ -20,7 +20,7 @@ function climb(n: number, stepMs: number): Candle[] {
 
 const votes = (): FeatureSnapshot => ({
   bars: 30,
-  ema7: 1, ema14: 1, ema20: 1, ema50: 1, rsi14: 40, ret5mBps: 1,
+  ema7: 1, ema14: 1, ema20: 1, ema50: 1, ema200: 1, rsi14: 40, ret5mBps: 1,
   candle: "bull_engulf",
   structure: "ote_long",
   groups: { trend: 0.5, momentum: -0.25, structure: 0.5, candle: -0.5 },
