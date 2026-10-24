@@ -33,7 +33,7 @@ The 15-minute engine sends only when `kalshi_live`, `kalshi_begin`, and `desk_ar
 - Price must be from 36¢ to 95¢. Under 36¢ is refused. Over 95¢ is refused. The chance still has to beat the price and the fee. That band is the current setting. It is not a backtest result.
 - `CALIBRATED_MODEL_APPROVED` is on. `APPROVAL_POLICY_ENFORCED` is off, so the extra approval result is computed and then ignored, and a taker order is allowed.
 - A chart that names nothing sits. A chart that names the other side sits. An upper wick sits an up bet. A lower wick sits a down bet. A missing long average, built from about three and a half hours of one-minute prints, still sits the ticket. After a restart that average is empty until the prints come back.
-- A fresh note that disagrees can sit a ticket. A stale or missing note does not. The news job does not wait for an answer before the order.
+- A fresh note that disagrees can sit a ticket. A stale or missing note also sits the ticket. The news job still does not wait, so a ticket with no fresh note does not go out.
 - Three losses in a row pause new 15-minute orders for 20 minutes. One contract, one live order. The order size cannot spend more than $3, the −$15 day, or the $9 open cap.
 - Meme coins are not on this order path. No pair is approved. There is no wallet and no swap.
 
@@ -47,14 +47,14 @@ This page does not turn those switches. The decision files are still the old beh
 4. `src/lib/desk/gate.ts` — a taker pays the fee and the spread. A maker does not get to cross.
 5. `src/lib/desk/settlement.ts` — crypto uses the 60-print average. Gold and currencies do not borrow that formula.
 6. `src/lib/desk/features.ts` — the long average must have a source that survives a restart, or the ticket sits.
-7. `src/lib/desk/intel-gate.ts` — a stale note is not a pass. The news job runs before the order, or it does not count.
+7. `src/lib/desk/intel-gate.ts` — done for the stale note. An old or missing Spark card sits the ticket. The job still starts after a pass, so it cannot rescue the ticket it just blocked.
 8. `src/lib/desk/intelligence.ts` — a note can shrink the chance. It cannot invent one.
 9. `src/lib/desk/risk.ts` — dollar caps stay in front of every send, including a perpetual.
 10. `src/lib/desk/oms.ts` — the only signer for a write.
 11. `src/lib/perps/live-transport.ts` — already talks to cancel, positions, fills, and the stop route. Review it. Do not rewrite it to look busy.
 12. `src/lib/perps/oms.ts` — an order with a plan attaches the stop. A refused stop is written down. The order is not pretended to be unsent.
 13. `src/lib/perps/manage.ts` — one stop and one target on the entry. The half-size target waits until a position exists. The trail is a separate order.
-14. `src/lib/scan/perp-desk.ts` — done as a lean only. Spread over 8 bps sits. Missing funding sits. Funding that charges this side sits. Leverage is capped at 3x. It still does not send.
+14. `src/lib/scan/perp-desk.ts` — done as a lean only. Spread over 8 bps sits. Missing funding sits. Funding that charges this side sits. Leverage is capped at 5x, under the 6.8x Bitcoin max shown on Kalshi on 24 Oct 2026. It still does not send.
 15. `docs/operations/RISK_MANDATES.md` — the −$15 day, the $3 order, and the separate margin account, in one page.
 
 ## What this repo will not become

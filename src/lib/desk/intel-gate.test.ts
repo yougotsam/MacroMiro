@@ -17,9 +17,9 @@ const docs = (sparkDoc: Record<string, unknown> | null, fish: Record<string, unk
 });
 
 describe("spark and alexandria on the send", () => {
-  it("does not sit just because the spark brief is old", () => {
+  it("sits when the spark brief is old or missing", () => {
     const v = judgeIntel("KXBTC15M", "yes", docs({ status: "processing", at: new Date(NOW).toISOString(), card: null }), NOW);
-    expect(v.ok).toBe(true);
+    expect(v.ok).toBe(false);
     expect(v.why).toBe("spark_stale");
   });
   it("sits a yes when a fresh brief on bitcoin is bearish", () => {

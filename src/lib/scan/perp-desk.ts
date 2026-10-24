@@ -1,9 +1,9 @@
 /** Kalshi margin perps. Not the 15-minute ticket.
  * A lean is not an order. This file never sets authorizesOrder. Live sends stay in perps/oms.ts and need a stop plan.
- * Leverage stays at 3x. Kalshi treats liquidation as not a stop, and a higher multiple moves that price closer.
+ * Leverage stays at 5x. Kalshi's own margin example uses 5x. The live Bitcoin contract showed 6.8x as the max on 24 Oct 2026, so 15x is not a setting this contract offers.
  */
 export const PERP_DESK_AUTHORIZES_ORDERS = false;
-export const PERP_MAX_LEVERAGE = 3;
+export const PERP_MAX_LEVERAGE = 5;
 /** Sit when the book is wider than this. 8 bps. A 20-dollar gap on a 4,000-dollar price is about 50 bps and sits. */
 export const PERP_MAX_SPREAD_BPS = 8;
 /** Sit when 8-hour funding charges this side more than 5 bps. Same bound as the research candidate. */
@@ -43,7 +43,7 @@ function stdev(xs: number[]) {
   return Math.sqrt(v);
 }
 
-/** Never above 3x. A louder push does not earn more leverage. */
+/** Never above 5x, and never above the contract's own max. A louder push does not earn more leverage. */
 export function pickLeverage(maxLev: number, pushOverNoise: number) {
   if (!(pushOverNoise >= 2) || !(maxLev >= 2)) return 0;
   return Number(Math.min(PERP_MAX_LEVERAGE, maxLev).toFixed(2));

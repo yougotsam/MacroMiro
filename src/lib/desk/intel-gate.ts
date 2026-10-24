@@ -87,7 +87,7 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
   const at = Date.parse(String(spark?.at ?? ""));
   const card = spark?.card as { bias?: string; asset?: string; probability?: number | null } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
-  if (!fresh) return done(true, "spark_stale", null, null, sparkL);
+  if (!fresh) return done(false, "spark_stale", null, null, sparkL);
 
   const bias = String(card.bias ?? "unclear");
   const asset = String(card.asset ?? "unclear");

@@ -112,6 +112,6 @@ Desk: market structure / regime / feature definitions. Quillgate: code and tests
 - The 15-minute path can send when the three switch files are on, the −$15 day is not latched, and `gate.ts` plus `risk.ts` both pass. `CALIBRATED_MODEL_APPROVED` is true. `APPROVAL_POLICY_ENFORCED` is false.
 - Settlement chance, maker/taker edge, the 36¢–95¢ band, the three-loss pause, and the logit steps are in `config.ts`, `gate.ts`, `features.ts`, and `risk.ts`.
 - A chart that names the other side sits the ticket. A chart that names nothing does not. The last closed 1-minute price must be on the same side of the 200 EMA as the order. Above it, only yes. Below it, only no. Fewer than 200 closed minutes sits. Fib 38.2–61.8 and the 20/50 pullback can agree with a priced side. They do not set the chance.
-- A fresh disagreeing Spark, Alexandria, or MiroFish read sits the ticket (`intel-gate.ts`). A stale or missing file does not.
+- A fresh disagreeing Spark, Alexandria, or MiroFish read sits the ticket (`intel-gate.ts`). A stale or missing Spark card also sits the ticket.
 - Not in the settlement math: exchange-traded volume, CVD, and a calibrated event model. Missing tape does not invent a side. It does not, by itself, turn the three switches off.
 - `docs/archive/` is history. A sentence there that says the day stop is −$5 is not the rule.
