@@ -15,6 +15,6 @@ export const KB: KbDoc[] = [
   {
     id: "size",
     title: "Size and record",
-    body: `If the stop is hit, the loss is 15% of the pile. Three losses in a row end the day. Down 25% and the account stops. One or two losses do not. There is no measured win rate on this account yet. Sending stays off until the setup is actually on the tape.`,
+    body: `If the stop is hit, the loss is 8% of the pile. Three losses in a row are 24% and end the day. Down 25% and the account stops. One or two losses do not. There is no measured win rate on this account yet.`,
   },
 ];

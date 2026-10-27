@@ -643,7 +643,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
               >
                 {deskOn.live && deskOn.begin && deskOn.arm ? "LIVE" : "OFF"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-muted">Perps · 15% risk at the stop · 3 losses end the day · account stops at 25%</p>
+              <p className="mt-1 font-mono text-[10px] text-muted">Perps · 8% at the stop · 3 losses end the day · account stops at 25%</p>
               <div className="mt-2 flex gap-1">
                 {([
                   ["spark", "Spark"],
@@ -676,12 +676,12 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         </div>
         <div className="mt-3 rounded-sm border border-border bg-card/50 px-3 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-primary">Path</p>
-          <p className="mt-1 text-sm text-fg">Seven Kalshi perpetuals: Bitcoin, Ether, Solana, XRP, gold, silver, the S&P. A long needs a swept low, a gap up, and funding that is not charging longs. A short is the mirror. Stop sits past the sweep. Half off at 1 times the risk, the rest at 2.5. After the half, the stop moves to the entry and then trails. Three losses in a row end the day. Down 25% and the account is done. News does not pick the side. Sending is still off.</p>
+          <p className="mt-1 text-sm text-fg">You pick the side with the button. Bitcoin, Ether, Solana, XRP, gold, silver, or the S&P. The stop can lose 8% of the pile, so three losses are 24% and the account still dies at 25%. Half off at 1 times the risk, the rest at the target you set, then the stop trails. A headline does not pick the side.</p>
           <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm text-muted">
             <li>Scan those seven. Bid, ask, funding, and the last swing.</li>
             <li>Enter only on a sweep plus a gap, and only if funding is not fighting you.</li>
             <li>Rest the order. Do not cross.</li>
-            <li>If the stop is hit, that trade can lose 15% of the pile. Not more.</li>
+            <li>If the stop is hit, that trade can lose 8% of the pile. Not more.</li>
             <li>Take half at 1R. Take the rest at 2.5R. Trail after the half.</li>
             <li>Three losses in a row: done for the day. Down 25%: done until you reset it.</li>
           </ol>
@@ -754,7 +754,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         {gear ? (
           <div className="mt-3 rounded-sm border border-border bg-card p-4">
             <p className="font-mono text-xs uppercase tracking-widest text-primary">Broker</p>
-            <p className="mt-1 text-sm text-muted">A click is not a trade. The perpetual button only sends if the scan shows a sweep, a gap, and funding that agrees. The stop can lose 15% of the pile. Three losses end the day. Down 25% and it stops. News does not pick the side.</p>
+            <p className="mt-1 text-sm text-muted">Press long or short. That press is the side. The stop can lose 8% of the pile. Three losses end the day. Down 25% and it stops. If the switches are off, the box under the buttons says the click was not sent.</p>
             <div className="mt-3">
               <BrokerPanel selected={brokerId} onSelect={setBrokerId} />
             </div>

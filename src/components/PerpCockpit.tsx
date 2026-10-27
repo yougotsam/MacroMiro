@@ -23,7 +23,7 @@ export const PerpCockpit: React.FC<CockpitProps> = ({
   const [leverage, setLeverage] = useState<number>(Math.min(10, maxLeverage));
   const [clipSizeUsd, setClipSizeUsd] = useState<number>(25);
   const [tpMultiple, setTpMultiple] = useState<number>(2.5);
-  const [slPercent, setSlPercent] = useState<number>(15);
+  const [slPercent, setSlPercent] = useState<number>(32);
 
   // 2. Computed Financial Math
   const notionalExposure = clipSizeUsd * leverage;
@@ -43,7 +43,7 @@ export const PerpCockpit: React.FC<CockpitProps> = ({
   return (
     <div className="bg-[#0b0e14] text-slate-100 font-mono p-5 rounded-xl border border-slate-800 shadow-2xl space-y-6">
       <p className="text-xs leading-relaxed text-slate-400">
-        Scan Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P. Long: swept low, gap up, funding not charging longs. Short is the mirror. Stop past the sweep. Half off at 1R, rest at 2.5R, then the stop trails. Three losses end the day. Down 25% and the account stops. This button is not live.
+        You press long or short. That is the side. Stop loss on the slider is capped at 8% of the pile, so three losses stay under the 25% account stop. Half off at 1 times the risk, the rest at the target, then the stop trails. The three switches still have to be on before Kalshi sees the press.
       </p>
       {/* HUD Header: Ticker, Price, and Shields */}
       <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-4 gap-4">
@@ -129,6 +129,18 @@ export const PerpCockpit: React.FC<CockpitProps> = ({
           onChange={(e) => setLeverage(parseFloat(e.target.value))}
           className="w-full accent-amber-500 h-2 bg-slate-800 rounded-lg cursor-pointer"
         />
+        <label className="block text-[11px] text-slate-400">
+          Clip ${clipSizeUsd.toFixed(0)}
+          <input type="range" min={10} max={80} step={5} value={clipSizeUsd} onChange={(e) => setClipSizeUsd(Number(e.target.value))} className="mt-1 w-full accent-slate-200" />
+        </label>
+        <label className="block text-[11px] text-slate-400">
+          Stop is {slPercent.toFixed(0)}% of the clip (${estMaxLoss.toFixed(2)}). Cap is 8% of the pile.
+          <input type="range" min={8} max={80} step={1} value={slPercent} onChange={(e) => setSlPercent(Number(e.target.value))} className="mt-1 w-full accent-rose-500" />
+        </label>
+        <label className="block text-[11px] text-slate-400">
+          Target {tpMultiple.toFixed(1)} times the risk
+          <input type="range" min={1.5} max={4} step={0.5} value={tpMultiple} onChange={(e) => setTpMultiple(Number(e.target.value))} className="mt-1 w-full accent-emerald-500" />
+        </label>
 
         <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
           <div className="bg-slate-950 p-2 rounded border border-slate-800/60">

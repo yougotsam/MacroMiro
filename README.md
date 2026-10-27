@@ -1,25 +1,21 @@
 # MacroMiro
 
-Kalshi perpetuals. One pile, $100 to $200. This is not a promise of profit. Sending is off.
+Kalshi perpetuals. One pile, $100 to $200. This is not a promise of profit.
 
-## Scan
+## How a trade works
 
-Bitcoin, Ether, Solana, XRP, gold, silver, the S&P 500. The data on each is the bid, the ask, the funding rate, and the last swing. Spark, Alexandria, and Firecrawl can sit a trade out when a scheduled number is about to print. They do not choose the side.
+You press long or short. That press is the side. The markets are Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P.
 
-## In
+The stop can lose 8% of the pile. Three full stops are 24%. The account stops at 25%, so a fourth loss should not exist, and a gap through the stop is the only way past it. Half comes off at 1 times the risk. The rest comes off at the target on the slider, starting at 2.5. After the half, the stop moves to the entry and then trails.
 
-A long: price sweeps a prior low, closes back above it, leaves a gap up, and the funding rate is not charging longs. A short is the mirror. Outside that, no trade. The order rests. It does not cross.
+One loss does nothing. Two do nothing. The third ends the day. Do not raise the clip after a win.
 
-## Out
+## Why 8%, not 15%
 
-The stop sits past the sweep. If it is hit, the loss is 15% of the pile. Half the position comes off at 1 times that distance. The rest comes off at 2.5 times. After the half, the stop moves to the entry and then trails. Kalshi calls these a stop and a take-profit on the position. They are not a liquidation. A fast market can gap through the stop.
-
-## When it stops
-
-Three losing trades in a row end the day. One or two do not. Down 25% from the pile and the account stops until you reset it. There is no separate 4% day cap.
+A 15% stop makes the third loss impossible. Two stops are already 30%, past the 25% account stop. The three-loss rule only means something if each stop fits under that hole.
 
 ## Not this
 
-Fifteen-minute contracts stay paper. A published fee test on those windows lost money. Meme coins stay out. A clean scan is not a safe coin.
+Fifteen-minute contracts stay paper. Meme coins stay out. News does not pick the side. The three desk switches still have to be on before a press reaches Kalshi.
 
 The code is `src/lib/perps/flip-plan.ts`, `src/lib/perps/manage.ts`, and `src/lib/desk/guard.ts`. None of it has a measured win rate on this account.

@@ -2,7 +2,7 @@
 
 ## Kalshi perpetuals, the plan that the button checks
 
-Code: `src/lib/perps/flip-plan.ts`. Scan is Bitcoin, Ether, Solana, XRP, gold, silver, the S&P. Long: swept low, gap up, funding not charging longs. Short is the mirror. Stop past the sweep. Half off at 1 times the risk, the rest at 2.5, then the stop trails. Loss at the stop is 15% of the pile. Three losses in a row end the day. Down 25% and the account stops. A click that does not carry the sweep is refused. There is no measured win rate yet.
+Code: `src/lib/perps/flip-plan.ts`. Scan is Bitcoin, Ether, Solana, XRP, gold, silver, the S&P. A press is the side. Half off at 1 times the risk, the rest at the target, then the stop trails. Loss at the stop is 8% of the pile. Three losses in a row end the day. Down 25% and the account stops. A 15% stop was rejected because two of them already pass 25%.
 
 ## Kalshi 15m YES/NO: old research record, not the perpetual button
 Daily stop −$15 · max open risk $9 · max $3 per order until a deposit changes it · max $3 per ticker · correlated crypto $4 · price band 36¢–95¢ · one order per contract, not per window · three settled losses then 20 minutes off · a logit of 0.80 at a score of 11 · snapshot stale after 20 s · 1 order per tick. The chance still has to beat the price and the fee. The 36¢ floor is the settled-loss cut in `config.ts`. Spark returns a probability. Alexandria’s rate odds apply to gold, silver, and FX. Firecrawl scrapes in enhanced mode.

@@ -1,6 +1,6 @@
 # Order path (what can still stop a trade)
 
-The perpetual button is not this engine. `POST /api/live/perp-fire` calls `mayFire` in `src/lib/perps/flip-plan.ts` first. A click with no sweep and no gap is refused. The stop may lose 15% of the pile. Three losses in a row end the day. Down 25% and the account stops. The seven names are Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P.
+The perpetual button is not this engine. `POST /api/live/perp-fire` calls `mayFire` in `src/lib/perps/flip-plan.ts` first. A press is the side. The stop may lose 8% of the pile, so three losses stay under the 25% account stop. The seven names are Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P.
 
 The 15-minute engine below is a separate door. It does not send a perpetual. Its dollar notes are the old research record, not the perpetual plan.
 

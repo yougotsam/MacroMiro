@@ -76,6 +76,6 @@ export function mayFire(input: {
   if (input.lossesInARow >= LOSS_STREAK) return { ok: false, why: "three losses in a row, day is done" };
   if (input.downUsd >= input.pileUsd * KILL_FRAC) return { ok: false, why: "account is down 25%" };
   const loss = input.clipUsd * (input.stopLossPctOfClip / 100);
-  if (!(loss > 0) || loss > input.pileUsd * TRADE_FRAC + 1e-6) return { ok: false, why: "stop risk is over 15% of the pile" };
+  if (!(loss > 0) || loss > input.pileUsd * TRADE_FRAC + 1e-6) return { ok: false, why: `stop risk is over ${Math.round(TRADE_FRAC * 100)}% of the pile` };
   return { ok: true };
 }

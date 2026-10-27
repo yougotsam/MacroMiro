@@ -6,8 +6,8 @@
  * News is not an input here. A headline cannot flip fire to true.
  */
 
-/** Cash lost if the stop is hit, as a fraction of the pile. */
-export const TRADE_FRAC = 0.15;
+/** Cash lost if the stop is hit. 8% so three full stops are 24%, under the 25% account stop. */
+export const TRADE_FRAC = 0.08;
 /** Three losses in a row end the day. There is no separate percent day-stop. */
 export const LOSS_STREAK = 3;
 /** Account stops. A 25% hole in the pile. Nothing new after that. */

@@ -18,7 +18,7 @@ describe("fresh law", () => {
 
   it("unknown cash cannot fund an order", () => {
     expect(pileRoom(0, 0)).toBe(0);
-    expect(pileRoom(100, 0)).toBe(15);
+    expect(pileRoom(100, 0)).toBe(8);
     expect(pileRoom(100, -20)).toBe(5);
     expect(pileRoom(100, -25)).toBe(0);
   });
