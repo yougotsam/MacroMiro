@@ -18,6 +18,7 @@ import { loadCalibrator, type Approval, type Calibrator } from "./approval";
 import { minuteBars, type FeatureSnapshot } from "./features";
 import { orderFee, type FeeInfo } from "./fees";
 import { freshCall } from "./fresh-law";
+import { guardVerdict } from "./guard";
 import { type Feeds } from "./feeds";
 import { type Book, type Candidate, sizeFor } from "./gate";
 import { intelligenceLogit, readIntelControls } from "./intelligence";
@@ -111,9 +112,12 @@ export class Evaluator {
     const count = sizeFor(bid.price, true, fee, budget);
     if (count < 1) return fail("FRESH_size");
     const paid = orderFee(count, bid.price, true, fee);
-    out.best = { side: fresh.side, mode: "maker", price: bid.price, count, fee: paid, feePer: paid / count, edge: 0, edgeBase: 0, pSide: 0.5 };
+    const quote = { side: fresh.side, mode: "maker" as const, price: bid.price, count, fee: paid, feePer: paid / count, edge: 0, edgeBase: 0, pSide: 0.5 };
     out.quotes = { yes_bid: book.yesBid?.price ?? null, no_bid: book.noBid?.price ?? null };
-    return out;
+    const verdict = guardVerdict({ side: fresh.side, cash: 0, dayWorst: 0, kept: false, calibratedP: null });
+    out.shadow = quote;
+    out.best = null;
+    return fail(`GUARD_${verdict.why}`);
   }
 }
 

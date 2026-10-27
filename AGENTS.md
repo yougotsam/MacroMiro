@@ -352,8 +352,8 @@ never:   build an app for a greeting/number/question; invent imagine_* calls;
 
 ## Trading desk
 
-`README.md` is the rule. The old dollar caps are not.
+`README.md` is the rule. There is no kept strategy.
 
-A 15-minute ticket is named by `src/lib/desk/fresh-law.ts` before any order. Sending is off until the flag in `src/lib/desk/config.ts` is turned on by a human.
+`src/lib/desk/fresh-law.ts` can name a side. `src/lib/desk/guard.ts` refuses to turn that side into an order until a review marks it kept and a probability has been measured. Neither has happened. The send flag in `src/lib/desk/config.ts` stays off.
 
-A perpetual order goes through `POST /api/live/perp-fire`. A buy rests on the bid. A sell rests on the ask. There is no entry signal on that button yet.
+A perpetual order goes through `POST /api/live/perp-fire`. It is outside the guard. A buy rests on the bid. A sell rests on the ask. Do not treat a click as a strategy.

@@ -1,5 +1,5 @@
 # Strategy
 
-This file is not a second rulebook. Read `README.md`.
+There is no kept strategy. Read `README.md`.
 
-The 15-minute side is the 9/21 retest plus the strength band in `src/lib/desk/fresh-law.ts`. The perpetual side has order mechanics and no entry signal. Nothing here is a promise of profit.
+The 9/21 retest in `src/lib/desk/fresh-law.ts` is a hypothesis. `src/lib/desk/guard.ts` refuses to fire it. The perpetual button has no entry rule.

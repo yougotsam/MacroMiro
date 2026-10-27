@@ -30,7 +30,8 @@ import { correlationKey } from "./exposure";
 import { etDay } from "./time";
 import { activeOverride, applyOverride, loadOverrides } from "./override";
 import { watchdogFresh } from "@/lib/loop/watchdog";
-import { PILE_DAY, pileRoom } from "./fresh-law";
+import { pileRoom } from "./fresh-law";
+import { DAY_FRAC } from "./guard";
 
 export type Settled = { ticker: string; pnl: number; settledMs: number };
 
@@ -214,7 +215,7 @@ export class RiskEngine {
     const s = this.effective(snap, now);
     const worst = dayWorstOf(s);
     const cashNow = (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0);
-    const stop = cashNow > 0 ? -(cashNow * PILE_DAY) : 0;
+    const stop = cashNow > 0 ? -(cashNow * DAY_FRAC) : 0;
     if (s.etDay === etDay(now) && cashNow > 0 && worst <= stop && !this.latched(now)) {
       this.latch(`day worst ${worst.toFixed(2)} ≤ ${stop.toFixed(2)}`, now);
     }

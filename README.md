@@ -1,39 +1,51 @@
 # MacroMiro
 
-The old rulebook is gone. This page is the new one. If a sentence is not here, it is not a rule.
+This is the desk. The prompt that asked for 100 to 300 stock strategies, a US equity tick feed, and a live flip tonight does not survive contact with this account. What follows is the part that does.
 
-## Account
+## What this account is
 
-One deposit, between $100 and $200. Kalshi keeps a prediction pile and a margin pile. They do not share cash. The bot does not move money between them. You move it in the Portfolio tab.
+One deposit, $100 to $200. Two Kalshi piles: prediction contracts and perpetuals. They do not share cash. This repo does not move money between them.
 
-The bot reads the cash in the pile it is about to use. It does not assume a balance. If that cash cannot be read, it does not trade.
+There is no licensed US equity tape here. Phase 3 of that prompt (Hasbrouck VAR, Lee-Ready, impulse responses) is not built, because inventing those numbers is forbidden. Ask for a data budget before anyone builds it.
 
-One trade may post at most 4% of that pile. The day stops at 8% of that same pile. There is no fixed dollar cap and no martingale.
+## What was wrong in the prompt
 
-## Before a 15-minute ticket
+- McLean and Pontiff (2016), 97 stock anomalies: returns were about 26% lower out of sample and about 58% lower after publication, versus the original sample. A later international paper quotes that split. Blogs that say "32%" are describing a different cut of the same study. The decay is about published stock anomalies, not a license to skip testing on Kalshi.
+- A deflated Sharpe above 0.95 (Bailey and López de Prado, 2014) means "unlikely to be just the best of many tries." It is a test result, not a number this repo has earned. No Sharpe is reported here.
+- "Fire only if probability is above 0.80" is rejected. There is no calibrated probability on this account. A threshold with nothing behind it is a costume.
+- TradingAgents (Xiao, Sun, Luo, Wang; UCLA / MIT) is a stock-research role play. It is not a Kalshi execution system. The useful piece is the split: a researcher, a bull, a bear, and a risk seat. The risk seat does not place the order.
 
-Direction is decided from the last closed 1-minute prices, and from nothing else.
+## The three seats
 
-- The 9-period average is above the 21, the previous close tagged the 9, and the latest close is back above it. Strength (RSI 14) is between 52 and 68. That is an up ticket.
-- The mirror image, with strength between 32 and 48, is a down ticket.
-- Anything else is no trade. A calculated chance the contract finishes in the money is not an entry.
+- Reflex names a side from closed 1-minute prices: 9-period average versus 21, a retest of the 9, and RSI 14 in a band (52–68 up, 32–48 down). That is a hypothesis. It is not a kept strategy.
+- Guard is `src/lib/desk/guard.ts`. It does not fire unless a separate review has marked the setup kept and a probability has been measured on settled outcomes. Neither has happened. So the 15-minute path records the setup and sends nothing.
+- Brain is this page plus a human. One change at a time. Nothing ships itself live.
 
-The order rests on your side of the book. It does not cross. If the spread is wider than 4 cents, no trade. The settlement feed still has to be fresh, because a stale price is not a market. It does not choose the side.
+## Risk, tighter than the prompt
 
-15-minute sending is off until you turn it on. Scoring can run. Orders do not.
+The prompt's examples were 1% per trade and a 15% kill. Escalation may tighten a limit. It may not loosen one. On this pile:
+
+- One trade may post at most 1% of the cash in the pile it spends.
+- The day halts at 4% of that pile.
+- The kill switch is 10% of that pile, not 15%.
+- Unknown cash is no order.
+- No martingale.
+- News, Spark, Alexandria, Firecrawl, and MiroFish are data. None of them is allowed to place an order or to talk the guard into firing.
+
+15-minute sending stays off in `src/lib/desk/config.ts` until you say otherwise, in writing, after a review.
 
 ## Perpetuals
 
-A buy rests on the bid. A sell rests on the ask. Cash posted is the contract price divided by that contract's leverage. The stop and the target are the ones you set on the sliders. There is no separate entry signal yet. Do not treat a click as a finished strategy. One click can still post the whole clip, and the clip should be inside the 4% rule above. The button does not yet know the margin balance, so it cannot enforce that by itself.
+A buy rests on the bid. A sell rests on the ask. Cash posted is price divided by leverage. Stop and target are the sliders. There is no entry signal, and the button does not yet read the margin pile, so it cannot enforce the 1% rule. Do not click it.
 
-## What this is not
+## What can blow this desk up
 
-This is not a promise of profit. The averages and the strength bands are a public scalping pattern (9 and 21, with strength as the filter, enter on the retest, not on the cross). They have not been scored on this account. The old fills do not count.
+- Treating the 9/21 retest as a kept edge. It is a public scalping pattern. It has not been scored here.
+- Clicking the perpetual button. It is outside the guard.
+- Turning the send flag on to "see what happens."
+- Filling a missing equity tape, a missing Sharpe, or a missing probability with a guess.
+- A 15-minute contract still goes to zero or to one dollar. A 1% post is small. It does not make the contract safe.
 
-## File order
+## Not done, on purpose
 
-1. This page.
-2. `.grok/rules/trading-system.md` says the same thing in short.
-3. `src/lib/desk/fresh-law.ts` is the check the 15-minute decision calls.
-4. `src/lib/desk/evaluator.ts` calls that check and does not use the old chart list.
-5. Sending stays off in `src/lib/desk/config.ts`.
+No shortlist of surviving strategies. No liquidity-stress table. No microstructure VAR. No paper-versus-backtest report. Those require data this repo does not have. The next phase starts when you approve a data budget, not before.

@@ -2,7 +2,8 @@
  * The order budget is a fraction of the cash in the prediction pile.
  * Unknown cash is zero. This file does not send.
  */
-import { PILE_TRADE, pileRoom } from "./fresh-law";
+import { pileRoom } from "./fresh-law";
+import { TRADE_FRAC } from "./guard";
 import { dayWorstOf, type AccountSnapshot } from "./risk";
 
 export function roomBudget(s: AccountSnapshot | null): number {
@@ -17,6 +18,6 @@ export function halfKellyStake(p: number, price: number, equity: number): { stak
   const b = (1 - price) / price;
   const f = 0.5 * ((b * p - (1 - p)) / b);
   if (!(f > 0)) return { stake: 0, why: "no edge" };
-  const stake = Math.round(Math.min(f, PILE_TRADE) * equity * 100) / 100;
+  const stake = Math.round(Math.min(f, TRADE_FRAC) * equity * 100) / 100;
   return { stake: Math.max(0, stake), why: "half of the edge, cut at the pile fraction" };
 }

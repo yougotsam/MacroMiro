@@ -18,8 +18,8 @@ describe("fresh law", () => {
 
   it("unknown cash cannot fund an order", () => {
     expect(pileRoom(0, 0)).toBe(0);
-    expect(pileRoom(100, 0)).toBe(4);
-    expect(pileRoom(100, -7)).toBe(1);
-    expect(pileRoom(100, -9)).toBe(0);
+    expect(pileRoom(100, 0)).toBe(1);
+    expect(pileRoom(100, -3)).toBe(1);
+    expect(pileRoom(100, -4)).toBe(0);
   });
 });

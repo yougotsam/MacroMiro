@@ -3,11 +3,7 @@
  * A settlement chance is not an entry. This file does not send.
  */
 import { ema, rsi } from "./features";
-
-/** One trade may post at most this fraction of the cash in the pile being used. */
-export const PILE_TRADE = 0.04;
-/** The day stops when losses reach this fraction of that same pile. */
-export const PILE_DAY = 0.08;
+import { DAY_FRAC, TRADE_FRAC } from "./guard";
 
 export function freshCall(closes: number[]): { side: "yes" | "no"; why: string } | null {
   if (closes.length < 22) return null;
@@ -29,8 +25,8 @@ export function freshCall(closes: number[]): { side: "yes" | "no"; why: string }
 /** Dollars this pile may still risk. Unknown cash is zero, which means no order. */
 export function pileRoom(cash: number, dayWorst: number): number {
   if (!(cash > 0) || !Number.isFinite(dayWorst)) return 0;
-  const trade = cash * PILE_TRADE;
-  const dayLeft = cash * PILE_DAY + dayWorst;
+  const trade = cash * TRADE_FRAC;
+  const dayLeft = cash * DAY_FRAC + dayWorst;
   const room = Math.min(trade, dayLeft, cash);
   return room > 0 ? Math.floor(room * 10_000) / 10_000 : 0;
 }
