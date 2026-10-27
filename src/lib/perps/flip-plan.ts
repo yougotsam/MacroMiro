@@ -63,11 +63,15 @@ export function mayFire(input: {
   stopLossPctOfClip: number;
   downUsd: number;
   lossesInARow: number;
+  /** A button press. The person picked the side. A sweep is not required on a press. */
+  clicked?: boolean;
 }): { ok: true } | { ok: false; why: string } {
   if (!SCAN.some((s) => s.ticker === input.ticker)) return { ok: false, why: "not on the scan list" };
-  const call = bias({ sweep: input.sweep, gap: input.gap, funding: input.funding, spread: input.spread });
-  if (!call) return { ok: false, why: "no sweep, no gap, or funding is fighting the side" };
-  if (call.side !== input.side) return { ok: false, why: "the click does not match the setup" };
+  if (!input.clicked) {
+    const call = bias({ sweep: input.sweep, gap: input.gap, funding: input.funding, spread: input.spread });
+    if (!call) return { ok: false, why: "no sweep, no gap, or funding is fighting the side" };
+    if (call.side !== input.side) return { ok: false, why: "the click does not match the setup" };
+  }
   if (!(input.pileUsd > 0)) return { ok: false, why: "pile unread" };
   if (input.lossesInARow >= LOSS_STREAK) return { ok: false, why: "three losses in a row, day is done" };
   if (input.downUsd >= input.pileUsd * KILL_FRAC) return { ok: false, why: "account is down 25%" };

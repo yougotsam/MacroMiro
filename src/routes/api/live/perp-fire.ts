@@ -21,11 +21,13 @@ export const Route = createFileRoute("/api/live/perp-fire")({
       GET: async () => Response.json({ book: "perp", locked: false, switches: switchState() }),
       POST: async ({ request }) => {
         const sw = switchState();
-        if (!sw.live || !sw.begin || !sw.arm) return Response.json({ ok: false, why: "desk switches are off" }, { status: 409 });
+        if (!sw.live || !sw.begin || !sw.arm) {
+          return Response.json({ ok: false, why: "The three desk switches are off, so the click was not sent to Kalshi." }, { status: 409 });
+        }
         const body = (await request.json().catch(() => ({}))) as {
           ticker?: string; side?: "bid" | "ask"; price?: number; clipUsd?: number; leverage?: number; tpMultiple?: number; slPercent?: number;
           sweep?: "low" | "high" | null; gap?: "yes" | "no" | null; funding?: number | null; spread?: number | null;
-          balanceUsd?: number; downUsd?: number; lossesInARow?: number;
+          balanceUsd?: number; downUsd?: number; lossesInARow?: number; clicked?: boolean;
         };
         const ticker = String(body.ticker ?? "");
         const price = Number(body.price);
@@ -50,6 +52,7 @@ export const Route = createFileRoute("/api/live/perp-fire")({
           stopLossPctOfClip: sl,
           downUsd: Number(body.downUsd ?? 0),
           lossesInARow: Number(body.lossesInARow ?? 0),
+          clicked: body.clicked === true,
         });
         if (!gate.ok) return Response.json({ ok: false, why: gate.why }, { status: 409 });
         const margin = price / lev;

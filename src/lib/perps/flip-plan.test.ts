@@ -14,16 +14,16 @@ describe("perp flip plan", () => {
     expect(bias({ sweep: "low", gap: "yes", funding: 0, spread: 0.0002 })?.side).toBe("long");
   });
 
-  it("a click without a sweep does not fire", () => {
-    const no = mayFire({
-      ticker: "KXBTCPERP", side: "long", sweep: null, gap: null, funding: 0, spread: 0.0001,
-      pileUsd: 200, clipUsd: 40, stopLossPctOfClip: 15, downUsd: 0, lossesInARow: 0,
+  it("a button press does not need a sweep, and it still refuses a stop that is too big", () => {
+    const press = mayFire({
+      ticker: "KXBTCPERP", side: "long", sweep: null, gap: null, funding: null, spread: null,
+      pileUsd: 200, clipUsd: 40, stopLossPctOfClip: 15, downUsd: 0, lossesInARow: 0, clicked: true,
     });
-    expect(no.ok).toBe(false);
-    const yes = mayFire({
-      ticker: "KXBTCPERP", side: "long", sweep: "low", gap: "yes", funding: 0, spread: 0.0001,
-      pileUsd: 200, clipUsd: 40, stopLossPctOfClip: 15, downUsd: 0, lossesInARow: 0,
+    expect(press.ok).toBe(true);
+    const fat = mayFire({
+      ticker: "KXBTCPERP", side: "long", sweep: null, gap: null, funding: null, spread: null,
+      pileUsd: 200, clipUsd: 200, stopLossPctOfClip: 50, downUsd: 0, lossesInARow: 0, clicked: true,
     });
-    expect(yes.ok).toBe(true);
+    expect(fat.ok).toBe(false);
   });
 });

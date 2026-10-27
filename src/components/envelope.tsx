@@ -1003,6 +1003,7 @@ function PerpsLater() {
                 tpMultiple: cfg.tpMultiple,
                 slPercent: cfg.slPercent,
                 balanceUsd: cash,
+                clicked: true,
               }),
             })
               .then((r) => r.json())
@@ -1013,7 +1014,7 @@ function PerpsLater() {
           }}
         />
       </div>
-      {fireNote ? <p className="mt-3 text-sm leading-6 text-muted">{fireNote}</p> : null}
+      {fireNote ? <p className="mt-3 rounded-sm border border-border bg-card px-3 py-2 text-sm leading-6 text-fg">{fireNote}</p> : null}
     </section>
   );
 }
