@@ -4,6 +4,7 @@ import { liveMarginTransport } from "@/lib/perps/live-transport";
 import { PerpsOms } from "@/lib/perps/oms";
 import type { ManagePlan } from "@/lib/perps/manage";
 import { dataDir } from "@/lib/desk/config";
+import { mayFire } from "@/lib/perps/flip-plan";
 
 function bracket(price: number, side: "bid" | "ask", lev: number, slPercent: number, tpMultiple: number, qty: number): ManagePlan {
   const risk = slPercent / 100 / lev;
@@ -23,6 +24,8 @@ export const Route = createFileRoute("/api/live/perp-fire")({
         if (!sw.live || !sw.begin || !sw.arm) return Response.json({ ok: false, why: "desk switches are off" }, { status: 409 });
         const body = (await request.json().catch(() => ({}))) as {
           ticker?: string; side?: "bid" | "ask"; price?: number; clipUsd?: number; leverage?: number; tpMultiple?: number; slPercent?: number;
+          sweep?: "low" | "high" | null; gap?: "yes" | "no" | null; funding?: number | null; spread?: number | null;
+          balanceUsd?: number; downUsd?: number; lossesInARow?: number;
         };
         const ticker = String(body.ticker ?? "");
         const price = Number(body.price);
@@ -35,6 +38,20 @@ export const Route = createFileRoute("/api/live/perp-fire")({
         if (!(price > 0)) return Response.json({ ok: false, why: "price" }, { status: 400 });
         if (!(lev >= 2)) return Response.json({ ok: false, why: "perpetual leverage unread" }, { status: 400 });
         if (!(clip > 0) || !(sl > 0) || !(tp > 0)) return Response.json({ ok: false, why: "clip, stop, or target missing" }, { status: 400 });
+        const gate = mayFire({
+          ticker,
+          side: side === "ask" ? "short" : "long",
+          sweep: body.sweep ?? null,
+          gap: body.gap ?? null,
+          funding: body.funding ?? null,
+          spread: body.spread ?? null,
+          pileUsd: Number(body.balanceUsd),
+          clipUsd: clip,
+          stopLossPctOfClip: sl,
+          downUsd: Number(body.downUsd ?? 0),
+          lossesInARow: Number(body.lossesInARow ?? 0),
+        });
+        if (!gate.ok) return Response.json({ ok: false, why: gate.why }, { status: 409 });
         const margin = price / lev;
         const qty = Math.floor(clip / margin);
         if (qty < 1) return Response.json({ ok: false, why: `one contract posts $${margin.toFixed(2)}, more than the $${clip.toFixed(2)} clip` }, { status: 400 });

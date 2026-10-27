@@ -754,7 +754,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         {gear ? (
           <div className="mt-3 rounded-sm border border-border bg-card p-4">
             <p className="font-mono text-xs uppercase tracking-widest text-primary">Broker</p>
-            <p className="mt-1 text-sm text-muted">Kalshi orders leave from the desk engine. A contract from 5¢ to 95¢ can pass when the chance beats the price and the fee. Cap $3 an order until the deposit is in. Three losses in a row sit out 20 minutes. Spark writes a probability. Alexandria reads the rate odds. Firecrawl pulls the page in enhanced mode.</p>
+            <p className="mt-1 text-sm text-muted">A click is not a trade. The perpetual button only sends if the scan shows a sweep, a gap, and funding that agrees. The stop can lose 15% of the pile. Three losses end the day. Down 25% and it stops. News does not pick the side.</p>
             <div className="mt-3">
               <BrokerPanel selected={brokerId} onSelect={setBrokerId} />
             </div>
@@ -1002,6 +1002,7 @@ function PerpsLater() {
                 leverage: cfg.leverage || book?.lev,
                 tpMultiple: cfg.tpMultiple,
                 slPercent: cfg.slPercent,
+                balanceUsd: cash,
               }),
             })
               .then((r) => r.json())
