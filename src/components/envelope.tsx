@@ -33,8 +33,8 @@ const TABS: { id: Tab; label: string; title: string; line: string }[] = [
   { id: "print", label: "News", title: "News", line: "Calendar and Spark. A note. Not an order." },
   { id: "swarm", label: "Swarm", title: "Swarm", line: "MiroFish. A crowd read. Not an order." },
   { id: "side", label: "Board", title: "Board", line: "Every Kalshi sector. A price rank. Not a win rate." },
-  { id: "perps", label: "Perps", title: "Perps", line: "Kalshi margin. Same cash cap." },
-  { id: "memes", label: "Memes", title: "Memes", line: "Separate book. Same cash pool." },
+  { id: "perps", label: "Perps", title: "Perps", line: "Kalshi margin. A click is not a strategy. Stop is the slider." },
+  { id: "memes", label: "Memes", title: "Memes", line: "Not the path. A clean scan is not a safe coin." },
 ];
 
 type Position = {
@@ -643,7 +643,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
               >
                 {deskOn.live && deskOn.begin && deskOn.arm ? "LIVE" : "OFF"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-muted">5¢–95¢ · edge after the fee · $3 · −$15 · 3 losses then 20 min</p>
+              <p className="mt-1 font-mono text-[10px] text-muted">Kalshi only · 15-minute orders off · 1% a trade · day halt 4% · kill 10%</p>
               <div className="mt-2 flex gap-1">
                 {([
                   ["spark", "Spark"],
@@ -654,7 +654,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
                     key={key}
                     className="h-7 rounded-sm bg-primary px-2 font-mono text-[10px] leading-7 text-primary-foreground"
                   >
-                    {label} on
+                    {label}
                   </span>
                 ))}
               </div>
@@ -664,8 +664,8 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             { job: "Scan", line: clock - Date.parse(heartTick ?? "") > 90_000 ? "Scanner asleep" : "Watching five books" },
-            { job: "Day", line: `Down $${dayLoss.toFixed(2)} of $15` },
-            { job: "Stop", line: `$${(15 - dayLoss).toFixed(2)} left of $15` },
+            { job: "Day", line: `Down $${dayLoss.toFixed(2)}. Halt is 4% of the pile.` },
+            { job: "Stop", line: "Kill switch is 10% of the pile. Sending is off." },
             { job: "Open", line: positions.length ? `${positions.length} ticket${positions.length === 1 ? "" : "s"}` : "Flat" },
           ].map((seat) => (
             <div key={seat.job} className="min-w-0 rounded-sm bg-card/40 px-3 py-2">
@@ -673,6 +673,18 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
               <p className="mt-1 line-clamp-2 text-sm text-fg" title={seat.line}>{seat.line}</p>
             </div>
           ))}
+        </div>
+        <div className="mt-3 rounded-sm border border-border bg-card/50 px-3 py-3">
+          <p className="font-mono text-xs uppercase tracking-widest text-primary">Path</p>
+          <p className="mt-1 text-sm text-fg">Kalshi perpetuals are the product. Fifteen-minute contracts are paper only: published tests on Bitcoin windows lost after the fee. Meme coins are not the path. A scan cannot see a slow dump.</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm text-muted">
+            <li>Trade only in the London open, the New York morning, or the New York afternoon.</li>
+            <li>Price must sweep a prior high or low and close back through it.</li>
+            <li>A gap in that same direction has to be there. No sweep, no gap, no trade.</li>
+            <li>The order rests. It does not cross the spread.</li>
+            <li>One trade is 1% of the pile. The day stops at 4%. The account stops at 10%.</li>
+            <li>News cannot place the order. The send switch is off until a review says otherwise.</li>
+          </ol>
         </div>
         <p className="mt-3 font-mono text-xs text-subtle">
           {round?.ticker ?? "no ticket"}

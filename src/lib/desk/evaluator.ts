@@ -17,8 +17,8 @@ import {
 import { loadCalibrator, type Approval, type Calibrator } from "./approval";
 import { minuteBars, type FeatureSnapshot } from "./features";
 import { orderFee, type FeeInfo } from "./fees";
-import { freshCall } from "./fresh-law";
 import { guardVerdict } from "./guard";
+import { inKillzone, sweepGap } from "./ict";
 import { type Feeds } from "./feeds";
 import { type Book, type Candidate, sizeFor } from "./gate";
 import { intelligenceLogit, readIntelControls } from "./intelligence";
@@ -101,8 +101,8 @@ export class Evaluator {
     const bars = minuteBars(this.feeds.prints(ref.index, now - 210 * 60_000), now);
     const lastBar = bars[bars.length - 1];
     if (!lastBar || now - (lastBar.t * 60_000 + 60_000) > BAR_MAX_AGE_MS) return fail("G1_bars_stale");
-    const fresh = freshCall(bars.map((b) => b.c));
-    if (!fresh) return fail("FRESH_no_setup");
+    const fresh = inKillzone(now) ? sweepGap(bars.map((b) => ({ h: b.h, l: b.l, c: b.c }))) : null;
+    if (!fresh) return fail(inKillzone(now) ? "ICT_no_sweep" : "ICT_outside_killzone");
     if (!fee || fee.feeType !== "quadratic" || !(fee.multiplier > 0)) return fail("FRESH_fee_unknown");
     const bid = fresh.side === "yes" ? book.yesBid : book.noBid;
     const other = fresh.side === "yes" ? book.noBid : book.yesBid;
