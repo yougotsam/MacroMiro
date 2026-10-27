@@ -76,7 +76,7 @@ function PaperPage() {
             <Table rows={d.ranked} />
           </section>
           <section aria-label="Configs" className="rounded border border-border p-4">
-            <h2 className="mb-2 text-lg">Paper results by config (USD, after Kalshi fees, one entry per contract, $3 cap)</h2>
+            <h2 className="mb-2 text-lg">Old paper replay. Not the live perpetual plan.</h2>
             {d.configs.map((c) => (
               <button key={c.id} type="button" onClick={() => setCfg(c.id)} className={`block w-full border-t border-border py-1 text-left font-mono text-xs ${cfg === c.id ? "text-fg" : "text-neutral-300"}`}>
                 <span className="text-fg">{c.label}</span><br />Unrestricted: {c.entries} entries, {c.settled} settled ({c.wins} won), {c.windows} windows, net <span className={c.netUsd >= 0 ? "text-emerald-300" : "text-red-300"}>{usd(c.netUsd)}</span>, fees ${c.feesUsd.toFixed(2)} · Realistic portfolio ($3/$9/$4/−$15): {c.portfolio.accepted} taken, {c.portfolio.wins} won, net <span className={c.portfolio.netUsd >= 0 ? "text-emerald-300" : "text-red-300"}>{usd(c.portfolio.netUsd)}</span>, open ${c.portfolio.openExposureUsd.toFixed(2)}, daily loss remaining ${c.portfolio.dailyLossRemainingUsd.toFixed(2)}

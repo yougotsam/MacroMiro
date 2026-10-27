@@ -1,7 +1,11 @@
 # Order path (what can still stop a trade)
 
-The only process that sends a Kalshi order is `scripts/desk-engine.ts`.
-The web page does not send orders. `scripts/heart-worker.sh` only refreshes the screen.
+The perpetual button is not this engine. `POST /api/live/perp-fire` calls `mayFire` in `src/lib/perps/flip-plan.ts` first. A click with no sweep and no gap is refused. The stop may lose 15% of the pile. Three losses in a row end the day. Down 25% and the account stops. The seven names are Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P.
+
+The 15-minute engine below is a separate door. It does not send a perpetual. Its dollar notes are the old research record, not the perpetual plan.
+
+The only process that sends a Kalshi 15-minute order is `scripts/desk-engine.ts`.
+The web page does not send those orders. `scripts/heart-worker.sh` only refreshes the screen.
 
 ## Start
 

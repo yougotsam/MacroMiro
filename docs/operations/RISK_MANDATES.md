@@ -1,5 +1,10 @@
 # Risk mandates (per venue)
-## Kalshi 15m YES/NO: APPROVED by owner (enforced in `src/lib/desk/config.ts` + `risk.ts`)
+
+## Kalshi perpetuals, the plan that the button checks
+
+Code: `src/lib/perps/flip-plan.ts`. Scan is Bitcoin, Ether, Solana, XRP, gold, silver, the S&P. Long: swept low, gap up, funding not charging longs. Short is the mirror. Stop past the sweep. Half off at 1 times the risk, the rest at 2.5, then the stop trails. Loss at the stop is 15% of the pile. Three losses in a row end the day. Down 25% and the account stops. A click that does not carry the sweep is refused. There is no measured win rate yet.
+
+## Kalshi 15m YES/NO: old research record, not the perpetual button
 Daily stop −$15 · max open risk $9 · max $3 per order until a deposit changes it · max $3 per ticker · correlated crypto $4 · price band 36¢–95¢ · one order per contract, not per window · three settled losses then 20 minutes off · a logit of 0.80 at a score of 11 · snapshot stale after 20 s · 1 order per tick. The chance still has to beat the price and the fee. The 36¢ floor is the settled-loss cut in `config.ts`. Spark returns a probability. Alexandria’s rate odds apply to gold, silver, and FX. Firecrawl scrapes in enhanced mode.
 
 ## Kalshi perps CONSERVATIVE v1 (2026-10-12): REJECTED BY OWNER, SUPERSEDED
@@ -7,7 +12,7 @@ Kept only as a record. The $100 equity/notional caps, 3× leverage, $1 per trade
 maker-only entries and news/funding blackouts are **not** in force. Code: `CONSERVATIVE_V1_REJECTED` in `src/lib/perps/mandate.ts`.
 
 ## Kalshi perps AGGRESSIVE_EXPERIMENTAL v1: `aggressive-experimental/v1` (PROPOSED; paper/demo only; live needs explicit owner approval)
-Code: `src/lib/perps/mandate.ts` (sizing), `margin.ts` (liquidation math), `manage.ts` (the stop and the target), `oms.ts` plus `live-transport.ts` (the sender). The button uses the leverage printed on that perpetual and refuses a clip over $3. A 15-minute contract has no leverage.
+Code: `src/lib/perps/mandate.ts` (sizing), `margin.ts` (liquidation math), `manage.ts` (the stop and the target), `oms.ts` plus `live-transport.ts` (the sender). The live button does not use a $3 clip. It uses `mayFire`. A 15-minute contract has no leverage.
 | Rule | Value |
 |---|---|
 | Leverage | dynamic, up to the venue's per-asset max *open* leverage = `leverage_estimates[notional]` ÷ `initial_margin_multiplier` (GOLD ≈ 11.7×, BTC ≈ 4.9×, ETH ≈ 3.8×, SOL/XRP lower) |

@@ -77,7 +77,7 @@ export function LoopPanel({ book, tf, embedded = false }: { book: BookId; tf: Tf
           <Badge>{book} · {tf}</Badge>
         </div>
         <p className="mt-2 max-w-prose text-sm text-muted">
-          Isolated $300 books. Clip is size. Daily stop −$150. Fill next bar. Costs first. DSR is P(skill | N=12), bar 0.95.
+          A research walk on fake books. Not the live pile. Not a win rate. Costs are counted before the score.
         </p>
         <Button className="mt-4" onClick={() => void run()} disabled={busy}>
           {busy ? "Walking…" : "Walk three rails"}

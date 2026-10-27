@@ -51,7 +51,7 @@ export function scoreOpinion(desk: DeskPayload, tape: Tape, cash: number): Opini
     score: shock ? 72 : 14,
     title: "Catalyst",
     why: shock
-      ? `${desk.next?.name ?? "Print"} window. Price range stays 36¢–95¢. The clip stays $3 or less. The headline is still not a direction.`
+      ? `${desk.next?.name ?? "Print"} window. The headline is not a direction. A perpetual still needs a sweep and a gap.`
       : "No CPI, jobs, or Fed window.",
   };
   if (tape.regime === "trend" && live) {
