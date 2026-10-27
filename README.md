@@ -1,38 +1,39 @@
 # MacroMiro
 
-This is file 1. It is being written from scratch. Nothing in the rest of the repo is a rule. If a sentence below is not on this page, it is not decided.
+The old rulebook is gone. This page is the new one. If a sentence is not here, it is not a rule.
 
-## What this is
+## Account
 
-One bot. One deposit. Two Kalshi products: 15-minute contracts, and perpetuals.
+One deposit, between $100 and $200. Kalshi keeps a prediction pile and a margin pile. They do not share cash. The bot does not move money between them. You move it in the Portfolio tab.
 
-You fund Kalshi once. Kalshi then keeps two balances. Its help page says they do not share funds. A perpetual cannot spend prediction cash until that cash is moved in the Portfolio tab. You can move it back. The bot does not ask for a second deposit.
+The bot reads the cash in the pile it is about to use. It does not assume a balance. If that cash cannot be read, it does not trade.
 
-The aim is an aggressive flip: a few hundred dollars worked hard enough to become a few thousand, by taking more of the trades that are actually priced wrong, and by not betting the whole deposit on one idea. That is the aim. It is not a promise.
+One trade may post at most 4% of that pile. The day stops at 8% of that same pile. There is no fixed dollar cap and no martingale.
 
-## What is not decided
+## Before a 15-minute ticket
 
-These were copied out of the old files. They are deleted. They are not rules:
+Direction is decided from the last closed 1-minute prices, and from nothing else.
 
-- One order per contract.
-- Any formula that subtracts cents from a probability.
-- A ticket that must be held until it expires.
-- A fixed $3 cap, a −$15 day, or a $9 open cap.
-- A 5 percent slice, a 10 percent day stop, or a 20 minute pause.
-- Sitting because a chart is quiet, or because a news card is old.
+- The 9-period average is above the 21, the previous close tagged the 9, and the latest close is back above it. Strength (RSI 14) is between 52 and 68. That is an up ticket.
+- The mirror image, with strength between 32 and 48, is a down ticket.
+- Anything else is no trade. A calculated chance the contract finishes in the money is not an entry.
 
-## What a trade has to answer, before any code is written
+The order rests on your side of the book. It does not cross. If the spread is wider than 4 cents, no trade. The settlement feed still has to be fresh, because a stale price is not a market. It does not choose the side.
 
-For a 15-minute contract: what is being measured, when is it bought, and when is it sold. Selling before the window ends is allowed. Holding to the end is not required.
+15-minute sending is off until you turn it on. Scoring can run. Orders do not.
 
-For a perpetual: what is being measured, how much cash is posted, and what closes it. Leverage is whatever that contract prints. The cash posted is the contract price divided by that leverage. The two balances still have to be funded by a move, not by pretending they are one pile.
+## Perpetuals
 
-Neither product has an entry rule yet. The next pages do not get to invent one.
+A buy rests on the bid. A sell rests on the ask. Cash posted is the contract price divided by that contract's leverage. The stop and the target are the ones you set on the sliders. There is no separate entry signal yet. Do not treat a click as a finished strategy. One click can still post the whole clip, and the clip should be inside the 4% rule above. The button does not yet know the margin balance, so it cannot enforce that by itself.
+
+## What this is not
+
+This is not a promise of profit. The averages and the strength bands are a public scalping pattern (9 and 21, with strength as the filter, enter on the retest, not on the cross). They have not been scored on this account. The old fills do not count.
 
 ## File order
 
-1. This page. What is decided, and what is not.
-2. The trading section at the bottom of `AGENTS.md`. How an order is sent so Kalshi does not reject it. That is mechanics, not an entry signal.
-3. `AGENTS.project.md`. The holes that are still open.
-4. `docs/STRATEGY.md` is not a rule. It points here.
-5. The next code file is `src/lib/desk/config.ts`. It still contains the old dollar caps. They are not rules.
+1. This page.
+2. `.grok/rules/trading-system.md` says the same thing in short.
+3. `src/lib/desk/fresh-law.ts` is the check the 15-minute decision calls.
+4. `src/lib/desk/evaluator.ts` calls that check and does not use the old chart list.
+5. Sending stays off in `src/lib/desk/config.ts`.

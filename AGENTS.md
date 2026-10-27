@@ -352,10 +352,8 @@ never:   build an app for a greeting/number/question; invent imagine_* calls;
 
 ## Trading desk
 
-File 1 is `README.md`. This section is file 2. The archive and the old dollar caps are not rules.
+`README.md` is the rule. The old dollar caps are not.
 
-One deposit. Kalshi keeps a prediction balance and a margin balance. They do not spend each other. A move in the Portfolio tab is how cash changes sides.
+A 15-minute ticket is named by `src/lib/desk/fresh-law.ts` before any order. Sending is off until the flag in `src/lib/desk/config.ts` is turned on by a human.
 
-A 15-minute contract is a ticket with no leverage. Its order goes through `src/lib/desk/oms.ts`. Crypto settles on 60 one-second prints. Gold and currencies settle on Pyth.
-
-A perpetual order goes through `POST /api/live/perp-fire`. Entry: the three switches are on, you picked the contract, a buy rests on the bid, a sell rests on the ask. Post-only at the other side's price is rejected by Kalshi. Size is how many contracts fit in the clip. The stop and target are the ones on the sliders. Exit is that stop, that target, or a later close. Liquidation is not a stop. The button does not wait on the paper heartbeat file.
+A perpetual order goes through `POST /api/live/perp-fire`. A buy rests on the bid. A sell rests on the ask. There is no entry signal on that button yet.

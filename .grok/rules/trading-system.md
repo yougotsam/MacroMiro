@@ -1,21 +1,13 @@
 # Trading system
 
-Approved features get implemented and tested. Do not dismiss one because another bot has no published fills.
+The only entry law is `README.md` and `src/lib/desk/fresh-law.ts`.
 
-Unproven ideas are experimental and stay in shadow mode. They do not place orders.
+A 15-minute side comes from the 9-period average, the 21-period average, and RSI 14 on closed 1-minute prices. No retest, no trade. A settlement chance is not an entry.
 
-Live trading stays off until the settlement print matches the contract, the shadow log has a real sample, and a human turns the live flag on.
+One trade posts at most 4% of the pile it spends. The day stops at 8% of that pile. Unknown cash is no trade.
 
-BTC settlement in the final minute is CF Benchmarks `last_60s_windowed_average_15min` when that window has 60 prints. The live decision uses the trailing 60-second average (`avg_60s_data`), not that quarter-hour field and not a Binance print.
+Bitcoin still settles on the 60-print average. Gold still settles on the Pyth close named in the contract. A stale feed is no trade. The feed does not choose the side.
 
-Gold uses the Pyth GOLD 1-minute close named in the contract rules. A tick, a 401, or the wrong feed id blocks gold.
+15-minute sending stays off until a human turns the flag on. Firecrawl does not place an order.
 
-A missing credential blocks a live decision. It does not block the adapter, the stale check, or the tests.
-
-A strategy score is not a probability. If the chance is not calibrated, label it Experimental estimate or return null.
-
-Indicators confirm a thesis. One candle name, one RSI print, or one headline is not a trade.
-
-Firecrawl news is async. It never runs inside the price loop and never places an order. A headline can veto or mark an experimental adjustment. It cannot trade by itself.
-
-Every GET, including `/api/live/heart`, is read-only. Missing or stale data is NO TRADE.
+Perpetual orders rest on the correct side of the book. There is no perpetual entry signal yet.

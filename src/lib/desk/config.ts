@@ -3,7 +3,7 @@
  * Every number here is enforced in code (risk.ts / gate.ts), not just displayed.
  */
 export const MODEL_VERSION = "aurix-x-v1.2-settlement-correctness-2026-10-09";
-/** Live release. Orders are allowed when the three switch files are on and the $15 day stop is clear. */
+/** 15-minute orders stay refused until a human turns this on. The entry law is fresh-law.ts. */
 export const CALIBRATED_MODEL_APPROVED: boolean = false;
 /** Never reset an intraday loss latch with an on-disk override. */
 export const ENABLE_RISK_OVERRIDES: boolean = false;

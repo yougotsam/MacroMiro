@@ -277,10 +277,6 @@ export class Oms {
     if (this.corruptRows > 0) return { ok: false, why: `OMS journal has ${this.corruptRows} unreadable row(s): sending disabled until reconciled` };
     if (!this.gate()) return { ok: false, why: "model not independently calibrated / production release disabled" };
     if (!TICKER_RE.test(intent.ticker)) return { ok: false, why: "ticker" };
-    // The snapshot can lag a fill Kalshi already took off the resting list. The journal is the count that counts.
-    if (intent.product === "event" && (this.perTicker()[intent.ticker] ?? 0) >= MAX_ORDERS_PER_TICKER_WINDOW) {
-      return { ok: false, why: `ticker order cap ${MAX_ORDERS_PER_TICKER_WINDOW}` };
-    }
     // limit orders only: an explicit price strictly inside (0,1) and a whole contract count, every time
     if (!(intent.price > 0 && intent.price < 1) || !Number.isInteger(intent.count) || intent.count < 1) return { ok: false, why: "limit price / whole count required" };
     const verdict = this.risk.check(intent, snapshot);

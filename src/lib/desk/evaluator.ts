@@ -1,43 +1,31 @@
 /**
- * Pure-ish evaluation of one series (no OMS, no order path): settlement P → features → execution guard → gate →
- * timing policy → approval (calibrated P + conservative EV) → macro / release gates. Shared by the trading engine and
- * the read-only observation collector (scripts/desk-observe.ts), which must never be able to send an order —
- * this module therefore imports nothing from oms.ts or the signed order transport (observe.test.ts enforces it).
+ * One series, one decision. The side comes from fresh-law.ts.
+ * A settlement chance is not an entry. This file does not send.
  */
 import {
-  APPROVAL_CUSHION,
-  APPROVAL_POLICY_ENFORCED,
   BAR_MAX_AGE_MS,
   BOOK_MAX_AGE_MS,
-  CALIBRATED_MODEL_APPROVED,
   INDEX_MAX_AGE_MS,
   MAKER_MIN_EDGE,
   MIN_SECONDS_LEFT,
-  MIN_VOL_SAMPLES,
   MODEL_REV,
   MODEL_VERSION,
   REFERENCE,
   type Series,
-  TIMING_POLICY,
   calibratorPath,
 } from "./config";
-import { approve, bucketFor, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
-import { strategyCall } from "./strategies";
-import { features, applyLogit, ema200Side, flowFromBars, minuteBars, sessionTag, technicalSide, tradeLogit, type FeatureSnapshot } from "./features";
-import type { FeeInfo } from "./fees";
-import { type Feeds, officialMatches } from "./feeds";
-import { type Book, type Candidate, scoreSides } from "./gate";
-import { intelVerdict } from "./intel-gate";
+import { loadCalibrator, type Approval, type Calibrator } from "./approval";
+import { minuteBars, type FeatureSnapshot } from "./features";
+import { orderFee, type FeeInfo } from "./fees";
+import { freshCall } from "./fresh-law";
+import { type Feeds } from "./feeds";
+import { type Book, type Candidate, sizeFor } from "./gate";
 import { intelligenceLogit, readIntelControls } from "./intelligence";
 import { macroGate, type MacroGate } from "./macro-calendar";
-import { resampleComplete, evaluateSniper, sniperCanEnter, type Evidence } from "./sniper";
-import { barsForSniper, flowRefusal, researchFor } from "./research-cache";
-import { blindScore } from "./blind-score";
-import { windowRefusal } from "./window-block";
-import { type MoveGuard, makerWindowOk, minPriceFor, shockOf, type GuardState } from "./guard";
+import { type Evidence } from "./sniper";
+import { type MoveGuard, type GuardState } from "./guard";
 import type { Market } from "./kalshi-read";
 import type { Decision } from "./ledger";
-import { SIGMA_FLOOR, clampP, cryptoProb, goldProb, sigmaFromPrints } from "./settlement";
 
 export type SeriesEval = {
   series: Series;
@@ -109,163 +97,22 @@ export class Evaluator {
     out.spot = last.v;
     if (!book) return fail("G1_no_book");
     if (book.ts > now + 500 || now - book.ts > BOOK_MAX_AGE_MS) return fail("G1_book_stale");
-    // One hour of index prints cannot build 60 closed 15-minute bars. Stored Coinbase
-    // candles are used for the sniper when they are long enough. They do not enter the settlement price.
-    const prints = this.feeds.prints(ref.index, now - 3600_000);
     const bars = minuteBars(this.feeds.prints(ref.index, now - 210 * 60_000), now);
     const lastBar = bars[bars.length - 1];
     if (!lastBar || now - (lastBar.t * 60_000 + 60_000) > BAR_MAX_AGE_MS) return fail("G1_bars_stale");
-    const sig = sigmaFromPrints(prints, now, SIGMA_FLOOR[ref.index] ?? 2e-5);
-    if (sig.sigma == null || sig.n < MIN_VOL_SAMPLES) return fail("G1_vol_warmup");
-    out.sigma = sig.sigma;
-    this.sigmaBy.set(series, sig.sigma);
-    const windowPrints = ref.kind === "rti60" ?
-      this.feeds.windowMap(ref.index, m.closeMs - 59_000, m.closeMs + 1000) :
-      new Map<number, number>();
-    const afterWindowStart = ref.kind === "rti60" &&
-      last.t >= m.closeMs - 59_000 && last.t <= m.closeMs;
-    const official = afterWindowStart ? this.feeds.lastOfficialAverage(ref.index) : null;
-    if (afterWindowStart) {
-      if (!officialMatches(official, last.t, m.closeMs)) {
-        return fail("G1_official_settlement_accumulator_missing_or_mismatched");
-      }
-    }
-    const pAt = (v: number) =>
-      ref.kind === "rti60"
-        ? cryptoProb({
-            closeMs: m.closeMs, strike: m.strike, dp: ref.dp,
-            last: { t: last.t, v }, windowPrints, sigma: sig.sigma!,
-            official: official ? { value: official.value, count: official.windowSize, t: official.t } : undefined,
-          })
-        : goldProb({ closeMs: m.closeMs, strike: m.strike, dp: ref.dp, last: { t: last.t, v }, sigma: sig.sigma! });
-    // On a packet gap, the official aggregate (if matched) is authoritative.
-    // Any divergence in a complete local window is rejected by cryptoProb().
-    const model = pAt(last.v);
-    out.lockFrac = ref.kind === "rti60" ? model.printed / 60 : 0;
-    out.shock = shockOf((v) => clampP(pAt(v).p), last.v, sig.sigma);
-    const pBase = clampP(model.p);
-    const feats = features(bars);
-    out.pBase = pBase;
-    out.feats = feats;
-    // One hour of live index prints cannot build 60 closed 15-minute bars.
-    // Crypto uses stored Coinbase bars when those are long enough.
-    // Gold, silver, oil, and FX use complete bars from the stored settlement prints.
-    // Neither source enters the settlement price. A gap is not filled.
-    const blind = blindScore(series, macro.available && !macro.blocked);
-    if (blind) {
-      if (out.feats) out.feats = { ...out.feats, flow: blind.flow };
-      out.sniper = { long: blind.long, short: blind.short };
-    } else {
-      const researchBars = bars.map((b) => ({ ...b, t: b.t * 60_000 }));
-      const index15 = resampleComplete(researchBars, 15);
-      const index1h = resampleComplete(researchBars, 60);
-      const chosen = barsForSniper(series, index15, index1h);
-      const stored = researchFor(series);
-      if (out.feats) out.feats = { ...out.feats, flow: flowFromBars(stored?.m15 ?? null, stored?.source ?? null, Boolean(stored?.fresh), stored?.ofi ?? null, stored?.book ?? null) };
-      out.sniper = {
-        long: evaluateSniper(chosen.m15, chosen.h1, "long", macro.available && !macro.blocked),
-        short: evaluateSniper(chosen.m15, chosen.h1, "short", macro.available && !macro.blocked),
-      };
-    }
-    const flowBlock = flowRefusal(series);
-    if (flowBlock) return fail(flowBlock);
-    const settlementSign: 1 | -1 = pBase >= 0.5 ? 1 : -1;
-    const sniperScore = settlementSign > 0 ? (out.sniper?.long?.score ?? 0) : (out.sniper?.short?.score ?? 0);
-    const tilt = tradeLogit(feats.score, sniperScore, settlementSign);
-    const tilted = applyLogit(pBase, tilt.delta + intelligenceLogit(series, now));
-    out.shift = tilted - pBase;
-    out.p = clampP(tilted);
-    // execution guard
-    out.guard = this.guard.observe(series, prints.slice(-30), sig.sigma, now);
-    out.makerOk = makerWindowOk(left, out.lockFrac, ref.kind);
-    out.makerMinEdge = MAKER_MIN_EDGE + out.shock;
-    out.minPrice = minPriceFor(left);
-    if (!fee || fee.feeType !== "quadratic" || !Number.isFinite(fee.multiplier) || fee.multiplier <= 0)
-      return fail("G1_fee_unknown_or_unsupported");
-    if (out.guard.cooling) return fail(`G2_fast_move_cooldown_${out.guard.dir}`);
-    if (budget <= 0) return fail("G2_no_room");
-    // time-to-expiry policy ("current" reproduces the old timing exactly; see approval.ts)
-    const policy = TIMING_POLICIES[TIMING_POLICY];
-    const bucket = bucketFor(policy, left);
-    out.timing = { policy: policy.id, bucket: bucket?.name ?? null };
-    if (APPROVAL_POLICY_ENFORCED && (!bucket || !bucket.allow)) return fail(`G2_timing_${bucket?.name ?? "none"}`);
-    if (APPROVAL_POLICY_ENFORCED && bucket) {
-      out.makerOk = out.makerOk && bucket.allowMaker;
-      out.minPrice = Math.max(out.minPrice, bucket.minPrice);
-    }
-    const g = scoreSides(out.p, pBase, book, fee, { allowMaker: out.makerOk, allowTaker: APPROVAL_POLICY_ENFORCED ? (bucket?.allowTaker ?? false) : true, budget, makerMinEdge: out.makerMinEdge, minPrice: out.minPrice, priceRanges: m.priceRanges });
-    out.quotes = g.quotes;
-    out.best = g.best;
-    if (!g.best) return fail(`G2_${g.failed}${out.makerOk ? "" : "_maker_off_final_seconds"}`);
-    const emaSide = ema200Side(lastBar?.c ?? null, feats.ema200);
-    if (emaSide !== g.best.side) {
-      out.shadow = g.best;
-      out.best = null;
-      return fail(emaSide == null ? "G2_ema200_unread" : "G2_ema200_against");
-    }
-    const blockedWindow = windowRefusal(series, left);
-    if (blockedWindow) {
-      out.shadow = g.best;
-      out.best = null;
-      return fail(blockedWindow);
-    }
-    const tech = technicalSide(feats, last.v, m.strike);
-    const sniperSide = g.best.side === "yes" ? out.sniper?.long : out.sniper?.short;
-    // The 1-minute list said nothing. A sniper price setup on the same side is another way in, not a second lock.
-    if (tech.side == null && sniperCanEnter(sniperSide)) {
-      tech.side = g.best.side;
-      tech.why = `sniper ${sniperSide?.setup ?? "setup"}`;
-    }
-    if (tech.side == null) {
-      const call = strategyCall(bars);
-      if (call && call.side === g.best.side) {
-        tech.side = call.side;
-        tech.why = call.why;
-        out.strategy = call.name;
-      }
-    }
-    // A chart that names nothing sits. A chart that names the other side sits. An upper wick is not a long. A lower wick is not a short.
-    if (tech.side == null) {
-      out.shadow = g.best;
-      out.best = null;
-      return fail("G2_structure_no_setup");
-    }
-    if (tech.side !== g.best.side) {
-      out.shadow = g.best;
-      out.best = null;
-      return fail(`G2_structure_${tech.why.replace(/\s+/g, "_")}`);
-    }
-    if (tech.side) tech.why = `${tech.why} · ${sessionTag(now)}`;
-    if (feats?.candle === "upper_wick" && g.best.side === "yes") {
-      out.shadow = g.best;
-      out.best = null;
-      return fail("G2_structure_upper_wick");
-    }
-    if (feats?.candle === "lower_wick" && g.best.side === "no") {
-      out.shadow = g.best;
-      out.best = null;
-      return fail("G2_structure_lower_wick");
-    }
-    const intel = intelVerdict(series, g.best.side, now);
-    if (!intel.ok) {
-      out.shadow = g.best;
-      out.best = null;
-      return fail(`G2_${intel.why}`);
-    }
-    // approval: calibrated P + conservative EV after fees and cushion at the executable price (approval.ts)
-    out.approval = approve({ pYesRaw: out.p, calibrator: this.calibrator(now), candidate: g.best, tteSec: left, policy, cushion: APPROVAL_CUSHION });
-    // A fresh Spark, Alexandria, or scheduled print that disagrees sits the ticket. A stale file does not.
-    if (APPROVAL_POLICY_ENFORCED && !out.approval.ok) {
-      out.shadow = out.best;
-      out.best = null;
-      return fail(`G3_approval_${out.approval.why}`);
-    }
-    // A model must be independently calibrated before production eligibility.
-    if (!CALIBRATED_MODEL_APPROVED) {
-      out.shadow = out.best;
-      out.best = null;
-      return fail("G3_uncalibrated_model_shadow_only");
-    }
+    const fresh = freshCall(bars.map((b) => b.c));
+    if (!fresh) return fail("FRESH_no_setup");
+    if (!fee || fee.feeType !== "quadratic" || !(fee.multiplier > 0)) return fail("FRESH_fee_unknown");
+    const bid = fresh.side === "yes" ? book.yesBid : book.noBid;
+    const other = fresh.side === "yes" ? book.noBid : book.yesBid;
+    const ask = other ? Math.round((1 - other.price) * 10_000) / 10_000 : null;
+    if (!bid || !(bid.price > 0) || !(bid.price < 1)) return fail("FRESH_no_bid");
+    if (ask != null && ask - bid.price > 0.04) return fail("FRESH_spread");
+    const count = sizeFor(bid.price, true, fee, budget);
+    if (count < 1) return fail("FRESH_size");
+    const paid = orderFee(count, bid.price, true, fee);
+    out.best = { side: fresh.side, mode: "maker", price: bid.price, count, fee: paid, feePer: paid / count, edge: 0, edgeBase: 0, pSide: 0.5 };
+    out.quotes = { yes_bid: book.yesBid?.price ?? null, no_bid: book.noBid?.price ?? null };
     return out;
   }
 }

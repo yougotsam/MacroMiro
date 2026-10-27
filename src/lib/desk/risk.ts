@@ -30,6 +30,7 @@ import { correlationKey } from "./exposure";
 import { etDay } from "./time";
 import { activeOverride, applyOverride, loadOverrides } from "./override";
 import { watchdogFresh } from "@/lib/loop/watchdog";
+import { PILE_DAY, pileRoom } from "./fresh-law";
 
 export type Settled = { ticker: string; pnl: number; settledMs: number };
 
@@ -212,11 +213,10 @@ export class RiskEngine {
   observe(snap: AccountSnapshot, now = Date.now()) {
     const s = this.effective(snap, now);
     const worst = dayWorstOf(s);
-    const L = resolveRiskLimits(this.limits, s.accountValueUsd);
-    // unknown limits (e.g. % mode without account value) latch at the approved USD stop, never looser
-    const stop = L.ok ? L.dayStop : this.limits.usd.dayStop;
-    if (s.etDay === etDay(now) && worst <= stop && !this.latched(now)) {
-      this.latch(`day worst ${worst.toFixed(2)} ≤ ${stop}`, now);
+    const cashNow = (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0);
+    const stop = cashNow > 0 ? -(cashNow * PILE_DAY) : 0;
+    if (s.etDay === etDay(now) && cashNow > 0 && worst <= stop && !this.latched(now)) {
+      this.latch(`day worst ${worst.toFixed(2)} ≤ ${stop.toFixed(2)}`, now);
     }
     return worst;
   }
@@ -245,29 +245,15 @@ export class RiskEngine {
     if (l) return no(`daily stop latched: ${l.latchReason}`);
     const dayWorst = this.observe(s, now);
     if (this.latched(now)) return no(`daily stop latched: day worst ${dayWorst.toFixed(2)}`, dayWorst);
-    const pause = settledLossPauseUntil(s.settledToday, now);
-    if (pause > now) return no(`three-loss pause until ${new Date(pause).toISOString()}`, dayWorst);
     if (o.product === "event" && !TICKER_RE.test(o.ticker)) return no("ticker not a desk 15m series", dayWorst);
     if (o.product === "perp" && !/^KX[A-Z0-9]+PERP$/.test(o.ticker)) return no("perp ticker", dayWorst);
     if (o.product === "meme" && !o.ticker.startsWith("MEME-")) return no("meme ticker", dayWorst);
-    if (o.product === "event" && (o.price < PRICE_MIN || o.price > PRICE_MAX)) return no("price band", dayWorst);
     if (o.product !== "event" && !(o.price > 0)) return no("bad size/price", dayWorst);
-    const L = resolveRiskLimits(this.limits, s.accountValueUsd);
-    if (!L.ok) return no(`risk limits: ${L.why}`, dayWorst);
-    if (orderWorst > L.perOrder + 1e-9) return no(`order cost ${orderWorst.toFixed(2)} > ${L.perOrder}`, dayWorst);
-    const projected = Number((dayWorst - orderWorst).toFixed(4));
-    if (projected < L.dayStop) return no(`would breach daily stop: ${dayWorst.toFixed(2)} − ${orderWorst.toFixed(2)} < ${L.dayStop}`, dayWorst, projected);
-    const exposure = s.openWorst + s.restWorst + s.pendingWorst + orderWorst;
-    if (exposure > L.total + 1e-9) return no(`exposure ${exposure.toFixed(2)} > ${L.total}`, dayWorst, projected);
-    if (!s.tickerWorst || !s.correlated) return no("per-ticker / correlated exposure unknown", dayWorst, projected);
-    const tick = (s.tickerWorst[o.ticker] ?? 0) + orderWorst;
-    if (!Number.isFinite(tick) || tick > L.perTicker + 1e-9) return no(`ticker exposure ${o.ticker} ${tick.toFixed(2)} > ${L.perTicker}`, dayWorst, projected);
-    const corrKey = correlationKey(o.ticker, o.side === "no" ? "down" : "up");
-    const corr = (s.correlated[corrKey] ?? 0) + orderWorst;
-    if (!Number.isFinite(corr) || corr > L.correlated + 1e-9) return no(`correlated ${corrKey} ${corr.toFixed(2)} > ${L.correlated}`, dayWorst, projected);
-    if ((s.ordersPerTicker[o.ticker] ?? 0) >= MAX_ORDERS_PER_TICKER_WINDOW) return no(`ticker order cap ${MAX_ORDERS_PER_TICKER_WINDOW}`, dayWorst, projected);
-    if ((this.tickCount.get(o.tickId) ?? 0) >= MAX_ORDERS_PER_TICK) return no("one order per tick", dayWorst, projected);
     const cash = (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0);
+    const room = pileRoom(cash, dayWorst);
+    const projected = Number((dayWorst - orderWorst).toFixed(4));
+    if (o.product === "event" && orderWorst > room + 1e-9) return no(`pile room ${room.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
+    if ((this.tickCount.get(o.tickId) ?? 0) >= MAX_ORDERS_PER_TICK) return no("one order per tick", dayWorst, projected);
     if (cash < orderWorst) return no(`cash ${cash.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
     return { ok: true, why: "risk ok", dayWorst, projected, orderWorst };
   }
