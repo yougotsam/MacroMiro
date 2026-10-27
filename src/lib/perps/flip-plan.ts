@@ -50,7 +50,22 @@ export function bias(input: {
   return null;
 }
 
-/** A click is not an entry. Missing sweep, gap, or pile is a no. */
+/** Prices for a button press. Half comes off one risk-unit away. The rest comes off at the multiple. */
+export function pressPlan(entry: number, side: Side, qty: number, lossUsd: number, tpMultiple: number): {
+  dir: Side; qty: number; entry: number; stop: number; t1: number; t2: number; partialFrac: number; trailR: number; maxHoldMs: number;
+} | null {
+  if (!(entry > 0) || !(qty > 0) || !(lossUsd > 0) || !(tpMultiple >= 1)) return null;
+  const dist = lossUsd / qty;
+  if (!(dist > 0)) return null;
+  if (side === "long") {
+    const stop = entry - dist;
+    if (!(stop > 0)) return null;
+    return { dir: "long", qty, entry, stop, t1: entry + dist, t2: entry + tpMultiple * dist, partialFrac: 0.5, trailR: 1, maxHoldMs: 8 * 3_600_000 };
+  }
+  return { dir: "short", qty, entry, stop: entry + dist, t1: entry - dist, t2: entry - tpMultiple * dist, partialFrac: 0.5, trailR: 1, maxHoldMs: 8 * 3_600_000 };
+}
+
+/** A button press is the side. An automatic scan still needs a sweep and a gap. */
 export function mayFire(input: {
   ticker: string;
   side: Side;

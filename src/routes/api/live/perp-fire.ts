@@ -2,18 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { switchState } from "@/lib/desk/risk";
 import { liveMarginTransport } from "@/lib/perps/live-transport";
 import { PerpsOms } from "@/lib/perps/oms";
-import type { ManagePlan } from "@/lib/perps/manage";
 import { dataDir } from "@/lib/desk/config";
-import { mayFire } from "@/lib/perps/flip-plan";
-
-function bracket(price: number, side: "bid" | "ask", lev: number, slPercent: number, tpMultiple: number, qty: number): ManagePlan {
-  const risk = slPercent / 100 / lev;
-  const reward = risk * tpMultiple;
-  const dir = side === "ask" ? "short" : "long";
-  const stop = dir === "long" ? price * (1 - risk) : price * (1 + risk);
-  const take = dir === "long" ? price * (1 + reward) : price * (1 - reward);
-  return { dir, qty, entry: price, stop, t1: (price + take) / 2, t2: take, partialFrac: 0.5, trailR: 1, maxHoldMs: 8 * 3_600_000 };
-}
+import { mayFire, pressPlan } from "@/lib/perps/flip-plan";
 
 export const Route = createFileRoute("/api/live/perp-fire")({
   server: {
@@ -21,9 +11,6 @@ export const Route = createFileRoute("/api/live/perp-fire")({
       GET: async () => Response.json({ book: "perp", locked: false, switches: switchState() }),
       POST: async ({ request }) => {
         const sw = switchState();
-        if (!sw.live || !sw.begin || !sw.arm) {
-          return Response.json({ ok: false, why: "The three desk switches are off, so the click was not sent to Kalshi." }, { status: 409 });
-        }
         const body = (await request.json().catch(() => ({}))) as {
           ticker?: string; side?: "bid" | "ask"; price?: number; clipUsd?: number; leverage?: number; tpMultiple?: number; slPercent?: number;
           sweep?: "low" | "high" | null; gap?: "yes" | "no" | null; funding?: number | null; spread?: number | null;
@@ -58,15 +45,22 @@ export const Route = createFileRoute("/api/live/perp-fire")({
         const margin = price / lev;
         const qty = Math.floor(clip / margin);
         if (qty < 1) return Response.json({ ok: false, why: `one contract posts $${margin.toFixed(2)}, more than the $${clip.toFixed(2)} clip` }, { status: 400 });
+        const loss = clip * (sl / 100);
+        const plan = pressPlan(price, side === "ask" ? "short" : "long", qty, loss, tp);
+        if (!plan) return Response.json({ ok: false, why: "the stop would go through zero" }, { status: 400 });
+        const prices = `Stop ${plan.stop.toFixed(4)}. Half ${plan.t1.toFixed(4)}. Rest ${plan.t2.toFixed(4)}.`;
+        if (!sw.live || !sw.begin || !sw.arm) {
+          return Response.json({ ok: false, why: `Plan is set. ${prices} The three switches are off, so Kalshi did not get it.` }, { status: 409 });
+        }
         const oms = new PerpsOms(liveMarginTransport, `${dataDir()}/perps-journal.jsonl`, true, () => ({ ok: true, why: "desk switches already checked" }));
         const sent = await oms.submit({
           kind: "entry",
           ticker,
-          dir: side === "ask" ? "short" : "long",
+          dir: plan.dir,
           qty,
           price,
           maker: true,
-          plan: bracket(price, side, lev, sl, tp, qty),
+          plan,
           decisionId: `perp-${ticker}-${Date.now()}`,
         });
         return Response.json({ ok: sent.status === "ACK", ...sent, leverage: lev, qty, margin });

@@ -4,9 +4,9 @@ Kalshi perpetuals. One pile, $100 to $200. This is not a promise of profit.
 
 ## How a trade works
 
-You press long or short. That press is the side. The markets are Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P.
+You press long or short. That press is the side. The markets are Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P. The stop can lose 8% of the pile. Three full stops are 24%. The account stops at 25%.
 
-The stop can lose 8% of the pile. Three full stops are 24%. The account stops at 25%, so a fourth loss should not exist, and a gap through the stop is the only way past it. Half comes off at 1 times the risk. The rest comes off at the target on the slider, starting at 2.5. After the half, the stop moves to the entry and then trails.
+Half comes off one risk-unit from the entry. That used to be the midpoint of the target, which paid you less than one times the risk. The rest comes off at the target on the slider. It starts at 2.5. After the half, the stop moves to the entry and then trails.
 
 One loss does nothing. Two do nothing. The third ends the day. Do not raise the clip after a win.
 

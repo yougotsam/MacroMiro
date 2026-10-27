@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { bias, bracket, mayFire } from "./flip-plan";
+import { bias, bracket, mayFire, pressPlan } from "./flip-plan";
 
 describe("perp flip plan", () => {
   it("a long stop sits under the entry and the rest target is 2.5 times the risk", () => {
@@ -25,5 +25,12 @@ describe("perp flip plan", () => {
       pileUsd: 200, clipUsd: 200, stopLossPctOfClip: 50, downUsd: 0, lossesInARow: 0, clicked: true,
     });
     expect(fat.ok).toBe(false);
+  });
+
+  it("half is one risk-unit from the entry, not the midpoint of the target", () => {
+    const p = pressPlan(100, "long", 2, 8, 2.5);
+    expect(p?.stop).toBe(96);
+    expect(p?.t1).toBe(104);
+    expect(p?.t2).toBe(110);
   });
 });

@@ -678,12 +678,12 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
           <p className="font-mono text-xs uppercase tracking-widest text-primary">Path</p>
           <p className="mt-1 text-sm text-fg">You pick the side with the button. Bitcoin, Ether, Solana, XRP, gold, silver, or the S&P. The stop can lose 8% of the pile, so three losses are 24% and the account still dies at 25%. Half off at 1 times the risk, the rest at the target you set, then the stop trails. A headline does not pick the side.</p>
           <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm text-muted">
-            <li>Scan those seven. Bid, ask, funding, and the last swing.</li>
-            <li>Enter only on a sweep plus a gap, and only if funding is not fighting you.</li>
-            <li>Rest the order. Do not cross.</li>
+            <li>Pick one of the seven. Press long or short. That press is the side.</li>
+            <li>The order rests. It does not cross.</li>
             <li>If the stop is hit, that trade can lose 8% of the pile. Not more.</li>
-            <li>Take half at 1R. Take the rest at 2.5R. Trail after the half.</li>
-            <li>Three losses in a row: done for the day. Down 25%: done until you reset it.</li>
+            <li>Take half one risk-unit from the entry. Take the rest at the target on the slider.</li>
+            <li>After the half, the stop moves to the entry and then trails.</li>
+            <li>Three losses in a row end the day. Down 25% and the account stops.</li>
           </ol>
         </div>
         <p className="mt-3 font-mono text-xs text-subtle">
