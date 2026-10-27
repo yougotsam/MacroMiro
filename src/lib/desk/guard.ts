@@ -6,12 +6,12 @@
  * News is not an input here. A headline cannot flip fire to true.
  */
 
-/** Loss posted on one trade, as a fraction of the pile. */
-export const TRADE_FRAC = 0.01;
-/** Day halt. Tighter than the prompt's example. Escalation may tighten this. It may not loosen it. */
-export const DAY_FRAC = 0.04;
-/** Kill switch. The prompt's 15% example is too loose for a $100–$200 pile. */
-export const KILL_FRAC = 0.1;
+/** Cash lost if the stop is hit, as a fraction of the pile. */
+export const TRADE_FRAC = 0.15;
+/** Three losses in a row end the day. There is no separate percent day-stop. */
+export const LOSS_STREAK = 3;
+/** Account stops. A 25% hole in the pile. Nothing new after that. */
+export const KILL_FRAC = 0.25;
 
 export type Regime = "trend" | "mean_rev" | "high_vol" | "crisis";
 export type RiskState = "safe" | "near_limit" | "reduce";
@@ -35,12 +35,15 @@ export function guardVerdict(input: {
   kept: boolean;
   /** A probability fit on settled outcomes. Null if it has not been measured. */
   calibratedP: number | null;
+  /** Settled losses in a row. Three ends the day. */
+  lossesInARow?: number;
 }): GuardVerdict {
   const direction = input.side === "yes" ? "long" : input.side === "no" ? "short" : "neutral";
   const setup_q = input.side ? 2 : 0;
   const cash = input.cash;
   const draw = cash > 0 ? -input.dayWorst / cash : 1;
-  const risk_state: RiskState = draw >= KILL_FRAC ? "reduce" : draw >= DAY_FRAC ? "near_limit" : "safe";
+  const streak = input.lossesInARow ?? 0;
+  const risk_state: RiskState = draw >= KILL_FRAC || streak >= LOSS_STREAK ? "reduce" : "safe";
   const regime: Regime = risk_state === "reduce" ? "crisis" : "trend";
   const base = { regime, direction, setup_q, risk_state, p: input.calibratedP, fire: false as boolean };
   if (!input.side) return { ...base, why: "no setup" };

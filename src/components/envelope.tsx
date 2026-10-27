@@ -643,7 +643,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
               >
                 {deskOn.live && deskOn.begin && deskOn.arm ? "LIVE" : "OFF"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-muted">Kalshi only · 15-minute orders off · 1% a trade · day halt 4% · kill 10%</p>
+              <p className="mt-1 font-mono text-[10px] text-muted">Perps · 15% risk at the stop · 3 losses end the day · account stops at 25%</p>
               <div className="mt-2 flex gap-1">
                 {([
                   ["spark", "Spark"],
@@ -664,8 +664,8 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             { job: "Scan", line: clock - Date.parse(heartTick ?? "") > 90_000 ? "Scanner asleep" : "Watching five books" },
-            { job: "Day", line: `Down $${dayLoss.toFixed(2)}. Halt is 4% of the pile.` },
-            { job: "Stop", line: "Kill switch is 10% of the pile. Sending is off." },
+            { job: "Day", line: `Down $${dayLoss.toFixed(2)}. The day ends after 3 losses in a row.` },
+            { job: "Stop", line: "Account stops if the pile is down 25%." },
             { job: "Open", line: positions.length ? `${positions.length} ticket${positions.length === 1 ? "" : "s"}` : "Flat" },
           ].map((seat) => (
             <div key={seat.job} className="min-w-0 rounded-sm bg-card/40 px-3 py-2">
@@ -676,14 +676,14 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         </div>
         <div className="mt-3 rounded-sm border border-border bg-card/50 px-3 py-3">
           <p className="font-mono text-xs uppercase tracking-widest text-primary">Path</p>
-          <p className="mt-1 text-sm text-fg">Kalshi perpetuals are the product. Fifteen-minute contracts are paper only: published tests on Bitcoin windows lost after the fee. Meme coins are not the path. A scan cannot see a slow dump.</p>
+          <p className="mt-1 text-sm text-fg">Seven Kalshi perpetuals: Bitcoin, Ether, Solana, XRP, gold, silver, the S&P. A long needs a swept low, a gap up, and funding that is not charging longs. A short is the mirror. Stop sits past the sweep. Half off at 1 times the risk, the rest at 2.5. After the half, the stop moves to the entry and then trails. Three losses in a row end the day. Down 25% and the account is done. News does not pick the side. Sending is still off.</p>
           <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm text-muted">
-            <li>Trade only in the London open, the New York morning, or the New York afternoon.</li>
-            <li>Price must sweep a prior high or low and close back through it.</li>
-            <li>A gap in that same direction has to be there. No sweep, no gap, no trade.</li>
-            <li>The order rests. It does not cross the spread.</li>
-            <li>One trade is 1% of the pile. The day stops at 4%. The account stops at 10%.</li>
-            <li>News cannot place the order. The send switch is off until a review says otherwise.</li>
+            <li>Scan those seven. Bid, ask, funding, and the last swing.</li>
+            <li>Enter only on a sweep plus a gap, and only if funding is not fighting you.</li>
+            <li>Rest the order. Do not cross.</li>
+            <li>If the stop is hit, that trade can lose 15% of the pile. Not more.</li>
+            <li>Take half at 1R. Take the rest at 2.5R. Trail after the half.</li>
+            <li>Three losses in a row: done for the day. Down 25%: done until you reset it.</li>
           </ol>
         </div>
         <p className="mt-3 font-mono text-xs text-subtle">

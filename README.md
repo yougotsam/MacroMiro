@@ -1,26 +1,25 @@
 # MacroMiro
 
-Kalshi only. One deposit, $100 to $200, split by you into a prediction pile and a margin pile. This repo does not move cash between them.
+Kalshi perpetuals. One pile, $100 to $200. This is not a promise of profit. Sending is off.
 
-## The product
+## Scan
 
-Perpetuals. A buy rests on the bid. A sell rests on the ask. The stop and the target are the sliders. The button is not inside the lock yet, so do not click it.
+Bitcoin, Ether, Solana, XRP, gold, silver, the S&P 500. The data on each is the bid, the ask, the funding rate, and the last swing. Spark, Alexandria, and Firecrawl can sit a trade out when a scheduled number is about to print. They do not choose the side.
 
-Fifteen-minute contracts are paper. A published test of Bitcoin windows (Aug 29–Sep 27, 2026) lost money after Kalshi's fee on both a late-favorite trade and a model-versus-price trade. Source: predictionmarketspicks.com, checked Oct 26, 2026. That is one site's test, not our own score. It is enough to stop treating 15-minute taker trades as the business.
+## In
 
-Meme coins are not the path. A rug check can see mint authority, freeze authority, and a crowded holder list. It cannot see a slow dump. Sniper fees and failed transactions are paid even when the coin dies.
+A long: price sweeps a prior low, closes back above it, leaves a gap up, and the funding rate is not charging longs. A short is the mirror. Outside that, no trade. The order rests. It does not cross.
 
-## The six rules
+## Out
 
-1. Only the London open (2–5am New York), the New York morning (8:30–11), or the New York afternoon (2–3pm).
-2. Price sweeps a prior high or low and closes back through it.
-3. A gap in that same direction is present. Otherwise no trade.
-4. The order rests. It does not cross.
-5. One trade is 1% of the pile. The day halts at 4%. The kill switch is 10%.
-6. News does not place the order. Sending stays off until you say otherwise in writing.
+The stop sits past the sweep. If it is hit, the loss is 15% of the pile. Half the position comes off at 1 times that distance. The rest comes off at 2.5 times. After the half, the stop moves to the entry and then trails. Kalshi calls these a stop and a take-profit on the position. They are not a liquidation. A fast market can gap through the stop.
 
-The sequence lives in `src/lib/desk/ict.ts`. The lock lives in `src/lib/desk/guard.ts`. Neither has a measured win rate on this account. Turning the switch on tonight does not create one.
+## When it stops
 
-## What is still in the repo
+Three losing trades in a row end the day. One or two do not. Down 25% from the pile and the account stops until you reset it. There is no separate 4% day cap.
 
-Old files are still on disk. Deleting them in one pass breaks the screen. The screen no longer states the old dollar caps. That lie is the one that was in front of you.
+## Not this
+
+Fifteen-minute contracts stay paper. A published fee test on those windows lost money. Meme coins stay out. A clean scan is not a safe coin.
+
+The code is `src/lib/perps/flip-plan.ts`, `src/lib/perps/manage.ts`, and `src/lib/desk/guard.ts`. None of it has a measured win rate on this account.

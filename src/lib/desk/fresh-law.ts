@@ -3,7 +3,7 @@
  * A settlement chance is not an entry. This file does not send.
  */
 import { ema, rsi } from "./features";
-import { DAY_FRAC, TRADE_FRAC } from "./guard";
+import { KILL_FRAC, TRADE_FRAC } from "./guard";
 
 export function freshCall(closes: number[]): { side: "yes" | "no"; why: string } | null {
   if (closes.length < 22) return null;
@@ -26,7 +26,7 @@ export function freshCall(closes: number[]): { side: "yes" | "no"; why: string }
 export function pileRoom(cash: number, dayWorst: number): number {
   if (!(cash > 0) || !Number.isFinite(dayWorst)) return 0;
   const trade = cash * TRADE_FRAC;
-  const dayLeft = cash * DAY_FRAC + dayWorst;
-  const room = Math.min(trade, dayLeft, cash);
+  const killLeft = cash * KILL_FRAC + dayWorst;
+  const room = Math.min(trade, killLeft, cash);
   return room > 0 ? Math.floor(room * 10_000) / 10_000 : 0;
 }

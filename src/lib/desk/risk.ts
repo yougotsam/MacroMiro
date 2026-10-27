@@ -31,7 +31,7 @@ import { etDay } from "./time";
 import { activeOverride, applyOverride, loadOverrides } from "./override";
 import { watchdogFresh } from "@/lib/loop/watchdog";
 import { pileRoom } from "./fresh-law";
-import { DAY_FRAC } from "./guard";
+import { KILL_FRAC } from "./guard";
 
 export type Settled = { ticker: string; pnl: number; settledMs: number };
 
@@ -99,6 +99,17 @@ export function streakPauseUntil(settled: Settled[]): number {
     } else if (x.pnl > 0) streak = 0;
   }
   return until;
+}
+
+export function threeLossesToday(settled: Settled[]): boolean {
+  const s = [...settled].sort((a, b) => a.settledMs - b.settledMs);
+  let streak = 0;
+  for (const x of s) {
+    if (x.pnl < 0) streak += 1;
+    else if (x.pnl > 0) streak = 0;
+    if (streak >= 3) return true;
+  }
+  return false;
 }
 
 /** The window id is the part of the ticker after the series. Every series shares it. */
@@ -215,7 +226,7 @@ export class RiskEngine {
     const s = this.effective(snap, now);
     const worst = dayWorstOf(s);
     const cashNow = (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0);
-    const stop = cashNow > 0 ? -(cashNow * DAY_FRAC) : 0;
+    const stop = cashNow > 0 ? -(cashNow * KILL_FRAC) : 0;
     if (s.etDay === etDay(now) && cashNow > 0 && worst <= stop && !this.latched(now)) {
       this.latch(`day worst ${worst.toFixed(2)} ≤ ${stop.toFixed(2)}`, now);
     }
@@ -246,6 +257,7 @@ export class RiskEngine {
     if (l) return no(`daily stop latched: ${l.latchReason}`);
     const dayWorst = this.observe(s, now);
     if (this.latched(now)) return no(`daily stop latched: day worst ${dayWorst.toFixed(2)}`, dayWorst);
+    if (threeLossesToday(s.settledToday)) return no("three losses in a row, day is done", dayWorst);
     if (o.product === "event" && !TICKER_RE.test(o.ticker)) return no("ticker not a desk 15m series", dayWorst);
     if (o.product === "perp" && !/^KX[A-Z0-9]+PERP$/.test(o.ticker)) return no("perp ticker", dayWorst);
     if (o.product === "meme" && !o.ticker.startsWith("MEME-")) return no("meme ticker", dayWorst);

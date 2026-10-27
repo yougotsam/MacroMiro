@@ -22,8 +22,8 @@ export const PerpCockpit: React.FC<CockpitProps> = ({
   // 1. Tactical Controls State
   const [leverage, setLeverage] = useState<number>(Math.min(10, maxLeverage));
   const [clipSizeUsd, setClipSizeUsd] = useState<number>(25);
-  const [tpMultiple, setTpMultiple] = useState<number>(2.5); // 2.5:1 reward-to-risk
-  const [slPercent, setSlPercent] = useState<number>(8); // 8% margin risk
+  const [tpMultiple, setTpMultiple] = useState<number>(2.5);
+  const [slPercent, setSlPercent] = useState<number>(15);
 
   // 2. Computed Financial Math
   const notionalExposure = clipSizeUsd * leverage;
@@ -42,6 +42,9 @@ export const PerpCockpit: React.FC<CockpitProps> = ({
 
   return (
     <div className="bg-[#0b0e14] text-slate-100 font-mono p-5 rounded-xl border border-slate-800 shadow-2xl space-y-6">
+      <p className="text-xs leading-relaxed text-slate-400">
+        Scan Bitcoin, Ether, Solana, XRP, gold, silver, and the S&P. Long: swept low, gap up, funding not charging longs. Short is the mirror. Stop past the sweep. Half off at 1R, rest at 2.5R, then the stop trails. Three losses end the day. Down 25% and the account stops. This button is not live.
+      </p>
       {/* HUD Header: Ticker, Price, and Shields */}
       <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-4 gap-4">
         <div className="flex items-center space-x-3">

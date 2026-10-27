@@ -9,10 +9,15 @@ describe("guard", () => {
     expect(v.why).toBe("not kept by review");
   });
 
-  it("a kill-switch drawdown is not safe", () => {
-    const v = guardVerdict({ side: "yes", cash: 100, dayWorst: -10, kept: true, calibratedP: 0.62 });
+  it("a 25% hole is the account stop", () => {
+    const v = guardVerdict({ side: "yes", cash: 100, dayWorst: -25, kept: true, calibratedP: 0.62 });
     expect(v.risk_state).toBe("reduce");
-    expect(v.regime).toBe("crisis");
+    expect(v.fire).toBe(false);
+  });
+
+  it("three losses in a row end the day even if the hole is small", () => {
+    const v = guardVerdict({ side: "yes", cash: 200, dayWorst: -5, kept: true, calibratedP: 0.62, lossesInARow: 3 });
+    expect(v.risk_state).toBe("reduce");
     expect(v.fire).toBe(false);
   });
 
