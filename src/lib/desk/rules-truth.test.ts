@@ -49,7 +49,7 @@ describe("one rule set", () => {
     expect(PRICE_MAX).toBe(0.95);
     expect(LOSS_STREAK_PAUSE).toBe(3);
     expect(POST_LOSS_PAUSE_MS).toBe(20 * 60_000);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
     expect(PERPS_ORDERS_LOCKED).toBe(false);
   });
 

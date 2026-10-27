@@ -26,7 +26,7 @@ const snap = (extra: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
 
 describe("AURIX-X risk and emergency stops", () => {
   it("refuses any unapproved model at the final OMS choke point", async () => {
-    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
     let sends = 0;
     const risk = new RiskEngine(folder(), permit);
     const oms = new Oms(risk, async () => {
@@ -34,6 +34,7 @@ describe("AURIX-X risk and emergency stops", () => {
     }, async () => [], folder());
     const result = await oms.submit(intent(), snap());
     expect(result.ok).toBe(false);
+    expect(result.why).toBe("model not independently calibrated / production release disabled");
     expect(sends).toBe(0);
   });
 

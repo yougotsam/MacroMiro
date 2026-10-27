@@ -71,13 +71,13 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     expect(oms.journal().length).toBe(0);
   });
 
-  it("POLICY: the same $1 order passes risk at −$13.50 and is sent, because the model is approved", async () => {
+  it("POLICY: the same $1 order passes risk at −$13.50 and is sent, with the mock-only release gate", async () => {
     const dir = tmp("a2");
     const risk = new RiskEngine(dir, ON);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(true);
+    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
     expect(risk.check(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }), NOW).ok).toBe(true);
     const { t, calls } = spyTransport();
-    const oms = new Oms(risk, t, async () => [], dir);
+    const oms = new Oms(risk, t, async () => [], dir, { releaseGateForMockOnly: () => true, canceller: async () => ({ status: 200 }) });
     const r = await oms.submit(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }));
     expect(r.ok).toBe(true);
     expect(calls.length).toBe(1);
@@ -127,7 +127,7 @@ describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 
     const risk = new RiskEngine(dir, ON);
     expect(risk.check(intent({ product: "perp", ticker: "KXBTCPERP" }), snap(), NOW).ok).toBe(true);
     const { t, calls } = spyTransport();
-    const r = await new Oms(risk, t, async () => [], dir).submit(intent({ product: "perp", ticker: "KXBTCPERP" }), snap());
+    const r = await new Oms(risk, t, async () => [], dir, { releaseGateForMockOnly: () => true, canceller: async () => ({ status: 200 }) }).submit(intent({ product: "perp", ticker: "KXBTCPERP" }), snap());
     expect(r.ok).toBe(false);
     expect(r.why).toBe("ticker");
     expect(calls.length).toBe(0);
@@ -263,6 +263,7 @@ describe("OMS idempotency", () => {
       },
       async () => [],
       dir,
+      { releaseGateForMockOnly: () => true, canceller: async () => ({ status: 200 }) },
     );
     const r = await oms.submit(intent(), snap());
     expect(r.ok).toBe(false);
@@ -487,10 +488,10 @@ describe("account snapshot (Kalshi records → day P/L)", () => {
 });
 
 describe("OMS bookkeeping", () => {
-  it("an approved model posts, so the ticker is busy", async () => {
+  it("an approved model posts, so the ticker is busy (mock-only release gate)", async () => {
     const dir = tmp("recent");
     const { t, calls } = spyTransport();
-    const oms = new Oms(new RiskEngine(dir, ON), t, async () => [], dir);
+    const oms = new Oms(new RiskEngine(dir, ON), t, async () => [], dir, { releaseGateForMockOnly: () => true, canceller: async () => ({ status: 200 }) });
     await oms.submit(intent(), snap());
     expect(calls.length).toBe(1);
     expect(oms.recentTickers(Date.now()).has(T)).toBe(true);

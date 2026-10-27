@@ -4,7 +4,7 @@
  */
 export const MODEL_VERSION = "aurix-x-v1.2-settlement-correctness-2026-10-09";
 /** Live release. Orders are allowed when the three switch files are on and the $15 day stop is clear. */
-export const CALIBRATED_MODEL_APPROVED: boolean = true;
+export const CALIBRATED_MODEL_APPROVED: boolean = false;
 /** Never reset an intraday loss latch with an on-disk override. */
 export const ENABLE_RISK_OVERRIDES: boolean = false;
 
