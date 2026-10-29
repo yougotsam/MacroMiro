@@ -1,6 +1,6 @@
 // src/components/PerpCockpit.tsx
 import React, { useState } from "react";
-import { Shield, Zap, Flame, Crosshair, Award } from "lucide-react";
+import { Shield, Zap, Flame, Crosshair } from "lucide-react";
 
 interface CockpitProps {
   ticker: string;
@@ -27,18 +27,11 @@ export const PerpCockpit: React.FC<CockpitProps> = ({
 
   // 2. Computed Financial Math
   const notionalExposure = clipSizeUsd * leverage;
-  const estProfit = clipSizeUsd * (slPercent / 100) * tpMultiple;
   const estMaxLoss = clipSizeUsd * (slPercent / 100);
+  const estProfit = estMaxLoss * (0.5 + 0.5 * tpMultiple);
+  const allowedLoss = balanceUsd > 0 ? balanceUsd * 0.08 : 0;
+  const overCap = allowedLoss > 0 && estMaxLoss > allowedLoss + 1e-6;
   const liqCushion = ((1 / leverage) * 90).toFixed(1);
-
-  // 3. Compounding Ladder Milestones ($100 Base)
-  const ladderRungs = [
-    { target: 100, label: "x1 BASE", status: balanceUsd >= 100 },
-    { target: 200, label: "x2 DOUBLE", status: balanceUsd >= 200 },
-    { target: 400, label: "x4 VELOCITY", status: balanceUsd >= 400 },
-    { target: 800, label: "x8 APEX", status: balanceUsd >= 800 },
-    { target: 1600, label: "x16 TERMINAL", status: balanceUsd >= 1600 },
-  ];
 
   return (
     <div className="bg-[#0b0e14] text-slate-100 font-mono p-5 rounded-xl border border-slate-800 shadow-2xl space-y-6">
@@ -82,30 +75,10 @@ export const PerpCockpit: React.FC<CockpitProps> = ({
         </div>
       </div>
 
-      {/* The Compounding Ladder (Gamified Visual Rungs) */}
-      <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
-        <div className="text-xs text-slate-400 mb-2 flex items-center justify-between">
-          <span className="flex items-center space-x-1.5 font-bold text-amber-400">
-            <Award className="w-3.5 h-3.5" />
-            <span>COMPOUNDING RUNWAY</span>
-          </span>
-          <span className="text-slate-500 text-[11px]">Auto-scales clip size at each tier</span>
-        </div>
-        <div className="grid grid-cols-5 gap-2">
-          {ladderRungs.map((rung, idx) => (
-            <div
-              key={idx}
-              className={`text-center py-2 px-1 rounded border text-xs transition-all ${
-                rung.status
-                  ? "bg-emerald-500/20 border-emerald-500/60 text-emerald-300 font-bold shadow-[0_0_12px_rgba(16,185,129,0.2)]"
-                  : "bg-slate-950/40 border-slate-800/60 text-slate-600"
-              }`}
-            >
-              <div className="text-[10px] tracking-tight">{rung.label}</div>
-              <div className="text-xs mt-0.5">${rung.target}</div>
-            </div>
-          ))}
-        </div>
+      <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80 text-xs leading-5 text-slate-300">
+        <p className="font-bold text-slate-200">This press</p>
+        <p className="mt-1">Stop loses ${estMaxLoss.toFixed(2)}. The cap is ${allowedLoss > 0 ? allowedLoss.toFixed(2) : "unread"}{overCap ? ", so this press will be refused." : "."}</p>
+        <p>If both targets fill, the gain is about ${estProfit.toFixed(2)}. Half of that is one times the risk. The other half is the target. The clip does not grow after a win.</p>
       </div>
 
       {/* Tactile Leverage Slider Control */}

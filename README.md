@@ -8,7 +8,7 @@ You press long or short. That press is the side. The markets are Bitcoin, Ether,
 
 Half comes off one risk-unit from the entry. That used to be the midpoint of the target, which paid you less than one times the risk. The rest comes off at the target on the slider. It starts at 2.5. After the half, the stop moves to the entry and then trails.
 
-One loss does nothing. Two do nothing. The third ends the day. Do not raise the clip after a win.
+One loss does nothing. Two do nothing. The third ends the day. Do not raise the clip after a win. The screen does not scale the clip up.
 
 ## Why 8%, not 15%
 
