@@ -1,7 +1,8 @@
 /**
- * Firecrawl Spark brief, Alexandria catalog, MiroFish last run, and the desk news calendar.
- * A fresh Spark or Alexandria probability moves the chance. A fresh read that
- * disagrees with the ticket sits it. A missing or stale file does not.
+ * Firecrawl Spark brief, Alexandria catalog, MiroFish last run, and the desk news calendar, read from disk.
+ * A fresh read that disagrees with the ticket sits it. A missing or stale Spark card does NOT sit a ticket
+ * (judgeIntel returns ok with why "spark_stale"). This file never starts a paid job: onGatePass only writes
+ * a request file that the research worker (scripts/intel-worker.ts) picks up.
  */
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
@@ -87,7 +88,7 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
   const at = Date.parse(String(spark?.at ?? ""));
   const card = spark?.card as { bias?: string; asset?: string; probability?: number | null } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
-  if (!fresh) return done(false, "spark_stale", null, null, sparkL);
+  if (!fresh) return done(true, "spark_stale", null, null, sparkL);
 
   const bias = String(card.bias ?? "unclear");
   const asset = String(card.asset ?? "unclear");
@@ -210,17 +211,17 @@ export type IntelRun = {
 
 let lastIntelKick = 0;
 
-/** Called only after the price gate has a ticket. Spark, Alexandria, and Firecrawl run from here. Does not wait. A second pass inside 10 minutes does not start another paid job. */
+/** Called only after the price gate has a ticket. Asks the research worker for a fresh read by writing a request file. Does not wait, does not spend. At most one request per 10 minutes. */
 export function onGatePass(series: Series, side: "yes" | "no", now = Date.now()): IntelRun {
   const controls = { spark: true, alexandria: true, firecrawl: true };
   const requested: string[] = [];
   if (now - lastIntelKick >= 10 * 60_000) {
     requested.push("spark", "alexandria", "firecrawl");
     lastIntelKick = now;
-    void import("@/lib/live/spark.server").then((m) => m.kickSparkOnPass()).catch(() => undefined);
-    void import("@/lib/live/firecrawl.server")
-      .then((m) => m.searchNews(`${series} macro`, 5).catch(() => undefined))
-      .catch(() => undefined);
+    try {
+      mkdirSync(`${DATA_ROOT}/desk`, { recursive: true });
+      writeFileSync(`${DATA_ROOT}/desk/intel-request.json`, JSON.stringify({ at: new Date(now).toISOString(), series, side, query: `${series} macro` }));
+    } catch { /* the worker simply sees no request */ }
   }
   const row: IntelRun = {
     ts: new Date(now).toISOString(),
