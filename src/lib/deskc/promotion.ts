@@ -83,7 +83,7 @@ export function promotionDocument(bySetup: Record<string, DecisionRow[]>, at: nu
 export function aggressionReleaseAllowed(doc: PromotionDoc | null): { ok: boolean; why: string } {
   if (!doc || doc.modelVersion !== MODEL_VERSION) return { ok: false, why: "no scorecard, caps stay at the approved dollars" };
   const hit = Object.entries(doc.setups).find(([, s]) => s.state === "ELIGIBLE");
-  if (!hit) return { ok: false, why: "no setup beat the price after fees, full Kelly is $0" };
+  if (!hit) return { ok: false, why: "no setup beat the price after fees" };
   return { ok: true, why: `${hit[0]} cleared the fast lane` };
 }
 export function pctModeInterlock(doc: PromotionDoc | null): { ok: boolean; why: string } {

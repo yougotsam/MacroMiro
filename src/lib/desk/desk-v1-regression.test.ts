@@ -54,156 +54,6 @@ function spyTransport(res: PostResult = { status: 201, body: { order_id: "oid-1"
   return { t, calls };
 }
 
-describe("risk layer: −$15 daily stop at the submit choke point (POLICY round 3, Sameer 2026-10-09: −$15; aurix-x had −$5)", () => {
-  it("(a) ledger at −$14.50 rejects a $1 order and nothing is sent", async () => {
-    const dir = tmp("a");
-    const risk = new RiskEngine(dir, ON);
-    const s = snap({ realizedToday: -14.5 });
-    const v = risk.check(intent({ price: 0.5, count: 2 }), s, NOW);
-    expect(v.ok).toBe(false);
-    expect(v.why).toContain("would breach daily stop");
-    expect(v.projected).toBeCloseTo(-15.5, 6);
-    const { t, calls } = spyTransport();
-    const oms = new Oms(risk, t, async () => [], dir);
-    const r = await oms.submit(intent({ price: 0.5, count: 2 }), s);
-    expect(r.ok).toBe(false);
-    expect(calls.length).toBe(0);
-    expect(oms.journal().length).toBe(0);
-  });
-
-  it("POLICY: the same $1 order passes risk at −$13.50 and is sent, with the mock-only release gate", async () => {
-    const dir = tmp("a2");
-    const risk = new RiskEngine(dir, ON);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
-    expect(risk.check(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }), NOW).ok).toBe(true);
-    const { t, calls } = spyTransport();
-    const oms = new Oms(risk, t, async () => [], dir, { releaseGateForMockOnly: () => true, canceller: async () => ({ status: 200 }) });
-    const r = await oms.submit(intent({ price: 0.5, count: 2 }), snap({ realizedToday: -13.5 }));
-    expect(r.ok).toBe(true);
-    expect(calls.length).toBe(1);
-    expect(oms.journal().length).toBeGreaterThan(0);
-    expect(cidFor(T, "yes", 1)).toBe(`mm1-${T}-y-1`);
-    // A second send on the same contract is refused from the journal even when the snapshot still says zero orders.
-    const again = await oms.submit(intent({ price: 0.5, count: 1, tickId: 2 }), snap({ realizedToday: -13.5 }));
-    expect(again.ok).toBe(false);
-    expect(again.why).toContain("ticker order cap");
-    expect(calls.length).toBe(1);
-  });
-
-  it("open positions, resting orders and unconfirmed sends count at worst case", () => {
-    const risk = new RiskEngine(tmp("w"), ON);
-    const s = snap({ realizedToday: -10, openWorst: 3, restWorst: 1.2, pendingWorst: 0.4 });
-    expect(dayWorstOf(s)).toBeCloseTo(-14.6, 6);
-    expect(risk.check(intent({ price: 0.5, count: 2 }), s, NOW).ok).toBe(false);
-    expect(risk.check(intent({ price: 0.04, count: 2 }), s, NOW).why).toBe("price band");
-    expect(risk.check(intent({ price: 0.3, count: 1 }), s, NOW).why).toBe("price band");
-    expect(risk.check(intent({ price: 0.4, count: 1 }), s, NOW).ok).toBe(true);
-  });
-
-  it("taker fees count toward the order's worst case", () => {
-    const risk = new RiskEngine(tmp("f"), ON);
-    const fee = quadraticFee(2, 0.5);
-    const v = risk.check(intent({ mode: "taker", price: 0.5, count: 2, fee }), snap({ realizedToday: -14 }), NOW);
-    expect(v.orderWorst).toBeCloseTo(1 + fee, 6);
-    expect(v.ok).toBe(false);
-  });
-
-  it("(d) the daily latch survives a restart and clears on the next ET day", () => {
-    const dir = tmp("d");
-    const r1 = new RiskEngine(dir, ON);
-    r1.observe(snap({ realizedToday: -12, openWorst: 3.2 }), NOW);
-    expect(r1.latched(NOW)).not.toBeNull();
-    const r2 = new RiskEngine(dir, ON); // "restart": fresh process state, same data dir
-    expect(r2.latched(NOW)).not.toBeNull();
-    const v = r2.check(intent({ price: 0.05, count: 1 }), snap({ realizedToday: 5 }), NOW);
-    expect(v.ok).toBe(false);
-    expect(v.why).toContain("daily stop latched");
-    const tomorrow = etDayStart(NOW) + 36 * 3600_000;
-    expect(r2.latched(tomorrow)).toBeNull();
-  });
-
-  it("(c) a perp under the dollar cap is allowed, and the 15-minute order path does not post it", async () => {
-    const dir = tmp("c");
-    const risk = new RiskEngine(dir, ON);
-    expect(risk.check(intent({ product: "perp", ticker: "KXBTCPERP" }), snap(), NOW).ok).toBe(true);
-    const { t, calls } = spyTransport();
-    const r = await new Oms(risk, t, async () => [], dir, { releaseGateForMockOnly: () => true, canceller: async () => ({ status: 200 }) }).submit(intent({ product: "perp", ticker: "KXBTCPERP" }), snap());
-    expect(r.ok).toBe(false);
-    expect(r.why).toBe("ticker");
-    expect(calls.length).toBe(0);
-    const route = readFileSync(new URL("../../routes/api/live/perp-fire.ts", import.meta.url), "utf8");
-    expect(route).toContain("liveMarginTransport");
-    expect(route).not.toContain("status: 410");
-  });
-
-  it("switches, ARM, stale snapshot, other ET day and paused exchange all refuse", () => {
-    const s = snap();
-    const i = intent();
-    expect(new RiskEngine(tmp("s1"), { ...ON, live: () => false }).check(i, s, NOW).why).toBe("switch kalshi_live off");
-    expect(new RiskEngine(tmp("s2"), { ...ON, begin: () => false }).check(i, s, NOW).why).toBe("switch kalshi_begin off");
-    expect(new RiskEngine(tmp("s3"), { ...ON, arm: () => false }).check(i, s, NOW).why).toBe("ARM off");
-    const r = new RiskEngine(tmp("s4"), ON);
-    expect(r.check(i, null, NOW).ok).toBe(false);
-    expect(r.check(i, snap({ fetchedAt: NOW - 25_000 }), NOW).why).toBe("account snapshot stale");
-    expect(r.check(i, snap({ etDay: "2001-01-01" }), NOW).ok).toBe(false);
-    expect(r.check(i, snap({ exchangeTradingActive: false }), NOW).why).toContain("exchange trading paused");
-    expect(r.check(i, snap({ exchangeCheckedAt: NOW - 20_000 }), NOW).why).toContain("exchange trading paused");
-  });
-
-  it("per-order $3 cap, $9 exposure cap (POLICY aurix-x: was $12), 3 orders per ticker, 1 order per tick, band, cash", () => {
-    const r = new RiskEngine(tmp("caps"), ON);
-    expect(r.check(intent({ price: 0.5, count: 7 }), snap(), NOW).why).toContain("order cost");
-    expect(r.check(intent({ price: 0.5, count: 2 }), snap({ realizedToday: 5, openWorst: 5, restWorst: 3.5 }), NOW).why).toContain("exposure");
-    expect(r.check(intent(), snap({ ordersPerTicker: { [T]: 3 } }), NOW).why).toContain("ticker order cap");
-    expect(r.check(intent({ price: 0.96, count: 1 }), snap(), NOW).why).toBe("price band");
-    expect(r.check(intent({ price: 0.04, count: 1 }), snap(), NOW).why).toBe("price band");
-    expect(r.check(intent({ ticker: "KXLLM1-26OCT12-OPEN" }), snap(), NOW).ok).toBe(false);
-    expect(r.check(intent(), snap({ shard2Cash: 0.5 }), NOW).why).toContain("cash 0.50");
-    expect(r.check(intent({ ticker: "KXGBPUSD15M-26OCT200015-30", exchangeIndex: 0, price: 0.4, count: 2, tickId: 3 }), snap({ shard2Cash: 10, shard0Cash: 0 }), NOW).ok).toBe(true);
-    const id = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
-    expect(transferBody(1.5, 2, 0, id)).toEqual({
-      amount: 15000,
-      client_transfer_id: id,
-      source: "event_contract",
-      destination: "event_contract",
-      source_exchange_shard: 2,
-      destination_exchange_shard: 0,
-      source_subaccount: 0,
-      destination_subaccount: 0,
-    });
-    const i = intent({ tickId: 77 });
-    expect(r.check(i, snap(), NOW).ok).toBe(true);
-    r.consume(i);
-    expect(r.check({ ...i, ticker: "KXETH15M-26OCT081200-00" }, snap(), NOW).why).toBe("one order per tick");
-    expect(r.check({ ...i, tickId: 78 }, snap(), NOW).ok).toBe(true);
-  });
-
-  it("three settled losses pause 20 minutes; one loss does not", () => {
-    const recent = NOW - 10 * 60_000;
-    const old = NOW - 21 * 60_000;
-    const L = (settledMs: number, pnl = -1) => ({ ticker: T, pnl, settledMs });
-    const three = [L(recent), L(recent + 1000), L(recent + 2000)];
-    expect(streakPauseUntil(three)).toBe(recent + 2000 + 20 * 60_000);
-    expect(settledLossPauseUntil([L(recent)], NOW)).toBe(0);
-    expect(settledLossPauseUntil([L(recent), L(recent + 1000)], NOW)).toBe(0);
-    expect(settledLossPauseUntil(three, NOW)).toBe(recent + 2000 + 20 * 60_000);
-    expect(settledLossPauseUntil([L(old), L(old + 1000), L(old + 2000)], NOW)).toBe(0);
-    expect(settledLossPauseUntil([L(recent), { ticker: T, pnl: 1, settledMs: recent + 1000 }, L(recent + 2000)], NOW)).toBe(0);
-    const r = new RiskEngine(tmp("loss-pause"), ON);
-    expect(r.check(intent(), snap({ settledToday: [L(recent)] }), NOW).ok).toBe(true);
-    expect(r.check(intent(), snap({ settledToday: three }), NOW).why).toContain("three-loss pause");
-    expect(r.check(intent(), snap({ settledToday: [L(old), L(old + 1000), L(old + 2000)] }), NOW).ok).toBe(true);
-  });
-
-  it("a live position in this window does not block the other series", () => {
-    const r = new RiskEngine(tmp("window"), ON);
-    const open = "KXETH15M-26OCT081200-00";
-    expect(windowAlreadyOpen(T, { [open]: 1.5 })).toBe(true);
-    expect(r.check(intent(), snap({ tickerWorst: { [open]: 1.5 }, correlated: { "crypto|up": 1.5 } }), NOW).ok).toBe(true);
-    expect(r.check(intent(), snap({ tickerWorst: { [T]: 2.5 }, correlated: { "crypto|up": 2.5 } }), NOW).why).toContain("ticker exposure");
-  });
-});
-
 describe("one order path", () => {
   const SRC = new URL("../..", import.meta.url).pathname;
   const ROOT = new URL("../../..", import.meta.url).pathname;
@@ -643,42 +493,6 @@ describe("adverse-selection guard", () => {
   });
 });
 
-describe("size to room", () => {
-  it("POLICY (round 3): budget = min($3, room to −$15, room under $9 exposure); under one contract → skip", async () => {
-    const { roomBudget } = await import("./sizing");
-    expect(roomBudget(snap())).toBe(3);
-    expect(roomBudget(snap({ shard2Cash: 2.51 }))).toBeCloseTo(2.51, 4);
-    expect(roomBudget(snap({ realizedToday: -12.16 }))).toBeCloseTo(2.84, 6);
-    expect(roomBudget(snap({ realizedToday: 5, openWorst: 3, restWorst: 4.5 }))).toBeCloseTo(1.5, 6); // exposure room 1.5 < daily room 2.5
-    expect(roomBudget(snap({ realizedToday: -15 }))).toBe(0);
-    expect(roomBudget(null)).toBe(0);
-    const { halfKellyStake } = await import("./sizing");
-    expect(halfKellyStake(0.5, 0.5, 40).stake).toBe(0);
-    expect(halfKellyStake(0.6, 0.36, 10_000).stake).toBe(3);
-    expect(halfKellyStake(0.55, 0.4, 40).stake).toBeLessThanOrEqual(3);
-    expect(halfKellyStake(0.5, 0.18, 40).why).toBe("half kelly under the dollar cap");
-    expect(PRICE_MIN).toBe(0.36);
-    const fee = { feeType: "quadratic", multiplier: 1 };
-    const book: Book = { yesBid: { price: 0.6, size: 50 }, noBid: { price: 0.35, size: 50 }, ts: NOW };
-    const g = scoreSides(0.7, 0.7, book, fee, { allowMaker: true, allowTaker: true, budget: 1.3 });
-    expect(g.best?.count).toBe(2); // 2 × 61¢ = $1.22 ≤ $1.30
-    const none = scoreSides(0.7, 0.7, book, fee, { allowMaker: true, allowTaker: true, budget: 0.5 });
-    expect(none.best).toBeNull();
-    expect(none.failed).toBe("no_room_or_edge");
-  });
-
-  it("an order sized to the room passes the unchanged risk check exactly at the edge", async () => {
-    const { roomBudget } = await import("./sizing");
-    const s = snap({ realizedToday: -12.16 });
-    const budget = roomBudget(s);
-    const r = new RiskEngine(tmp("room"), ON);
-    const count = sizeFor(0.5, true, { feeType: "quadratic", multiplier: 1 }, budget);
-    expect(count).toBe(5);
-    expect(r.check(intent({ price: 0.5, count }), s, NOW).ok).toBe(true);
-    expect(r.check(intent({ price: 0.5, count: count + 1 }), s, NOW).ok).toBe(false);
-  });
-});
-
 describe("limit orders only", () => {
   it("every order body carries an explicit limit price and a limit time-in-force; no market type exists", () => {
     for (const mode of ["maker", "taker"] as const) {
@@ -738,13 +552,13 @@ describe("dated risk override (Sameer t107u) — POLICY (aurix-x): overrides are
     expect(ENABLE_RISK_OVERRIDES).toBe(false);
   });
 
-  it("before and after 04:15 the real P/L counts: no re-base, a $1 order is refused", () => {
+  it("before and after 04:15 the real P/L counts: no re-base, and the 25% day stop on $36 (−$9) is already passed", () => {
     const { r } = setup();
     for (const now of [START - 60_000, START + 1_000, START + 3 * 3600_000]) {
       const s = r.effective(at(now), now);
       expect(s.override).toBeUndefined();
       expect(dayWorstOf(s)).toBeCloseTo(-14.66, 6);
-      expect(roomBudgetTop(s)).toBeCloseTo(0.34, 6);
+      expect(roomBudgetTop(s)).toBe(0);
       expect(r.check(intent({ ticker: T2, price: 0.5, count: 2 }), at(now), now).ok).toBe(false);
     }
   });

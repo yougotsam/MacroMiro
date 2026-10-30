@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendDecision, brier, brierBeatsPrice, logLoss, readDecisions, renderDailyReport, type DecisionRow } from "./scorecard";
 import { judgeSetup, pctModeInterlock, promotionDocument } from "./promotion";
-import { quarterKellyStake } from "./sizing";
 import { resolutionRider, RIDER_SETUP, type RiderInput } from "./rider";
 
 function row(n: number, over: Partial<DecisionRow> = {}): DecisionRow {
@@ -126,39 +125,6 @@ describe("promotion gate", () => {
   });
 });
 
-describe("quarter kelly", () => {
-  const doc = promotionDocument(
-    { [RIDER_SETUP]: Array.from({ length: 300 }, (_, i) => row(i, { filled: true })) },
-    1,
-    MODEL_VERSION,
-    { windowSize: 50, embargoMs: 0 },
-  );
-  const base = { setup: RIDER_SETUP, doc, calibrated: true, p: 0.9, price: 0.4, bankroll: 1000, flatBudget: 3, roomTotal: 9, roomTicker: 3, roomCorrelated: 4 };
-
-  it("clamps a huge edge to the existing order cap", () => {
-    const s = quarterKellyStake({ ...base, p: 0.99, price: 0.05, bankroll: 10_000, roomTotal: 100, roomTicker: 100, roomCorrelated: 100 });
-    expect(s.stake).toBe(MAX_ORDER_COST_USD);
-    expect(s.stake).toBeLessThanOrEqual(3);
-  });
-
-  it("stakes nothing on a tiny win chance", () => {
-    expect(quarterKellyStake({ ...base, p: 0.01, price: 0.5 }).stake).toBe(0);
-  });
-
-  it("stakes nothing when the file is stale, missing, or the wrong model", () => {
-    expect(quarterKellyStake({ ...base, calibrated: false }).stake).toBe(0);
-    expect(quarterKellyStake({ ...base, doc: null }).stake).toBe(0);
-    expect(quarterKellyStake({ ...base, doc: { ...doc, modelVersion: "other" } }).stake).toBe(0);
-  });
-
-  it("leaves a research setup on the flat budget", () => {
-    const research = promotionDocument({ [RIDER_SETUP]: [row(0)] }, 1);
-    const s = quarterKellyStake({ ...base, doc: research, flatBudget: 2 });
-    expect(s.why).toContain("flat");
-    expect(s.stake).toBe(2);
-  });
-});
-
 describe("resolution rider", () => {
   it("buys the favorite when momentum, flow, and the spread agree", () => {
     const d = resolutionRider(goodRider());
@@ -185,7 +151,7 @@ describe("resolution rider", () => {
   });
 
   it("does not raise the price ceiling", () => {
-    const d = resolutionRider({ ...goodRider(), favoredPrice: 0.8 });
+    const d = resolutionRider({ ...goodRider(), favoredPrice: 0.97 });
     expect(d.trade).toBe(false);
     expect(d.reasons.band).toContain(String(PRICE_MAX));
   });

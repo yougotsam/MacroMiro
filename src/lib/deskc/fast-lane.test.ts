@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { resolveRiskLimits, RISK_LIMITS, MODEL_VERSION, MAX_ORDER_COST_USD } from "../desk/config";
 import { aggressionReleaseAllowed, FAST_LANE_MIN, FAST_LANE_Z, judgeSetup, promotionDocument } from "./promotion";
-import { fullKellyStake } from "./sizing";
 import { toScoreRow } from "./retro";
 import type { DecisionRow } from "./scorecard";
 
@@ -26,21 +25,6 @@ describe("fast lane", () => {
     const doc = promotionDocument({ "settlement-model": rows }, 1, MODEL_VERSION, { minDecisions: FAST_LANE_MIN, z: FAST_LANE_Z, windowSize: 25, embargoMs: 0 });
     expect(doc.setups["settlement-model"].state).toBe("RESEARCH");
     expect(aggressionReleaseAllowed(doc).ok).toBe(false);
-    expect(fullKellyStake({
-      setup: "settlement-model", doc, calibrated: true, p: 0.9, price: 0.2, bankroll: 1000,
-      flatBudget: 3, roomTotal: 9, roomTicker: 3, roomCorrelated: 4,
-    }).stake).toBe(0);
-  });
-
-  it("full Kelly cannot exceed the existing dollar cap", () => {
-    const doc = promotionDocument({ "settlement-model": Array.from({ length: 100 }, (_, i) => sharp(i)) }, 1, MODEL_VERSION, { minDecisions: FAST_LANE_MIN, z: FAST_LANE_Z, windowSize: 25, embargoMs: 0 });
-    const s = fullKellyStake({
-      setup: "settlement-model", doc, calibrated: true, p: 0.99, price: 0.05, bankroll: 100_000,
-      flatBudget: 50, roomTotal: 50, roomTicker: 50, roomCorrelated: 50,
-    });
-    expect(s.why).toBe("full kelly");
-    expect(s.stake).toBe(MAX_ORDER_COST_USD);
-    expect(s.stake).toBeLessThanOrEqual(3);
   });
 
   it("an unknown account value refuses percent sizing", () => {

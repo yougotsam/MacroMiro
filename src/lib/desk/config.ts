@@ -97,7 +97,7 @@ export const BASE_MIN_EDGE = 0.01; // the settlement model alone (no features) m
 export const FEATURE_MAX_SHIFT = 0.04; // the small chart vote, before the confluence step.
 export const LOGIT_CONFLUENCE = 0.45; // sniper score >= 8, or a feature score at least 0.45.
 export const LOGIT_HIGH = 0.80; // sniper score >= 11, or a feature score at least 0.75. Not cut by the 4-point cap.
-export const WINDOW_EQUITY_CAP = 0.15; // half-Kelly may talk about 15% of equity. The $3 order cap is tighter and is the one that sends.
+export const WINDOW_EQUITY_CAP = 0.15; // window equity cap (no Kelly sizing anywhere). The $3 order cap is tighter and is the one that sends.
 export const P_CLAMP = 0.98; // never claim more certainty than this
 export const MIN_SECONDS_LEFT = 3;
 
