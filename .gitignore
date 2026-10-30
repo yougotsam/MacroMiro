@@ -23,3 +23,7 @@ mirofish/**/logs/
 mirofish/**/__pycache__/
 mirofish/backend/uploads/
 mirofish/frontend/dist/
+
+# Signal bars are re-pulled from Coinbase; reports are generated daily
+data/signal/bars/
+data/reports/

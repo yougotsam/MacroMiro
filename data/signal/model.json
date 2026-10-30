@@ -1,0 +1,222 @@
+{
+ "builtAt": "2026-10-30T10:44:41.121Z",
+ "protocol": {
+  "minTrades": 200,
+  "minTrainDays": 21,
+  "foldDays": 7,
+  "predPrice": 0.51,
+  "predFeeRate": 0.07,
+  "contractsPerOrder": 5,
+  "perpRoundTripFee": 0.001,
+  "minFoldsPositive": 0.6,
+  "ridge": 5,
+  "edgeCuts": [
+   0,
+   0.005,
+   0.01,
+   0.02,
+   0.03,
+   0.05,
+   0.08
+  ]
+ },
+ "model": {
+  "version": "signal-v1-2026-10-30",
+  "features": [
+   "mom1",
+   "mom4",
+   "ema_stack",
+   "tunnel",
+   "tunnel_stack",
+   "rsi",
+   "rsi_div",
+   "sweep",
+   "bos",
+   "choch",
+   "fvg",
+   "ob_retest",
+   "premium_discount",
+   "vwap",
+   "adr_exhaust",
+   "kz_sweep",
+   "kz_mom",
+   "ny_mom",
+   "london_mom",
+   "release_mom",
+   "news_spark",
+   "news_rates",
+   "mirofish"
+  ],
+  "bias": -0.03964742160113109,
+  "weights": [
+   -0.1699223812938318,
+   -0.055769497820340894,
+   -0.001591249112685908,
+   0.025831984293216335,
+   0.008566055526794297,
+   -0.1787312991298697,
+   0.019611635129734697,
+   0.02289474702019621,
+   -0.02133529225998359,
+   -0.006486006657409906,
+   0.0011211410339600557,
+   -0.011902750560871991,
+   -0.026073075761041474,
+   -0.07879925336846434,
+   0.07848173681275318,
+   -0.04335968051091297,
+   -0.015265464580764289,
+   -0.03285186820415376,
+   0.01758640362340509,
+   0.17199618726022517,
+   0,
+   0,
+   0
+  ],
+  "ridge": 5,
+  "trainedOn": {
+   "n": 82150,
+   "from": "2026-05-12T00:45:00.000Z",
+   "to": "2026-10-30T10:15:00.000Z"
+  }
+ },
+ "entryCut": {
+  "prediction": 0.03,
+  "perp": 0.01
+ },
+ "verdict": {
+  "prediction": {
+   "product": "prediction",
+   "trades": 2673,
+   "winRate": 0.55331088664422,
+   "meanPnl": 0.025310886644219266,
+   "ci95": [
+    0.0009317245793592846,
+    0.04969004870907925
+   ],
+   "totalPnl": 67.6559999999981,
+   "foldsPositive": 16,
+   "folds": 22,
+   "brierModel": 0.2494674315752212,
+   "brierBase": 0.25,
+   "byAsset": {
+    "GOLD": {
+     "trades": 705,
+     "winRate": 0.5460992907801419,
+     "meanPnl": 0.018099290780141546
+    },
+    "XRP": {
+     "trades": 490,
+     "winRate": 0.563265306122449,
+     "meanPnl": 0.03526530612244869
+    },
+    "BTC": {
+     "trades": 544,
+     "winRate": 0.5477941176470589,
+     "meanPnl": 0.019794117647058733
+    },
+    "SOL": {
+     "trades": 442,
+     "winRate": 0.5610859728506787,
+     "meanPnl": 0.033085972850678456
+    },
+    "ETH": {
+     "trades": 492,
+     "winRate": 0.5528455284552846,
+     "meanPnl": 0.024845528455284347
+    }
+   },
+   "kept": true,
+   "why": "passed: ≥200 trades, positive after fees with 95% confidence, beats base, most weeks positive"
+  },
+  "perp": {
+   "product": "perp",
+   "trades": 41084,
+   "winRate": 0.2577645798851134,
+   "meanPnl": -0.0010074062904760024,
+   "ci95": [
+    -0.0010492558244303714,
+    -0.0009655567565216333
+   ],
+   "totalPnl": -41.38828003791608,
+   "foldsPositive": 0,
+   "folds": 22,
+   "brierModel": 0.2494674315752212,
+   "brierBase": 0.25,
+   "byAsset": {
+    "GOLD": {
+     "trades": 8419,
+     "winRate": 0.13778358474878252,
+     "meanPnl": -0.000974111105908528
+    },
+    "XRP": {
+     "trades": 8143,
+     "winRate": 0.314626059191944,
+     "meanPnl": -0.0010376111053671182
+    },
+    "BTC": {
+     "trades": 8295,
+     "winRate": 0.23098251959011454,
+     "meanPnl": -0.0010021455737236563
+    },
+    "SOL": {
+     "trades": 8129,
+     "winRate": 0.3261163734776725,
+     "meanPnl": -0.0010105819167109174
+    },
+    "ETH": {
+     "trades": 8098,
+     "winRate": 0.2841442331439862,
+     "meanPnl": -0.0010138495272026256
+    }
+   },
+   "kept": false,
+   "why": "95% interval low -0.0010 ≤ 0 after fees; only 0% of weeks positive"
+  }
+ },
+ "reliability": [
+  {
+   "from": 0,
+   "to": 0.45,
+   "n": 9288,
+   "meanP": 0.43216495051284204,
+   "hitRate": 0.452411714039621
+  },
+  {
+   "from": 0.45,
+   "to": 0.48,
+   "n": 20762,
+   "meanP": 0.46670050630078214,
+   "hitRate": 0.4788556015798093
+  },
+  {
+   "from": 0.48,
+   "to": 0.5,
+   "n": 17449,
+   "meanP": 0.4898719024368042,
+   "hitRate": 0.48593042581236745
+  },
+  {
+   "from": 0.5,
+   "to": 0.52,
+   "n": 13315,
+   "meanP": 0.5093035138009688,
+   "hitRate": 0.5051445737889598
+  },
+  {
+   "from": 0.52,
+   "to": 0.55,
+   "n": 9263,
+   "meanP": 0.5317795319002547,
+   "hitRate": 0.5299578970096082
+  },
+  {
+   "from": 0.55,
+   "to": 1,
+   "n": 2004,
+   "meanP": 0.5644699234662028,
+   "hitRate": 0.5489021956087824
+  }
+ ],
+ "assumptions": "Prediction fills assumed at 51¢ taker with quadratic fee; perps 0.10% round trip; label = next 15m close vs this close; gold uses PAXG-USD as its price."
+}
