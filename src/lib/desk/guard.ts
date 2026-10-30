@@ -38,8 +38,8 @@ export function guardVerdict(input: {
   /** Settled losses in a row. Three ends the day. */
   lossesInARow?: number;
 }): GuardVerdict {
-  const direction = input.side === "yes" ? "long" : input.side === "no" ? "short" : "neutral";
-  const setup_q = input.side ? 2 : 0;
+  const direction: GuardVerdict["direction"] = input.side === "yes" ? "long" : input.side === "no" ? "short" : "neutral";
+  const setup_q: GuardVerdict["setup_q"] = input.side ? 2 : 0;
   const cash = input.cash;
   const draw = cash > 0 ? -input.dayWorst / cash : 1;
   const streak = input.lossesInARow ?? 0;
@@ -53,3 +53,7 @@ export function guardVerdict(input: {
   if (risk_state !== "safe") return { ...base, why: `risk ${risk_state}` };
   return { ...base, fire: true, why: "kept and measured" };
 }
+
+// The execution guard (fast-move cancel, final-seconds pull, price floor) lives in exec-guard.ts.
+// It was dropped by mistake when this file was rewritten on 2026-10-27; the engine still needs it.
+export * from "./exec-guard";

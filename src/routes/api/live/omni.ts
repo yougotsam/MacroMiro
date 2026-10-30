@@ -38,7 +38,7 @@ export const Route = createFileRoute("/api/live/omni")({
         return Response.json({
           ok: true,
           sendsOrders: false,
-          locks: { predictions: CALIBRATED_MODEL_APPROVED === false, perps: PERPS_ORDERS_LOCKED === true },
+          locks: { predictions: CALIBRATED_MODEL_APPROVED === false, perps: Boolean(PERPS_ORDERS_LOCKED) },
           error: board.error,
           rows: board.rows,
           ledger,
