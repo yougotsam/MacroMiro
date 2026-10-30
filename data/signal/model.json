@@ -1,5 +1,5 @@
 {
- "builtAt": "2026-10-30T10:44:41.121Z",
+ "builtAt": "2026-10-30T23:58:36.058Z",
  "protocol": {
   "minTrades": 200,
   "minTrainDays": 21,
@@ -7,7 +7,6 @@
   "predPrice": 0.51,
   "predFeeRate": 0.07,
   "contractsPerOrder": 5,
-  "perpRoundTripFee": 0.001,
   "minFoldsPositive": 0.6,
   "ridge": 5,
   "edgeCuts": [
@@ -21,7 +20,7 @@
   ]
  },
  "model": {
-  "version": "signal-v1-2026-10-30",
+  "version": "signal-v2-2026-10-30",
   "features": [
    "mom1",
    "mom4",
@@ -45,85 +44,101 @@
    "release_mom",
    "news_spark",
    "news_rates",
-   "mirofish"
+   "mirofish",
+   "tone_asset",
+   "tone_macro",
+   "release_drift"
   ],
-  "bias": -0.03964742160113109,
+  "bias": -0.0451468168112552,
   "weights": [
-   -0.1699223812938318,
-   -0.055769497820340894,
-   -0.001591249112685908,
-   0.025831984293216335,
-   0.008566055526794297,
-   -0.1787312991298697,
-   0.019611635129734697,
-   0.02289474702019621,
-   -0.02133529225998359,
-   -0.006486006657409906,
-   0.0011211410339600557,
-   -0.011902750560871991,
-   -0.026073075761041474,
-   -0.07879925336846434,
-   0.07848173681275318,
-   -0.04335968051091297,
-   -0.015265464580764289,
-   -0.03285186820415376,
-   0.01758640362340509,
-   0.17199618726022517,
+   -0.15464491582616127,
+   0.01148765752574898,
+   0.003955783377366018,
+   0.03783610094664776,
+   -0.0026867299040621915,
+   -0.1612001640015039,
+   0.018291217938322633,
+   0.017961516306177924,
+   -0.04046602270441958,
+   0.0034213624924148657,
+   -0.014722572125240606,
+   -0.007322367199784071,
+   -0.025331964703326965,
+   -0.11753918853715649,
+   0.09523003443497126,
+   -0.06367472914075471,
+   -0.029325738741691688,
+   -0.06259710513330075,
+   0.03327136639157993,
+   0.05583671577612624,
    0,
    0,
-   0
+   0.15,
+   0,
+   0,
+   0.17338079308766863
   ],
   "ridge": 5,
   "trainedOn": {
-   "n": 82150,
+   "n": 82303,
    "from": "2026-05-12T00:45:00.000Z",
-   "to": "2026-10-30T10:15:00.000Z"
+   "to": "2026-10-30T23:15:00.000Z"
+  }
+ },
+ "priors": {
+  "mirofish": {
+   "weight": 0.15,
+   "why": "documented prior: no scored history yet (see config.ts); replaced by a measured weight after 30 scored runs"
+  },
+  "news_spark": {
+   "weight": 0,
+   "why": "the Spark card is a live read of the same headlines; it borrows the measured tone_asset weight"
   }
  },
  "entryCut": {
-  "prediction": 0.03,
-  "perp": 0.01
+  "prediction": 0.05,
+  "perp": 0
  },
  "verdict": {
   "prediction": {
    "product": "prediction",
-   "trades": 2673,
-   "winRate": 0.55331088664422,
-   "meanPnl": 0.025310886644219266,
+   "trades": 3559,
+   "winRate": 0.5507164933970217,
+   "meanPnl": 0.022716493397020452,
    "ci95": [
-    0.0009317245793592846,
-    0.04969004870907925
+    0.0013484056137760062,
+    0.0440845811802649
    ],
-   "totalPnl": 67.6559999999981,
-   "foldsPositive": 16,
+   "totalPnl": 80.84799999999579,
+   "foldsPositive": 15,
    "folds": 22,
-   "brierModel": 0.2494674315752212,
+   "brierModel": 0.2494138266045296,
    "brierBase": 0.25,
    "byAsset": {
     "GOLD": {
-     "trades": 705,
-     "winRate": 0.5460992907801419,
-     "meanPnl": 0.018099290780141546
-    },
-    "XRP": {
-     "trades": 490,
-     "winRate": 0.563265306122449,
-     "meanPnl": 0.03526530612244869
-    },
-    "BTC": {
-     "trades": 544,
-     "winRate": 0.5477941176470589,
-     "meanPnl": 0.019794117647058733
+     "trades": 865,
+     "winRate": 0.545664739884393,
+     "meanPnl": 0.01766473988439309
     },
     "SOL": {
-     "trades": 442,
-     "winRate": 0.5610859728506787,
-     "meanPnl": 0.033085972850678456
+     "trades": 606,
+     "winRate": 0.5808580858085809,
+     "meanPnl": 0.052858085808581264
     },
     "ETH": {
-     "trades": 492,
-     "winRate": 0.5528455284552846,
-     "meanPnl": 0.024845528455284347
+     "trades": 692,
+     "winRate": 0.569364161849711,
+     "meanPnl": 0.04136416184971118
+    },
+    "BTC": {
+     "trades": 738,
+     "winRate": 0.524390243902439,
+     "meanPnl": -0.0036097560975611484
+    },
+    "XRP": {
+     "trades": 658,
+     "winRate": 0.5395136778115501,
+     "meanPnl": 0.011513677811550063
     }
    },
    "kept": true,
@@ -131,92 +146,152 @@
   },
   "perp": {
    "product": "perp",
-   "trades": 41084,
-   "winRate": 0.2577645798851134,
-   "meanPnl": -0.0010074062904760024,
+   "trades": 578,
+   "winRate": 0.4982698961937716,
+   "meanPnl": -0.09033105750206362,
    "ci95": [
-    -0.0010492558244303714,
-    -0.0009655567565216333
+    0,
+    0
    ],
-   "totalPnl": -41.38828003791608,
-   "foldsPositive": 0,
-   "folds": 22,
-   "brierModel": 0.2494674315752212,
-   "brierBase": 0.25,
+   "totalPnl": -107.66301671421157,
+   "foldsPositive": 1,
+   "folds": 5,
+   "brierModel": 0,
+   "brierBase": 0,
    "byAsset": {
-    "GOLD": {
-     "trades": 8419,
-     "winRate": 0.13778358474878252,
-     "meanPnl": -0.000974111105908528
-    },
-    "XRP": {
-     "trades": 8143,
-     "winRate": 0.314626059191944,
-     "meanPnl": -0.0010376111053671182
-    },
     "BTC": {
-     "trades": 8295,
-     "winRate": 0.23098251959011454,
-     "meanPnl": -0.0010021455737236563
-    },
-    "SOL": {
-     "trades": 8129,
-     "winRate": 0.3261163734776725,
-     "meanPnl": -0.0010105819167109174
+     "trades": 79,
+     "winRate": 0.4810126582278481,
+     "meanPnl": -0.1996363837886055
     },
     "ETH": {
-     "trades": 8098,
-     "winRate": 0.2841442331439862,
-     "meanPnl": -0.0010138495272026256
+     "trades": 62,
+     "winRate": 0.5161290322580645,
+     "meanPnl": -0.10931358552075751
+    },
+    "SOL": {
+     "trades": 129,
+     "winRate": 0.5193798449612403,
+     "meanPnl": -0.09390332344370696
+    },
+    "XRP": {
+     "trades": 76,
+     "winRate": 0.5,
+     "meanPnl": -0.10665940114702861
+    },
+    "GOLD": {
+     "trades": 232,
+     "winRate": 0.4870689655172414,
+     "meanPnl": -0.04070254915169653
     }
    },
    "kept": false,
-   "why": "95% interval low -0.0010 ≤ 0 after fees; only 0% of weeks positive"
+   "why": "Sameer's rules, 180 days: BTC -26.4%, ETH -25.5%, SOL -28.7%, XRP -27.9%, GOLD 0.8% after fees and funding; not kept (needs ≥200 trades and a positive result with 95% confidence)"
   }
+ },
+ "releaseWindow": {
+  "buckets": [
+   {
+    "from": -120,
+    "to": -60,
+    "n": 29,
+    "mean": -0.07972413793103451
+   },
+   {
+    "from": -60,
+    "to": -30,
+    "n": 22,
+    "mean": 0.10836363636363634
+   },
+   {
+    "from": -30,
+    "to": -15,
+    "n": 13,
+    "mean": 0.010461538461538437
+   },
+   {
+    "from": -15,
+    "to": 0,
+    "n": 25,
+    "mean": -0.04800000000000002
+   },
+   {
+    "from": 0,
+    "to": 15,
+    "n": 27,
+    "mean": -0.19466666666666674
+   },
+   {
+    "from": 15,
+    "to": 30,
+    "n": 28,
+    "mean": -0.028000000000000025
+   },
+   {
+    "from": 30,
+    "to": 60,
+    "n": 26,
+    "mean": 0.010461538461538437
+   },
+   {
+    "from": 60,
+    "to": 120,
+    "n": 36,
+    "mean": 0.1942222222222221
+   },
+   {
+    "from": 120,
+    "to": 240,
+    "n": 59,
+    "mean": -0.08732203389830513
+   }
+  ],
+  "awayMean": 0.02806617647058699,
+  "awayN": 3264
  },
  "reliability": [
   {
    "from": 0,
    "to": 0.45,
-   "n": 9288,
-   "meanP": 0.43216495051284204,
-   "hitRate": 0.452411714039621
+   "n": 11076,
+   "meanP": 0.43044275584901626,
+   "hitRate": 0.4535030697002528
   },
   {
    "from": 0.45,
    "to": 0.48,
-   "n": 20762,
-   "meanP": 0.46670050630078214,
-   "hitRate": 0.4788556015798093
+   "n": 20689,
+   "meanP": 0.4664035062974538,
+   "hitRate": 0.47783846488472137
   },
   {
    "from": 0.48,
    "to": 0.5,
-   "n": 17449,
-   "meanP": 0.4898719024368042,
-   "hitRate": 0.48593042581236745
+   "n": 16322,
+   "meanP": 0.4897412065350215,
+   "hitRate": 0.4871951966670751
   },
   {
    "from": 0.5,
    "to": 0.52,
-   "n": 13315,
-   "meanP": 0.5093035138009688,
-   "hitRate": 0.5051445737889598
+   "n": 12517,
+   "meanP": 0.5093289629146943,
+   "hitRate": 0.5021970120635935
   },
   {
    "from": 0.52,
    "to": 0.55,
-   "n": 9263,
-   "meanP": 0.5317795319002547,
-   "hitRate": 0.5299578970096082
+   "n": 9316,
+   "meanP": 0.5320702908529177,
+   "hitRate": 0.5287677114641477
   },
   {
    "from": 0.55,
    "to": 1,
-   "n": 2004,
-   "meanP": 0.5644699234662028,
-   "hitRate": 0.5489021956087824
+   "n": 2331,
+   "meanP": 0.5649591591396058,
+   "hitRate": 0.5465465465465466
   }
  ],
- "assumptions": "Prediction fills assumed at 51¢ taker with quadratic fee; perps 0.10% round trip; label = next 15m close vs this close; gold uses PAXG-USD as its price."
+ "assumptions": "Prediction fills assumed at 51¢ taker with quadratic fee (checked by scripts/fills-vs-51.ts); label = next 15m close vs this close; gold = OKX XAU-USDT-SWAP (spot-gold perp). Perps verdict comes from the rules backtest, not this fit. News: official BLS/Fed release times and GDELT headline tone, both public and free."
 }

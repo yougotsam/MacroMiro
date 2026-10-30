@@ -1,0 +1,42 @@
+{
+  "builtAt": "2026-10-30T23:47:48.432Z",
+  "jobs": 3,
+  "calls": 4,
+  "scored": 4,
+  "hits": 4,
+  "rows": [
+    {
+      "scenario": "bearish",
+      "when": "2026-10-14T12:30:00.000Z",
+      "asset": "BTC",
+      "dir": -1,
+      "move": -0.022955832697703182,
+      "hit": true
+    },
+    {
+      "scenario": "bearish",
+      "when": "2026-10-14T12:30:00.000Z",
+      "asset": "ETH",
+      "dir": -1,
+      "move": -0.028832733562637824,
+      "hit": true
+    },
+    {
+      "scenario": "bearish",
+      "when": "2026-10-14T12:30:00.000Z",
+      "asset": "SOL",
+      "dir": -1,
+      "move": -0.027122422441018035,
+      "hit": true
+    },
+    {
+      "scenario": "bearish",
+      "when": "2026-10-14T12:30:00.000Z",
+      "asset": "XRP",
+      "dir": -1,
+      "move": -0.0318678930977041,
+      "hit": true
+    }
+  ],
+  "note": "Too few runs to measure a weight. The model uses the documented prior (config.ts MIROFISH_PRIOR_WEIGHT) until there are at least 30 scored calls."
+}
