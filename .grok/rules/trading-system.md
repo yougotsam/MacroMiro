@@ -9,3 +9,9 @@ Kalshi settles the crypto series on last_60s_windowed_average_15min of the CF RT
 One trade uses at most 8% of the pile (`TRADE_FRAC`). The day stops at a 25% drawdown (`KILL_FRAC`) or three losses in a row. Two losses in a row halve the size. A correlated group (BTC+ETH+SOL same side) shares one budget. Unknown cash is no trade. No Kelly sizing.
 
 Sameer's own numbers (deposit, split, max loss per trade, day stop) live blank in `src/lib/signal/config.ts` `OWNER_BLANKS`. Do not fill them. Do not invent a probability, a Sharpe, or a fill.
+
+## Update Oct 30 2026
+- Perps are tested with Sameer's rules (8% stop, half at 1R, trail, 3 losses end the day, −25% stop, real fees and funding, multi-hour holds). None of the 5 series is kept. The perps button stays manual.
+- A missing or unverified release calendar blocks trading. Release block is −15/+30 minutes (measured).
+- News and MiroFish count in the score: release move (measured), headline tone (measured, 0 until data), MiroFish direction (prior 0.15, never a percent, null when down).
+- Gold uses OKX spot-gold bars. Owner blanks stay empty. CALIBRATED_MODEL_APPROVED stays false.
