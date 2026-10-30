@@ -27,3 +27,6 @@ mirofish/frontend/dist/
 # Signal bars are re-pulled from Coinbase; reports are generated daily
 data/signal/bars/
 data/reports/
+data/signal/funding/
+data/signal/news/tone-*.jsonl
+data/signal/perps-trades.jsonl

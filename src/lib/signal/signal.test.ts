@@ -84,7 +84,7 @@ describe("model and protocol", () => {
     const s = samplesFor("BTC", walk(WARMUP + 3500, 11));
     const wf = walkForward(s);
     expect(wf.folds).toBeGreaterThan(0);
-    for (const t of [...wf.prediction, ...wf.perp]) expect(t.t).toBeGreaterThanOrEqual(s[0].t + PROTOCOL.minTrainDays * 86_400_000);
+    for (const t of wf.prediction) expect(t.t).toBeGreaterThanOrEqual(s[0].t + PROTOCOL.minTrainDays * 86_400_000);
     const m = clusteredMean([{ t: 1, pnl: 1 }, { t: 1, pnl: -1 }]);
     expect(m.mean).toBe(0);
   });

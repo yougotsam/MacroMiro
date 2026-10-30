@@ -4,10 +4,12 @@
  *
  * Prediction (15-minute up/down): the strike is set at the window's open, so "up" = next bar closes above this
  * close. Assumed fill: taker at 51¢ (50¢ fair + 1¢ half spread) with Kalshi's quadratic fee 0.07·P·(1−P),
- * rounded up per order. Perpetuals: next-bar return in the chosen direction minus a round-trip fee.
- * Both assumptions are stated in the report so a reader can rerun with real fills.
+ * rounded up per order. The fill assumption is checked against real fills by scripts/fills-vs-51.ts.
+ * Perpetuals are NOT scored here: a one-bar hold with a flat fee is not how they trade. They are tested with
+ * Sameer's full rules (bracket, partial, trail, 8% stop size, day and account stops, fees, funding) in
+ * perps-backtest.ts.
  */
-import { FEATURES, cacheOf, toArray, vectorAt, type Vector } from "./features";
+import { FEATURES, cacheOf, toArray, vectorAt, type NewsHistory, type Vector } from "./features";
 import { fitLogistic, predict, type Model } from "./model";
 import type { Bar } from "./ta";
 
@@ -20,7 +22,6 @@ export const PROTOCOL = Object.freeze({
   predPrice: 0.51,
   predFeeRate: 0.07,
   contractsPerOrder: 5,
-  perpRoundTripFee: 0.001,
   minFoldsPositive: 0.6,
   ridge: 5,
   edgeCuts: [0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.08] as number[],
@@ -28,12 +29,12 @@ export const PROTOCOL = Object.freeze({
 
 const BAR = 15 * 60_000;
 
-export function samplesFor(asset: string, bars: Bar[], releases: number[] = []): Sample[] {
+export function samplesFor(asset: string, bars: Bar[], releases: number[] = [], hist: NewsHistory = {}): Sample[] {
   const s = cacheOf(bars);
   const out: Sample[] = [];
   for (let i = 0; i + 1 < bars.length; i++) {
     if (bars[i + 1].t !== bars[i].t + BAR) continue;
-    const v = vectorAt(s, i, releases);
+    const v = vectorAt(s, i, releases, undefined, hist);
     if (!v) continue;
     out.push({ t: bars[i].t + BAR, asset, x: toArray(v), y: bars[i + 1].c > bars[i].c ? 1 : 0, ret: (bars[i + 1].c - bars[i].c) / bars[i].c });
   }
@@ -57,12 +58,6 @@ export function predTrade(p: number, y: 0 | 1, cut: number): { side: 1 | -1; pnl
   return { side, pnl: (win ? 1 : 0) - price - fee };
 }
 
-export function perpTrade(p: number, ret: number, cut: number): { side: 1 | -1; pnl: number } | null {
-  const side: 1 | -1 = p >= 0.5 ? 1 : -1;
-  if (Math.abs(p - 0.5) < cut) return null;
-  return { side, pnl: side * ret - PROTOCOL.perpRoundTripFee };
-}
-
 /** Mean and a 95% interval with errors clustered by bar time (the five coins move together). */
 export function clusteredMean(trades: { t: number; pnl: number }[]): { mean: number; lo: number; hi: number } {
   const n = trades.length;
@@ -74,6 +69,18 @@ export function clusteredMean(trades: { t: number; pnl: number }[]): { mean: num
   for (const s of by.values()) v += s * s;
   const se = Math.sqrt(v) / n;
   return { mean, lo: mean - 1.96 * se, hi: mean + 1.96 * se };
+}
+
+/** A perps verdict built from the rules backtest (scripts/signal-perps.ts), in the same shape. */
+export function perpReport(rows: { trades: number; winRate: number; avgR: number; returnPct: number; halted: boolean; asset: string }[], why: string): Report {
+  const n = rows.reduce((a, r) => a + r.trades, 0);
+  const byAsset: Report["byAsset"] = {};
+  for (const r of rows) byAsset[r.asset] = { trades: r.trades, winRate: r.winRate, meanPnl: r.avgR };
+  return {
+    product: "perp", trades: n, winRate: n ? rows.reduce((a, r) => a + r.winRate * r.trades, 0) / n : 0, meanPnl: n ? rows.reduce((a, r) => a + r.avgR * r.trades, 0) / n : 0,
+    ci95: [0, 0], totalPnl: rows.reduce((a, r) => a + r.returnPct, 0), foldsPositive: rows.filter((r) => r.returnPct > 0).length, folds: rows.length,
+    brierModel: 0, brierBase: 0, byAsset, kept: false, why,
+  };
 }
 
 export type Report = {
@@ -123,14 +130,14 @@ function summarize(product: Report["product"], trades: Trade[], folds: number, b
 }
 
 /** Pick the entry cut on TRAINING data only (no peeking at the test week). */
-function chooseCut(train: Sample[], probs: number[], kind: "prediction" | "perp"): number {
+function chooseCut(train: Sample[], probs: number[]): number {
   let best = { cut: PROTOCOL.edgeCuts[PROTOCOL.edgeCuts.length - 1], pnl: -Infinity };
   const minN = Math.max(50, Math.floor(train.length * 0.01));
   for (const cut of PROTOCOL.edgeCuts) {
     let pnl = 0;
     let n = 0;
     for (let i = 0; i < train.length; i++) {
-      const tr = kind === "prediction" ? predTrade(probs[i], train[i].y, cut) : perpTrade(probs[i], train[i].ret, cut);
+      const tr = predTrade(probs[i], train[i].y, cut);
       if (tr) { pnl += tr.pnl; n++; }
     }
     if (n >= minN && pnl / n > best.pnl) best = { cut, pnl: pnl / n };
@@ -140,7 +147,7 @@ function chooseCut(train: Sample[], probs: number[], kind: "prediction" | "perp"
 
 export function walkForward(samples: Sample[]) {
   const all = [...samples].sort((a, b) => a.t - b.t);
-  const out = { prediction: [] as Trade[], perp: [] as Trade[], oos: [] as { p: number; y: number }[], folds: 0, cuts: [] as { fold: number; pred: number; perp: number }[] };
+  const out = { prediction: [] as Trade[], oos: [] as { p: number; y: number }[], folds: 0, cuts: [] as { fold: number; pred: number }[] };
   if (!all.length) return out;
   const day = 86_400_000;
   const t0 = all[0].t;
@@ -153,16 +160,13 @@ export function walkForward(samples: Sample[]) {
     if (train.length < 500 || !test.length) continue;
     const m = fitLogistic(train.map((s) => s.x), train.map((s) => s.y), PROTOCOL.ridge, 10);
     const trainP = train.map((s) => predict(m, s.x));
-    const cutPred = chooseCut(train, trainP, "prediction");
-    const cutPerp = chooseCut(train, trainP, "perp");
-    out.cuts.push({ fold, pred: cutPred, perp: cutPerp });
+    const cutPred = chooseCut(train, trainP);
+    out.cuts.push({ fold, pred: cutPred });
     for (const s of test) {
       const p = predict(m, s.x);
       out.oos.push({ p, y: s.y });
       const a = predTrade(p, s.y, cutPred);
       if (a) out.prediction.push({ t: s.t, asset: s.asset, side: a.side, p, pnl: a.pnl, fold });
-      const b = perpTrade(p, s.ret, cutPerp);
-      if (b) out.perp.push({ t: s.t, asset: s.asset, side: b.side, p, pnl: b.pnl, fold });
     }
     fold++;
   }
@@ -176,7 +180,7 @@ export function runProtocol(samples: Sample[]) {
   const base = wf.oos.reduce((a, o) => a + (0.5 - o.y) ** 2, 0) / Math.max(1, wf.oos.length);
   return {
     prediction: summarize("prediction", wf.prediction, wf.folds, brier, base),
-    perp: summarize("perp", wf.perp, wf.folds, brier, base),
+    trades: wf.prediction,
     folds: wf.folds,
     oosRows: wf.oos.length,
     cuts: wf.cuts,
