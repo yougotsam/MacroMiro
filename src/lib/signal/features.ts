@@ -6,7 +6,7 @@
 import { adrUsedSeries, atrSeries, emaSeries, rsiDivergence, rsiSeries, sessionVwapSeries, type Bar } from "./ta";
 import { liquiditySweepAt, openFvgAt, premiumDiscountAt, structureAt } from "./smc";
 import { inKillzone, sessionOf } from "./session";
-import { releaseProximity } from "./news";
+import { releaseProximity, toneZAt, type ToneSeries } from "./news";
 import type { NewsRead } from "./news";
 
 export const FEATURES = [
@@ -14,6 +14,7 @@ export const FEATURES = [
   "sweep", "bos", "choch", "fvg", "ob_retest", "premium_discount", "vwap",
   "adr_exhaust", "kz_sweep", "kz_mom", "ny_mom", "london_mom", "release_mom",
   "news_spark", "news_rates", "mirofish",
+  "tone_asset", "tone_macro", "release_drift",
 ] as const;
 export type FeatureName = (typeof FEATURES)[number];
 export type Vector = Record<FeatureName, number>;
@@ -40,13 +41,32 @@ export function cacheOf(bars: Bar[]): SeriesCache {
   };
 }
 
-const NO_NEWS: NewsRead = { sparkBias: 0, sparkPresent: false, ratesTilt: 0, ratesPresent: false, mirofishP: null, mirofishState: "missing" };
+/** History-backed news inputs: GDELT headline tone for the asset and for the Fed/inflation story. */
+export type NewsHistory = { toneAsset?: ToneSeries; toneMacro?: ToneSeries };
+
+/**
+ * The news-release move window: from 15 minutes to 4 hours after a tier-1 release, the direction and size of the
+ * release bar itself (its open-to-close move in ATRs). 0 outside the window.
+ */
+export function releaseDrift(b: Bar[], i: number, atr: number, releases: number[]): number {
+  const closeMs = b[i].t + 15 * 60_000;
+  for (let k = releases.length - 1; k >= 0; k--) {
+    const r = releases[k];
+    if (r > closeMs - 15 * 60_000) continue;
+    if (closeMs - r > 4 * 3_600_000) break;
+    for (let j = i; j >= Math.max(0, i - 17); j--) if (b[j].t === r) return clip((b[j].c - b[j].o) / atr, 3) / 3;
+    return 0;
+  }
+  return 0;
+}
+
+const NO_NEWS: NewsRead = { sparkBias: 0, sparkPresent: false, ratesTilt: 0, ratesPresent: false, mirofishP: null, mirofishDir: null, mirofishState: "missing" };
 
 /**
  * Vector at bar i (decided at that bar's close). Null during warm-up or when ATR is zero.
  * `releases` are tier-1 release times; `news` is the live read (history has none, so it is zero there).
  */
-export function vectorAt(s: SeriesCache, i: number, releases: number[] = [], news: NewsRead = NO_NEWS): Vector | null {
+export function vectorAt(s: SeriesCache, i: number, releases: number[] = [], news: NewsRead = NO_NEWS, hist: NewsHistory = {}): Vector | null {
   if (i < WARMUP - 1 || i >= s.bars.length) return null;
   const b = s.bars;
   const atr = s.atr[i];
@@ -84,7 +104,10 @@ export function vectorAt(s: SeriesCache, i: number, releases: number[] = [], new
     release_mom: prox * mom1,
     news_spark: clip(news.sparkBias),
     news_rates: clip(news.ratesTilt * 2),
-    mirofish: news.mirofishP == null ? 0 : clip((news.mirofishP - 0.5) * 2),
+    mirofish: news.mirofishP != null ? clip((news.mirofishP - 0.5) * 2) : news.mirofishDir != null ? clip(news.mirofishDir) * 0.5 : 0,
+    tone_asset: hist.toneAsset ? clip((toneZAt(hist.toneAsset, closeMs) ?? 0) / 3) : 0,
+    tone_macro: hist.toneMacro ? clip((toneZAt(hist.toneMacro, closeMs) ?? 0) / 3) : 0,
+    release_drift: releaseDrift(b, i, atr, releases),
   };
 }
 

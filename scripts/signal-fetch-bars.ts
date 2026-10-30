@@ -1,11 +1,11 @@
 /**
  * Pull public 15-minute candles from Coinbase Exchange (no key, no cost) into data/signal/bars/<PRODUCT>-15m.jsonl.
- * PAXG-USD stands in for gold (a token backed by one ounce). Re-running appends only new bars.
+ * Gold comes from scripts/signal-fetch-extra.ts (OKX XAU-USDT-SWAP). Re-running appends only new bars.
  * Usage: bun scripts/signal-fetch-bars.ts [days=120]
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-const PRODUCTS = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "PAXG-USD"];
+const PRODUCTS = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"];
 const GRAN = 900;
 const days = Number(process.argv[2] ?? 120);
 const dir = "data/signal/bars";

@@ -26,7 +26,7 @@ import { readIntelControls, readIntelLogit } from "./intel-gate";
 import { preTrade, type PreTrade } from "@/lib/signal/checklist";
 import { LiveBars } from "@/lib/signal/live-bars";
 import { readNewsDocs, releaseTimes } from "@/lib/signal/news";
-import { ASSET_OF_SERIES, loadSignalModel } from "@/lib/signal/store";
+import { ASSET_OF_SERIES, loadSignalModel, readNewsHistory } from "@/lib/signal/store";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { type Evidence } from "./sniper";
 import { type MoveGuard, type GuardState } from "./guard";
@@ -128,6 +128,7 @@ export class Evaluator {
       now,
       releases: releaseTimes(undefined, now),
       docs: readNewsDocs(),
+      hist: readNewsHistory(asset, now),
       file: loadSignalModel(now),
       // maker at our own bid: the price we pay if filled; Kalshi charges makers no fee on these series
       priceFor: (side) => {

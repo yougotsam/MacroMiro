@@ -1,12 +1,15 @@
 /**
  * The pre-trade checklist. Every ticket, perpetual or 15-minute, runs these steps in this order before any order:
  *   1 data fresh  2 structure  3 liquidity sweep  4 gap / order block  5 premium-discount  6 EMA stack + tunnel
- *   7 RSI + divergence  8 ADR exhaustion  9 VWAP side  10 killzone  11 release clock  12 news  13 MiroFish
+ *   7 RSI + divergence  8 ADR exhaustion  9 VWAP side  10 killzone  11 release clock (+ release-move window)
+ *   12 news (headline tone, Spark)  13 MiroFish (percent, or scenario direction; null when down)
  *   14 measured probability  15 measured verdict  16 edge after fees at the live price
+ *   perps only, before 14: P1 Sameer setup (sweep + gap + funding), P2 bracket (stop, 1R half, 2.5R rest)
  * Steps 2–13 explain the score; the score itself is the measured model (weights from the walk-forward fit),
  * so no step is a hand-tuned vote. Hard stops: 1, 15, 16. The order rule, risk and switches still apply after this.
  */
-import { WARMUP, cacheOf, vectorAt, type Vector } from "./features";
+import { WARMUP, cacheOf, vectorAt, type NewsHistory, type Vector } from "./features";
+import { bracket } from "../perps/flip-plan";
 import { contributions, predictVector } from "./model";
 import { readNews, releaseProximity, minutesToNextRelease, type Asset, type NewsDocs, type NewsRead } from "./news";
 import { sessionOf } from "./session";
@@ -44,6 +47,10 @@ export function preTrade(input: {
   releases: number[];
   docs: NewsDocs;
   file: SignalModelFile | null;
+  /** GDELT headline tone history (data/signal/news); omitted = tone counts 0 */
+  hist?: NewsHistory;
+  /** perps only: the latest funding rate (fraction per 8h); null if unread */
+  funding?: number | null;
   /** live executable price for the chosen side (prediction: contract price 0–1); omit for a read-only brief */
   priceFor?: (side: "yes" | "no") => { price: number; feePer: number } | null;
 }): PreTrade {
@@ -62,7 +69,7 @@ export function preTrade(input: {
 
   const s = cacheOf(bars);
   const i = bars.length - 1;
-  const v = vectorAt(s, i, input.releases, news);
+  const v = vectorAt(s, i, input.releases, news, input.hist ?? {});
   if (!v) return out({ why: "indicators not ready" });
   add("Structure (BOS / ChoCH)", dirState(v.choch || v.bos), v.choch ? "change of character" : v.bos ? "break of structure" : "no fresh break");
   add("Liquidity sweep", dirState(v.sweep), v.sweep ? (v.sweep > 0 ? "swept the lows, closed back" : "swept the highs, closed back") : "none");
@@ -75,9 +82,21 @@ export function preTrade(input: {
   add("Killzone", "info", sessionOf(now));
   const prox = releaseProximity(input.releases, now);
   const next = minutesToNextRelease(input.releases, now);
-  add("Release clock", prox > 0 ? "info" : "pass", Number.isFinite(next) ? `next tier-1 release in ${Math.round(next)} min` : "none scheduled");
-  add("News (Spark / rates)", news.sparkPresent || news.ratesPresent ? dirState(v.news_spark + v.news_rates) : "info", news.sparkPresent || news.ratesPresent ? `spark ${news.sparkBias.toFixed(2)}, rates ${news.ratesTilt.toFixed(2)}` : "no fresh card for this asset");
-  add("MiroFish", news.mirofishP == null ? "info" : dirState(news.mirofishP - 0.5), news.mirofishP == null ? `${news.mirofishState}: not counted` : `swarm ${(news.mirofishP * 100).toFixed(0)}% up`);
+  add("Release clock", prox > 0 ? "info" : "pass", (Number.isFinite(next) ? `next tier-1 release in ${Math.round(next)} min` : "none scheduled") + (v.release_drift ? `; release move ${v.release_drift > 0 ? "up" : "down"} (${v.release_drift.toFixed(2)})` : ""));
+  const newsSum = v.tone_asset + v.tone_macro + v.news_spark;
+  add("News (headline tone, Spark)", newsSum ? dirState(newsSum) : "info", `tone ${v.tone_asset.toFixed(2)}, Fed/inflation tone ${v.tone_macro.toFixed(2)}${news.sparkPresent ? `, spark ${news.sparkBias.toFixed(2)}` : ", no fresh card"}`);
+  add("MiroFish", news.mirofishP == null && news.mirofishDir == null ? "info" : dirState(v.mirofish), news.mirofishP != null ? `swarm ${(news.mirofishP * 100).toFixed(0)}% up` : news.mirofishDir != null ? `scenario direction ${news.mirofishDir.toFixed(2)} (no percent)` : `${news.mirofishState}: not counted`);
+  if (product === "perp") {
+    const sweepSide = v.sweep > 0 ? "long" : v.sweep < 0 ? "short" : null;
+    const f = input.funding ?? null;
+    const fundOk = sweepSide == null ? false : f == null ? false : sweepSide === "long" ? f < 0.0005 : f > -0.0005;
+    const setup = sweepSide != null && v.fvg === v.sweep && fundOk;
+    add("Perps setup (sweep + gap + funding)", setup ? (sweepSide as StepState) : "fail", sweepSide == null ? "no sweep" : v.fvg !== v.sweep ? "sweep without a matching gap" : f == null ? "funding unread" : fundOk ? `${sweepSide}, funding ${(f * 100).toFixed(3)}%` : "funding is fighting the side");
+    let lo = Infinity, hi = -Infinity;
+    for (let j = Math.max(0, i - 2); j <= i; j++) { lo = Math.min(lo, bars[j].l); hi = Math.max(hi, bars[j].h); }
+    const br = sweepSide ? bracket(bars[i].c, sweepSide === "long" ? lo : hi, sweepSide) : null;
+    add("Bracket (stop at the sweep, half at 1R, rest at 2.5R)", br ? "pass" : "fail", br ? `stop ${br.stop.toPrecision(6)}, half ${br.takeHalf.toPrecision(6)}, rest ${br.takeRest.toPrecision(6)}` : "no valid stop");
+  }
 
   const file = input.file;
   if (!file) {

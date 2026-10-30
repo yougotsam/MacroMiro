@@ -80,7 +80,7 @@ describe("review B3: the official 60 s accumulator matches at second resolution"
 });
 
 describe("macro calendar gate (Codex P2: FAIL-CLOSED; order path reads only the calendar)", () => {
-  const now = Date.parse("2026-10-09T12:10:00Z");
+  const now = Date.parse("2026-10-09T12:20:00Z");
   const fresh = 3600_000;
   it("blocks around explicitly timed CPI/FOMC only", () => {
     expect(scheduledVeto([{ name: "CPI", when: "2026-10-09T12:30:00Z" }], now)).toHaveLength(1);

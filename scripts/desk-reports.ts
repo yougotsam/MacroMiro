@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { preTrade } from "../src/lib/signal/checklist";
 import { readNewsDocs, releaseTimes } from "../src/lib/signal/news";
 import { dailyBiasBrief, killzoneBrief, reviewBrief } from "../src/lib/signal/prompts";
-import { loadSignalModel, readBars, REPO_ROOT } from "../src/lib/signal/store";
+import { loadSignalModel, readBars, readNewsHistory, REPO_ROOT } from "../src/lib/signal/store";
 import { DATA_ROOT } from "../src/lib/data-root";
 
 const ASSETS = ["BTC", "ETH", "SOL", "XRP", "GOLD"] as const;
@@ -23,7 +23,7 @@ function checks() {
   const rel = releaseTimes(undefined, now);
   return ASSETS.map((a) => {
     // read-only brief at the real clock: a stale bar file shows up as "data not ready", it is not hidden
-    return preTrade({ asset: a, product: "prediction", bars: readBars(a), now, releases: rel, docs, file });
+    return preTrade({ asset: a, product: "prediction", bars: readBars(a), now, releases: rel, docs, hist: readNewsHistory(a, now), file });
   });
 }
 

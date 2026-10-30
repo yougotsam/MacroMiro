@@ -1,8 +1,8 @@
 /**
  * Scheduled macro-release gate for the desk engine (CPI, FOMC, NFP, PPI…).
  * It can only BLOCK new entries; it never creates, sizes or prices a trade. It reads only the calendar
- * list. A verified major release blocks. A missing or unverified official file does not. A major release
- * whose time has no timezone blocks that whole ET day.
+ * list. A verified major release blocks. A missing, stale or unverified calendar ALSO blocks: no calendar,
+ * no trading. A major release whose time has no timezone blocks that whole ET day.
  */
 import { readFileSync, statSync } from "node:fs";
 import { officialCalendarPath, verifyCalendar, type OfficialCalendar } from "./official-calendar";
@@ -21,12 +21,19 @@ function eventMs(raw: string): number | null {
   return Number.isFinite(at) ? at : null;
 }
 
-/** Major releases from 30 min before to 15 min after their explicit timestamp. */
+/**
+ * The block around a major release, in minutes. Set from the 180-day backtest (data/signal/report.md,
+ * "Release window"): see VETO_WINDOW_SOURCE.
+ */
+export const VETO_WINDOW = Object.freeze({ beforeMin: 15, afterMin: 30 }); // measured: −15..+30 min were the losing buckets (−4.8¢, −19.5¢, −2.8¢); −30..−15 was flat-positive
+export const VETO_WINDOW_SOURCE = "measured: data/signal/report.md, section 'Release window'";
+
+/** Major releases from VETO_WINDOW.beforeMin before to VETO_WINDOW.afterMin after their explicit timestamp. */
 export function scheduledVeto(events: Scheduled[], now: number): string[] {
   return events
     .filter((e) => {
       const ts = eventMs(e.when ?? "");
-      return ts != null && MAJOR.test(e.name ?? "") && ts - 30 * 60_000 <= now && now <= ts + 15 * 60_000;
+      return ts != null && MAJOR.test(e.name ?? "") && ts - VETO_WINDOW.beforeMin * 60_000 <= now && now <= ts + VETO_WINDOW.afterMin * 60_000;
     })
     .map((e) => `${e.name}: ${e.when}`);
 }
@@ -55,12 +62,12 @@ export function macroGateFrom(raw: unknown, now: number, fileAgeMs: number | nul
 
 /**
  * Gate over the OFFICIAL calendar (official-calendar.ts): verified by content (sources OK, fetchedAt ≤ 7 d, sourced
- * events, ≥ 1 real upcoming major event), not by file mtime. Unverified or missing does not block. A verified
- * major release still vetoes from 30 min before until 15 min after.
+ * events, ≥ 1 real upcoming major event), not by file mtime. Unverified or missing BLOCKS. A verified
+ * major release vetoes inside VETO_WINDOW.
  */
 export function macroGateOfficial(raw: unknown, now: number): MacroGate {
   const v = verifyCalendar(raw, now);
-  if (!v.verified) return { available: false, blocked: false, reason: v.reason ?? "official_calendar_unverified", events: [] };
+  if (!v.verified) return { available: false, blocked: true, reason: v.reason ?? "official_calendar_unverified", events: [] };
   const evs = (raw as OfficialCalendar).events;
   // reuse the legacy rules: timed events veto −30/+15 min; date-only major events (FOMC day) block the whole ET day
   return macroGateFrom({ calendar: { thisWeek: evs.map((e) => ({ name: e.name, when: e.when })) } }, now, 0);
@@ -77,6 +84,6 @@ export function macroGate(now = Date.now(), path = officialCalendarPath()): Macr
     raw = null;
   }
   if (raw && typeof raw === "object" && (raw as { version?: unknown }).version === 1 && Array.isArray((raw as { sources?: unknown }).sources)) return macroGateOfficial(raw, now);
-  if (path === officialCalendarPath()) return { available: false, blocked: false, reason: raw ? "official_calendar_malformed" : "official_calendar_missing", events: [] };
+  if (path === officialCalendarPath()) return { available: false, blocked: true, reason: raw ? "official_calendar_malformed" : "official_calendar_missing", events: [] };
   return macroGateFrom(raw, now, age);
 }

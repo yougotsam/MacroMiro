@@ -51,17 +51,19 @@ describe("verification is by content, not mtime", () => {
     expect(verifyCalendar({ foo: 1 }, NOW).verified).toBe(false);
     expect(verifyCalendar(null, NOW).verified).toBe(false);
   });
-  it("gate: verified calendar vetoes CPI −30/+15 min and the whole FOMC ET day; unverified does not block", () => {
+  it("gate: verified calendar vetoes CPI −15/+30 min (measured) and the whole FOMC ET day; unverified does not block", () => {
     expect(macroGateOfficial(cal(), NOW)).toMatchObject({ available: true, blocked: false });
-    expect(macroGateOfficial(cal(), Date.parse("2026-10-14T12:10:00Z")).blocked).toBe(true);
-    expect(macroGateOfficial(cal(), Date.parse("2026-10-14T13:00:00Z")).blocked).toBe(false);
+    expect(macroGateOfficial(cal(), Date.parse("2026-10-14T12:20:00Z")).blocked).toBe(true);
+    expect(macroGateOfficial(cal(), Date.parse("2026-10-14T12:10:00Z")).blocked).toBe(false);
+    expect(macroGateOfficial(cal(), Date.parse("2026-10-14T12:55:00Z")).blocked).toBe(true);
+    expect(macroGateOfficial(cal(), Date.parse("2026-10-14T13:05:00Z")).blocked).toBe(false);
     const t = Date.parse("2026-10-28T15:00:00Z");
     const fresh = new Date(t - 3600_000).toISOString();
     expect(macroGateOfficial(cal(), t).reason).toBe("official_calendar_stale"); // fetched 19 days earlier
     const fomc = macroGateOfficial(cal({ fetchedAt: fresh, sources: cal().sources.map((s) => ({ ...s, fetchedAt: fresh })) }), t);
     expect(fomc.blocked).toBe(true);
     expect(fomc.reason).toBe("verified_macro_event_veto");
-    expect(macroGateOfficial(cal({ fetchedAt: "2026-01-01T00:00:00Z" }), NOW)).toMatchObject({ available: false, blocked: false });
+    expect(macroGateOfficial(cal({ fetchedAt: "2026-01-01T00:00:00Z" }), NOW)).toMatchObject({ available: false, blocked: true });
   });
   it("macroGate reads the official file format from disk", () => {
     const dir = mkdtempSync(join(tmpdir(), "offcal-"));

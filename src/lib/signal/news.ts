@@ -4,7 +4,7 @@
  * MiroFish, the official release calendar) into bounded numbers. A missing or stale file gives 0 and
  * `present: false`; it never sits a ticket by itself and never invents a MiroFish percent.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { DATA_ROOT } from "@/lib/data-root";
 
 export type Asset = "BTC" | "ETH" | "SOL" | "XRP" | "GOLD";
@@ -39,7 +39,54 @@ export type NewsDocs = {
   spark: Record<string, unknown> | null;
   alexandria: Record<string, unknown> | null;
   mirofish: Record<string, unknown> | null;
+  /** finished MiroFish scenario jobs (data/research/jobs); optional */
+  research?: ResearchJob[];
 };
+
+export type ResearchJob = { stage?: string; spec?: { scenario?: string; catalyst?: { when?: string | null } }; result?: { extracted?: Record<string, unknown> } };
+
+/** Headline tone points (GDELT average tone, roughly −10..+10). */
+export type ToneSeries = { t: number; tone: number }[];
+
+/** Tone z-score at `t`: mean of the last 6h vs the 7 days before, using only points at least 30 min old. */
+export function toneZAt(tone: ToneSeries, t: number): number | null {
+  const cut = t - 30 * 60_000;
+  let lo = 0, hi = tone.length - 1, last = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (tone[m].t <= cut) { last = m; lo = m + 1; } else hi = m - 1; }
+  let s6 = 0, n6 = 0, s = 0, ss = 0, n = 0;
+  for (let k = last; k >= 0; k--) {
+    const p = tone[k];
+    if (p.t < cut - 7 * 86_400_000) break;
+    s += p.tone; ss += p.tone * p.tone; n++;
+    if (p.t >= cut - 6 * 3_600_000) { s6 += p.tone; n6++; }
+  }
+  if (n < 50 || n6 < 3) return null;
+  const m = s / n, sd = Math.sqrt(Math.max(1e-9, ss / n - m * m));
+  return (s6 / n6 - m) / sd;
+}
+
+const ASSET_WORDS: Record<Asset, RegExp> = {
+  BTC: /\b(bitcoin|btc)\b/i, ETH: /\b(ethereum|eth|ether)\b/i, SOL: /\b(solana|sol)\b/i, XRP: /\b(xrp|ripple)\b/i, GOLD: /\b(gold|xau|bullion)\b/i,
+};
+const UP = /\b(rall(y|ies|ied)|surge[sd]?|gain(s|ed)?|bid|inflows?|bullish|upside|higher|rebound(s|ed)?|accumulat\w*|safe[- ]haven demand|outperform\w*|captures? (protective )?(capital )?flows?|expansion)\b/gi;
+const DOWN = /\b(sell-?off|liquidat\w*|declin\w*|drop(s|ped)?|fall(s|ing)?|bearish|downside|lower|outflows?|de-?risk\w*|exits?|cannibaliz\w*|vacuum|fragil\w*|pressure|underperform\w*|slippage)\b/gi;
+
+/**
+ * Scenario-to-direction: reads a finished MiroFish scenario report (its extracted fields) and scores, for one asset,
+ * the up-words minus down-words in sentences that name that asset, as −1..+1. Null when no sentence names the
+ * asset. This is a direction, not a probability; it is never shown or used as a percent.
+ */
+export function scenarioDirection(extracted: Record<string, unknown> | undefined, asset: Asset): number | null {
+  if (!extracted) return null;
+  const text = Object.values(extracted).filter((v) => typeof v === "string").join(" ");
+  let up = 0, down = 0;
+  for (const sent of text.split(/(?<=[.!?])\s+/)) {
+    if (!ASSET_WORDS[asset].test(sent)) continue;
+    up += sent.match(UP)?.length ?? 0;
+    down += sent.match(DOWN)?.length ?? 0;
+  }
+  return up + down === 0 ? null : (up - down) / (up + down);
+}
 
 export type NewsRead = {
   /** −1 bearish .. +1 bullish for this asset, from a fresh Spark card. 0 if none. */
@@ -50,6 +97,8 @@ export type NewsRead = {
   ratesPresent: boolean;
   /** MiroFish swarm probability of "up", or null when it is down, stale, or gave none. Never invented. */
   mirofishP: number | null;
+  /** −1..+1 from the newest finished BASELINE scenario run for a release within the last 24h / next 48h; null if none */
+  mirofishDir: number | null;
   mirofishState: "missing" | "down" | "stale" | "ok" | "no_direction";
 };
 
@@ -66,7 +115,7 @@ function coversAsset(asset: Asset, s: string): boolean {
 }
 
 export function readNews(asset: Asset, docs: NewsDocs, now: number): NewsRead {
-  const out: NewsRead = { sparkBias: 0, sparkPresent: false, ratesTilt: 0, ratesPresent: false, mirofishP: null, mirofishState: "missing" };
+  const out: NewsRead = { sparkBias: 0, sparkPresent: false, ratesTilt: 0, ratesPresent: false, mirofishP: null, mirofishDir: null, mirofishState: "missing" };
   const spark = docs.spark;
   const card = spark?.card as { bias?: unknown; asset?: unknown; probability?: unknown } | undefined;
   const at = Date.parse(String(spark?.at ?? ""));
@@ -97,6 +146,15 @@ export function readNews(asset: Asset, docs: NewsDocs, now: number): NewsRead {
       out.mirofishP = mp;
     }
   }
+  if (out.mirofishP == null && out.mirofishState !== "down" && docs.research?.length) {
+    const near = docs.research
+      .filter((j) => j.stage === "done" && j.spec?.scenario === "baseline")
+      .map((j) => ({ j, at: Date.parse(String(j.spec?.catalyst?.when ?? "")) }))
+      .filter(({ at }) => Number.isFinite(at) && at - now <= 48 * 3_600_000 && now - at <= 24 * 3_600_000)
+      .sort((a, b) => b.at - a.at)[0];
+    const d = near ? scenarioDirection(near.j.result?.extracted, asset) : null;
+    if (d != null) out.mirofishDir = d;
+  }
   return out;
 }
 
@@ -109,8 +167,24 @@ function readJson(path: string): Record<string, unknown> | null {
   }
 }
 
+export function readResearchJobs(dir: string): ResearchJob[] {
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => readJson(`${dir}/${f}`) as ResearchJob | null).filter((j): j is ResearchJob => !!j);
+  } catch {
+    return [];
+  }
+}
+
 export function readNewsDocs(root = DATA_ROOT): NewsDocs {
-  return { spark: readJson(`${root}/spark-latest.json`), alexandria: readJson(`${root}/alexandria-latest.json`), mirofish: readJson(`${root}/mirofish-latest.json`) };
+  return { spark: readJson(`${root}/spark-latest.json`), alexandria: readJson(`${root}/alexandria-latest.json`), mirofish: readJson(`${root}/mirofish-latest.json`), research: readResearchJobs(`${root}/research/jobs`) };
+}
+
+/** Tone file written by scripts/signal-fetch-extra.ts (data/signal/news/tone-<ASSET|MACRO>.jsonl). */
+export function readTone(dir: string, key: Asset | "MACRO"): ToneSeries {
+  const f = `${dir}/news/tone-${key}.jsonl`;
+  if (!existsSync(f)) return [];
+  return readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { t: number; tone: number });
 }
 
 let calCache: { at: number; times: number[] } = { at: -Infinity, times: [] };
