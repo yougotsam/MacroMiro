@@ -13,3 +13,13 @@ data/desk/decisions.jsonl
 *.pid
 *.tmp
 
+
+# Vendored MiroFish: keys, deps, runtime data stay out
+mirofish/.env
+mirofish/**/.env
+mirofish/**/node_modules/
+mirofish/**/.venv/
+mirofish/**/logs/
+mirofish/**/__pycache__/
+mirofish/backend/uploads/
+mirofish/frontend/dist/
