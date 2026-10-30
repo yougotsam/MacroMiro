@@ -1,5 +1,5 @@
 # Strategy
 
-There is no kept strategy. Read `README.md`.
+Read `README.md`. The strategy is the pre-trade checklist in `src/lib/signal/checklist.ts`, scored by the model in `data/signal/model.json`. The current measured result is in `data/signal/report.md`; a product without a KEPT verdict does not trade.
 
-The 9/21 retest in `src/lib/desk/fresh-law.ts` is a hypothesis. `src/lib/desk/guard.ts` refuses to fire it. The perpetual button has no entry rule.
+The perpetual button stays manual: you pick the side, the clip, the stop and the target.
