@@ -1,6 +1,8 @@
 /**
- * One series, one decision. The side comes from fresh-law.ts.
- * A settlement chance is not an entry. This file does not send.
+ * One series, one decision. The side and the probability come from the pre-trade checklist
+ * (src/lib/signal/checklist.ts): structure, sweep, gaps, EMA stack, RSI, ADR, VWAP, killzone, release clock,
+ * news and scenario reads (numbers from files only), then the measured model and its walk-forward verdict, then edge after fees at the live bid.
+ * This file does not send. The OMS release gate (CALIBRATED_MODEL_APPROVED) and risk.ts still decide.
  */
 import {
   BAR_MAX_AGE_MS,
@@ -18,10 +20,13 @@ import { loadCalibrator, type Approval, type Calibrator } from "./approval";
 import { minuteBars, type FeatureSnapshot } from "./features";
 import { orderFee, type FeeInfo } from "./fees";
 import { guardVerdict } from "./guard";
-import { inKillzone, sweepGap } from "./ict";
 import { type Feeds } from "./feeds";
 import { type Book, type Candidate, sizeFor } from "./gate";
-import { intelligenceLogit, readIntelControls } from "./intelligence";
+import { readIntelControls, readIntelLogit } from "./intel-gate";
+import { preTrade, type PreTrade } from "@/lib/signal/checklist";
+import { LiveBars } from "@/lib/signal/live-bars";
+import { readNewsDocs, releaseTimes } from "@/lib/signal/news";
+import { ASSET_OF_SERIES, loadSignalModel } from "@/lib/signal/store";
 import { macroGate, type MacroGate } from "./macro-calendar";
 import { type Evidence } from "./sniper";
 import { type MoveGuard, type GuardState } from "./guard";
@@ -59,12 +64,21 @@ export type SeriesEval = {
   timing: { policy: string; bucket: string | null } | null;
   /** Which added strategy agreed, if the 1-minute list was quiet. Null when none did. */
   strategy: "FIB_RETRACE" | "EMA_PULLBACK" | null;
+  /** the full pre-trade checklist for this tick (null before the market/book checks pass) */
+  check: PreTrade | null;
 };
+
+export type AccountView = { cash: number; dayWorst: number; lossesInARow: number };
 
 export class Evaluator {
   readonly sigmaBy = new Map<string, number>();
   private cal: { c: Calibrator | null; at: number } = { c: null, at: -Infinity };
-  constructor(private feeds: Feeds, private guard: MoveGuard, private calPath: () => string = calibratorPath) {}
+  constructor(
+    private feeds: Feeds,
+    private guard: MoveGuard,
+    private calPath: () => string = calibratorPath,
+    readonly bars: LiveBars = new LiveBars(),
+  ) {}
 
   /** Approved calibrator for this model version (re-read at most once a minute). */
   calibrator(now: number): Calibrator | null {
@@ -72,12 +86,12 @@ export class Evaluator {
     return this.cal.c;
   }
 
-  evaluate(series: Series, m: Market | null, book: Book | null, fee: FeeInfo | null, now: number, exOk: boolean, budget: number): SeriesEval {
+  evaluate(series: Series, m: Market | null, book: Book | null, fee: FeeInfo | null, now: number, exOk: boolean, budget: number, acct: AccountView | null = null): SeriesEval {
     const ref = REFERENCE[series];
     const out: SeriesEval = {
       series, market: m, book, pBase: null, p: null, shift: 0, sigma: null, spot: null, indexAge: null, feats: null, sniper: null, best: null, shadow: null, macro: null, failed: null, quotes: null,
       tte: m ? (m.closeMs - now) / 1000 : null, shock: 0, lockFrac: 0, guard: this.guard.state(series, now), makerOk: false, makerMinEdge: MAKER_MIN_EDGE, minPrice: 0, budget,
-      approval: null, timing: null, strategy: null,
+      approval: null, timing: null, strategy: null, check: null,
     };
     const fail = (g: string) => ((out.failed = g), out);
     if (!exOk) return fail("G0_exchange_paused");
@@ -101,23 +115,60 @@ export class Evaluator {
     const bars = minuteBars(this.feeds.prints(ref.index, now - 210 * 60_000), now);
     const lastBar = bars[bars.length - 1];
     if (!lastBar || now - (lastBar.t * 60_000 + 60_000) > BAR_MAX_AGE_MS) return fail("G1_bars_stale");
-    const fresh = inKillzone(now) ? sweepGap(bars.map((b) => ({ h: b.h, l: b.l, c: b.c }))) : null;
-    if (!fresh) return fail(inKillzone(now) ? "ICT_no_sweep" : "ICT_outside_killzone");
-    if (!fee || fee.feeType !== "quadratic" || !(fee.multiplier > 0)) return fail("FRESH_fee_unknown");
-    const bid = fresh.side === "yes" ? book.yesBid : book.noBid;
-    const other = fresh.side === "yes" ? book.noBid : book.yesBid;
-    const ask = other ? Math.round((1 - other.price) * 10_000) / 10_000 : null;
-    if (!bid || !(bid.price > 0) || !(bid.price < 1)) return fail("FRESH_no_bid");
-    if (ask != null && ask - bid.price > 0.04) return fail("FRESH_spread");
-    const count = sizeFor(bid.price, true, fee, budget);
-    if (count < 1) return fail("FRESH_size");
-    const paid = orderFee(count, bid.price, true, fee);
-    const quote = { side: fresh.side, mode: "maker" as const, price: bid.price, count, fee: paid, feePer: paid / count, edge: 0, edgeBase: 0, pSide: 0.5 };
+    const asset = ASSET_OF_SERIES[series];
+    if (!asset) return fail("SIGNAL_no_measured_asset");
+    void this.bars.refresh(asset, now);
+    if (!fee || fee.feeType !== "quadratic" || !(fee.multiplier > 0)) return fail("SIGNAL_fee_unknown");
     out.quotes = { yes_bid: book.yesBid?.price ?? null, no_bid: book.noBid?.price ?? null };
-    const verdict = guardVerdict({ side: fresh.side, cash: 0, dayWorst: 0, kept: false, calibratedP: null });
-    out.shadow = quote;
-    out.best = null;
-    return fail(`GUARD_${verdict.why}`);
+    const bidOf = (side: "yes" | "no") => (side === "yes" ? book.yesBid : book.noBid);
+    const check = preTrade({
+      asset,
+      product: "prediction",
+      bars: this.bars.get(asset),
+      now,
+      releases: releaseTimes(undefined, now),
+      docs: readNewsDocs(),
+      file: loadSignalModel(now),
+      // maker at our own bid: the price we pay if filled; Kalshi charges makers no fee on these series
+      priceFor: (side) => {
+        const bid = bidOf(side);
+        if (!bid || !(bid.price > 0) || !(bid.price < 1)) return null;
+        const c = Math.max(1, sizeFor(bid.price, true, fee, Math.max(budget, bid.price)));
+        return { price: bid.price, feePer: orderFee(c, bid.price, true, fee) / c };
+      },
+    });
+    out.check = check;
+    if (check.pUp != null) out.p = check.pUp;
+    if (check.bias === "neutral" || check.pSide == null) return fail(`SIGNAL_${check.why.replace(/ /g, "_")}`);
+    const side = check.bias === "long" ? "yes" : "no";
+    const bid = bidOf(side);
+    const other = side === "yes" ? book.noBid : book.yesBid;
+    const ask = other ? Math.round((1 - other.price) * 10_000) / 10_000 : null;
+    if (!bid || !(bid.price > 0) || !(bid.price < 1)) return fail("SIGNAL_no_bid");
+    if (ask != null && ask - bid.price > 0.04) return fail("SIGNAL_spread");
+    const count = sizeFor(bid.price, true, fee, budget);
+    const paid = count > 0 ? orderFee(count, bid.price, true, fee) : 0;
+    const edge = check.edge ?? 0;
+    const quote: Candidate = { side, mode: "maker", price: bid.price, count, fee: paid, feePer: count > 0 ? paid / count : 0, edge, edgeBase: edge, pSide: check.pSide };
+    if (macro.blocked) {
+      out.shadow = quote;
+      return fail(`MACRO_${macro.reason ?? "release_window"}`);
+    }
+    if (!check.fire) {
+      out.shadow = quote;
+      return fail(`SIGNAL_${check.why.replace(/ /g, "_")}`);
+    }
+    if (count < 1) {
+      out.shadow = quote;
+      return fail("SIGNAL_size");
+    }
+    const verdict = guardVerdict({ side, cash: acct?.cash ?? 0, dayWorst: acct?.dayWorst ?? 0, kept: true, calibratedP: check.pSide, lossesInARow: acct?.lossesInARow ?? 0 });
+    if (!verdict.fire) {
+      out.shadow = quote;
+      return fail(`GUARD_${verdict.why.replace(/ /g, "_")}`);
+    }
+    out.best = quote;
+    return out;
   }
 }
 
@@ -157,10 +208,11 @@ export function decisionRowOf(e: SeriesEval, action: Decision["action"], fee: Fe
     approval: e.approval ? { ok: e.approval.ok, why: e.approval.why, p_cal: e.approval.pCal, ev_per_contract: e.approval.evPerContract, cushion: e.approval.cushion } : null,
     timing: e.timing,
     strategy: e.strategy,
+    checklist: e.check ? { bias: e.check.bias, p_up: e.check.pUp, edge: e.check.edge, fire: e.check.fire, why: e.check.why, reasons: e.check.reasons, steps: e.check.steps.map((x) => `${x.n}.${x.name}:${x.state}`), mirofish: e.check.news.mirofishState, vector: e.check.vector } : null,
     confluence: confluenceLog(e.sniper),
     guard: { shock: Number(e.shock.toFixed(4)), maker_min_edge: Number(e.makerMinEdge.toFixed(4)), lock_frac: Number(e.lockFrac.toFixed(3)), move_z: Number(e.guard.z.toFixed(2)), cooling: e.guard.cooling, maker_ok: e.makerOk, budget: e.budget, min_price: e.minPrice },
     intel: {
-      logit: Number(intelligenceLogit(e.series, now).toFixed(4)),
+      logit: Number(readIntelLogit(e.series, now).toFixed(4)),
       controls: readIntelControls(),
       passed_gate: Boolean(e.best),
       requested: [],

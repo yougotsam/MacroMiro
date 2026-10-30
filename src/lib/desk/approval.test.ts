@@ -78,11 +78,12 @@ describe("timing policy by time-to-expiry bucket (configurable, not hard-coded)"
     expect(approve({ pYesRaw: 0.9, calibrator: c, candidate: cand({ mode: "maker" }), tteSec: 30, policy: p, cushion: 0.03 }).why).toBe("timing_no_maker_final-60s");
     expect(approve({ pYesRaw: 0.2, calibrator: c, candidate: cand({ price: 0.04 }), tteSec: 30, policy: p, cushion: 0.03 }).why).toBe("timing_min_price_final-60s");
   });
-  it("the evaluator applies the policy and the approval before the release lock (source order)", () => {
+  it("the evaluator runs the pre-trade checklist, then the macro block, then the guard (source order)", () => {
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
     const i = (s: string) => src.indexOf(s);
-    expect(i("bucketFor(policy, left)")).toBeGreaterThan(0);
-    expect(i("out.approval = approve(")).toBeGreaterThan(i("scoreSides("));
-    expect(i("G3_approval_")).toBeLessThan(i("G3_uncalibrated_model_shadow_only"));
+    expect(i("const check = preTrade(")).toBeGreaterThan(0);
+    expect(i("if (macro.blocked) {")).toBeGreaterThan(i("const check = preTrade("));
+    expect(i("guardVerdict({")).toBeGreaterThan(i("if (!check.fire) {"));
+    expect(i("out.best = quote;")).toBeGreaterThan(i("guardVerdict({"));
   });
 });

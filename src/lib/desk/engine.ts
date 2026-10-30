@@ -29,8 +29,8 @@ import { DecisionLedger, type Decision } from "./ledger";
 import { Oms } from "./oms";
 import { RiskEngine, dayWorstOf, switches, type AccountSnapshot } from "./risk";
 import { roomBudget } from "./sizing";
+import { brakeCount, lossesInARow } from "@/lib/signal/brake";
 import { promotionFromDisk } from "./fill-ledger";
-import { promotionSize, setupName } from "./promotion-size";
 import type { PromotionDoc } from "../deskc/promotion";
 import { armResearch, researchFor, warmResearch } from "./research-cache";
 import { indexSnap, refreshIndexBars } from "./index-bars";
@@ -142,7 +142,9 @@ export class Engine {
   }
 
   evaluate(series: Series, m: Market | null, book: Book | null, fee: FeeInfo | null, now: number, exOk: boolean, budget: number): SeriesEval {
-    return this.evaluator.evaluate(series, m, book, fee, now, exOk, budget);
+    const s = this.snapshot;
+    const acct = s ? { cash: (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0), dayWorst: dayWorstOf(s), lossesInARow: lossesInARow(s.settledToday.slice().sort((a, b) => a.settledMs - b.settledMs).map((x) => x.pnl)) } : null;
+    return this.evaluator.evaluate(series, m, book, fee, now, exOk, budget, acct);
   }
 
   private decisionRow(e: SeriesEval, action: Decision["action"], fee: FeeInfo | null, now: number, order?: Decision["order"]): Decision {
@@ -344,18 +346,15 @@ export class Engine {
           continue;
         }
         const pYes = x.e.p ?? 0;
-        const sized = promotionSize({
-          doc: this.promotionDoc,
-          setup: setupName(b.side, x.e.sniper),
-          flatCount: b.count,
-          flatFee: b.fee,
-          price: b.price,
-          maker: b.mode === "maker",
-          fee: x.fee ?? { feeType: "quadratic", multiplier: 1 },
-          pSide: b.side === "yes" ? pYes : 1 - pYes,
-          flatBudget: budget,
-          bankroll: (this.snapshot?.shard2Cash ?? 0) + (this.snapshot?.shard0Cash ?? 0),
-        });
+        // Flat size from the pile room (sizing.ts). No Kelly: Sameer has not set a sizing rule beyond the pile fraction.
+        const sized = { count: b.count, fee: b.fee, why: "pile room" };
+        const losses = lossesInARow((this.snapshot?.settledToday ?? []).slice().sort((a, c) => a.settledMs - c.settledMs).map((q) => q.pnl));
+        const braked = brakeCount(sized.count, losses);
+        if (braked !== sized.count) {
+          sized.fee = Number(((sized.fee / Math.max(1, sized.count)) * braked).toFixed(4));
+          sized.count = braked;
+          sized.why = `streak brake: ${losses} losses in a row`;
+        }
         if (sized.count < 1) {
           this.ledger.write(withIntel(this.decisionRow({ ...x.e, failed: sized.why }, "NO_TRADE", x.fee, now2)), now2);
           log("NO_TRADE", x.e.market?.ticker ?? x.e.series, sized.why);

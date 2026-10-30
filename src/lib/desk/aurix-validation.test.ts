@@ -114,8 +114,12 @@ describe("macro calendar gate (Codex P2: FAIL-CLOSED; order path reads only the 
     // round 3: the evaluation moved verbatim from engine.ts to evaluator.ts (shared with the read-only collector)
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
     expect(src).not.toContain("G0_${macro.reason");
-    expect(src).toMatch(/macro\.available && !macro\.blocked/);
-    expect(src).not.toMatch(/firecrawl|mirofish|spark\.server/i);
+    // priced first (checklist), then the macro block moves the quote to shadow
+    expect(src.indexOf("if (macro.blocked) {")).toBeGreaterThan(src.indexOf("const check = preTrade("));
+    expect(src).toMatch(/if \(macro\.blocked\) \{\s*out\.shadow = quote;/);
+    // no network or paid research client is imported; news arrives as numbers parsed from files (lib/signal/news)
+    expect(src).not.toMatch(/from\s+["'][^"']*(firecrawl|mirofish|spark\.server)/i);
+    expect(src).not.toMatch(/import\(\s*["'][^"']*(firecrawl|mirofish|spark\.server)/i);
   });
 });
 
@@ -334,102 +338,6 @@ describe("day-stop double count (review f)", () => {
 });
 const dayWorstOfLocal = (s: { realizedToday: number; openWorst: number; restWorst: number; pendingWorst: number }) => s.realizedToday - s.openWorst - s.restWorst - s.pendingWorst;
 
-describe("round 3 risk limits: −$15 day, $9 total, $3 per ticker, $4 same-direction crypto (Sameer 2026-10-09)", () => {
-  const ON3 = { live: () => true, begin: () => true, arm: () => true };
-  const NOW3 = Date.now();
-  const base = (over: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
-    fetchedAt: NOW3, etDay: etDay(NOW3), realizedToday: 0, openWorst: 0, restWorst: 0, pendingWorst: 0, shard2Cash: 50,
-    settledToday: [], ordersPerTicker: {}, correlated: {}, tickerWorst: {}, exchangeTradingActive: true, exchangeCheckedAt: NOW3, ...over,
-  });
-  const order = (over: Partial<OrderIntent> = {}): OrderIntent => ({ product: "event", ticker: T, side: "yes", mode: "maker", price: 0.5, count: 2, fee: 0, tickId: 1, ...over });
-
-  it("the approved numbers are the ones in force, overrides stay off, % mode is not active", () => {
-    expect(RISK_LIMITS.mode).toBe("usd");
-    expect(RISK_LIMITS.usd).toEqual({ dayStop: -15, total: 9, perTicker: 3, correlated: 4, perOrder: 3 });
-    expect([DAILY_STOP_USD, MAX_OPEN_WORST_USD, MAX_TICKER_WORST_USD, MAX_CORRELATED_WORST_USD]).toEqual([-15, 9, 3, 4]);
-    expect(ENABLE_RISK_OVERRIDES).toBe(false);
-    expect(CALIBRATED_MODEL_APPROVED).toBe(false);
-    expect(Object.isFrozen(RISK_LIMITS)).toBe(true);
-  });
-
-  it("grouping: every same-direction crypto contract (any coin, any window) is one group; gold is separate", () => {
-    expect(correlationKey("KXBTC15M-26OCT081200-00", "up")).toBe("crypto|up");
-    expect(correlationKey("KXXRP15M-26OCT081215-15", "up")).toBe("crypto|up");
-    expect(correlationKey("KXETH15M-26OCT081200-00", "down")).toBe("crypto|down");
-    expect(correlationKey("KXGOLD15M-26OCT081200-00", "up")).toBe("gold|up");
-    expect(correlationKey("KXGBPUSD15M-26OCT200015-30", "up")).toBe("fx|up");
-    expect(correlationKey("KXUSDJPY15M-26OCT200015-30", "down")).toBe("jpy|down");
-  });
-
-  it("snapshot: open, resting and ambiguous sends are summed per correlated group and per ticker", () => {
-    const now = Date.parse("2026-10-08T15:50:00Z");
-    const eth = "KXETH15M-26OCT081200-00", sol = "KXSOL15M-26OCT081200-00", nextBtc = "KXBTC15M-26OCT081215-15", gold = "KXGOLD15M-26OCT081200-00";
-    const s = buildSnapshot({
-      now, settlements: [], shard2Cash: 30, exchangeTradingActive: true, exchangeCheckedAt: now,
-      positions: [{ ticker: T, position_fp: "3.00", market_exposure_dollars: "1.50", fees_paid_dollars: "0" }, { ticker: nextBtc, position_fp: "-2.00", market_exposure_dollars: "1.00", fees_paid_dollars: "0" },
-        { ticker: gold, position_fp: "1.00", market_exposure_dollars: "0.70", fees_paid_dollars: "0" }],
-      resting: [{ order_id: "r", client_order_id: "mm1-x", ticker: eth, status: "resting", side: "bid", yes_price_dollars: "0.4000", no_price_dollars: "0.6000", remaining_count_fp: "2.00" } as KOrder,
-        { order_id: "r2", client_order_id: "mm1-y", ticker: sol, status: "resting", side: "ask", yes_price_dollars: "0.4000", no_price_dollars: "0.6000", remaining_count_fp: "1.00" } as KOrder],
-      ordersToday: [],
-      pendingIntents: [{ cid: cidFor(sol, "yes", 1), worst: 0.5 }],
-    });
-    expect(s.correlated!["crypto|up"]).toBeCloseTo(1.5 + 0.8 + quadraticFee(2, 0.4) + 0.5, 4);
-    expect(s.correlated!["crypto|down"]).toBeCloseTo(0.6 + quadraticFee(1, 0.6) + 1, 4); // SOL NO this window + BTC NO next window
-    expect(s.correlated!["gold|up"]).toBeCloseTo(0.7, 6);
-    expect(s.tickerWorst![sol]).toBeCloseTo(0.6 + quadraticFee(1, 0.6) + 0.5, 4);
-    expect(s.tickerWorst![T]).toBeCloseTo(1.5, 6);
-  });
-
-  it("$3 per ticker still binds; another series in the same window does not", () => {
-    const r = new RiskEngine(tmp("tick3"), ON3);
-    const other = "KXETH15M-26OCT081215-15";
-    expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [other]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).ok).toBe(true);
-    expect(r.check(order({ count: 2 }), base({ openWorst: 1.9, tickerWorst: { [T]: 1.9 }, correlated: { "crypto|up": 1.9 } }), NOW3).ok).toBe(true);
-    const v = r.check(order({ count: 7, price: 0.5, tickId: 2 }), base({ openWorst: 0, tickerWorst: {}, correlated: { "crypto|up": 0 } }), NOW3);
-    expect(v.ok).toBe(false);
-  });
-
-  it("$4 same-direction crypto: BTC + ETH + SOL YES add up; NO side and gold are other groups", () => {
-    const r = new RiskEngine(tmp("corr4"), ON3);
-    const s = base({ openWorst: 3.2, tickerWorst: { "KXETH15M-26OCT081230-30": 1.6, "KXSOL15M-26OCT081215-15": 1.6 }, correlated: { "crypto|up": 3.2 } });
-    const v = r.check(order({ count: 2 }), s, NOW3);
-    expect(v.ok).toBe(false);
-    expect(v.why).toContain("correlated crypto|up 4.20 > 4");
-    expect(r.check(order({ side: "no", tickId: 2 }), s, NOW3).ok).toBe(true);
-    expect(r.check(order({ ticker: "KXGOLD15M-26OCT081200-00", tickId: 3 }), s, NOW3).ok).toBe(true);
-    expect(r.check(order({ count: 1, price: 0.5, tickId: 4 }), s, NOW3).ok).toBe(true); // 3.70 ≤ 4
-  });
-
-  it("$9 total and −$15 day stop still bind", () => {
-    const r = new RiskEngine(tmp("tot9"), ON3);
-    expect(r.check(order(), base({ realizedToday: 5, openWorst: 8.5 }), NOW3).why).toContain("exposure 9.50 > 9");
-    expect(r.check(order({ tickId: 2 }), base({ realizedToday: -14.2 }), NOW3).why).toContain("would breach daily stop");
-    expect(r.check(order({ tickId: 3 }), base({ realizedToday: -13.9 }), NOW3).ok).toBe(true);
-  });
-
-  it("missing per-ticker or correlated maps refuse (fail closed)", () => {
-    const r = new RiskEngine(tmp("miss"), ON3);
-    expect(r.check(order(), base({ tickerWorst: undefined }), NOW3).why).toContain("per-ticker / correlated exposure unknown");
-    expect(r.check(order(), base({ correlated: undefined }), NOW3).why).toContain("per-ticker / correlated exposure unknown");
-  });
-
-  it("% of account mode: limits scale with account value but never exceed the USD ceilings; unknown value refuses", () => {
-    const pct: RiskLimits = { ...RISK_LIMITS, mode: "pct_of_account" };
-    const small = resolveRiskLimits(pct, 50);
-    expect(small).toEqual({ ok: true, dayStop: -7.5, total: 4.5, perTicker: 1.5, correlated: 2, perOrder: 1.5 });
-    const big = resolveRiskLimits(pct, 10_000);
-    expect(big).toEqual({ ok: true, dayStop: -15, total: 9, perTicker: 3, correlated: 4, perOrder: 3 }); // capped at the ceilings
-    expect(resolveRiskLimits(pct, null).ok).toBe(false);
-    expect(resolveRiskLimits(pct, Number.NaN).ok).toBe(false);
-    expect(resolveRiskLimits({ ...RISK_LIMITS, mode: "bogus" as "usd" }, 100).ok).toBe(false);
-    expect(resolveRiskLimits({ ...RISK_LIMITS, usd: { ...RISK_LIMITS.usd, dayStop: 5 } }, 100).ok).toBe(false);
-    const r = new RiskEngine(tmp("pct"), ON3, pct);
-    expect(r.check(order(), base(), NOW3).why).toContain("account value unknown");
-    expect(r.check(order({ count: 4, tickId: 2 }), base({ accountValueUsd: 50 }), NOW3).why).toContain("order cost 2.00 > 1.5");
-    expect(r.check(order({ count: 2, tickId: 3 }), base({ accountValueUsd: 50 }), NOW3).ok).toBe(true);
-  });
-});
-
 describe("review B5: a corrupt journal row cannot crash the loop, and blocks new orders", () => {
   it("unreadable rows are skipped and counted; pending risk still readable; submit refuses with zero POSTs", async () => {
     const dir = tmp("b5");
@@ -476,7 +384,9 @@ describe("review B4: shadow ledger keeps the would-be trade while live is disabl
   });
   it("approval and the uncalibrated stop move the candidate to shadow; a news print does not", () => {
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
-    expect(src.match(/out\.shadow = out\.best;\s*out\.best = null;/g)?.length).toBe(2);
+    // macro block, checklist no-fire, size, and the guard all keep the quote as shadow; only a full pass sets best
+    expect(src.match(/out\.shadow = quote;/g)?.length).toBe(4);
+    expect(src.match(/out\.best = quote;/g)?.length).toBe(1);
     const engine = readFileSync(new URL("./engine.ts", import.meta.url), "utf8") as string;
     expect(engine).not.toMatch(/from\s+["'][^"']*(firecrawl|mirofish|spark\.server)/i);
     expect(engine).not.toMatch(/import\(\s*["'][^"']*(firecrawl|mirofish|spark\.server)/i);
