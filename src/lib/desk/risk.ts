@@ -262,10 +262,22 @@ export class RiskEngine {
     if (o.product === "perp" && !/^KX[A-Z0-9]+PERP$/.test(o.ticker)) return no("perp ticker", dayWorst);
     if (o.product === "meme" && !o.ticker.startsWith("MEME-")) return no("meme ticker", dayWorst);
     if (o.product !== "event" && !(o.price > 0)) return no("bad size/price", dayWorst);
+    if (o.product === "event") {
+      if (!(o.price >= PRICE_MIN && o.price <= PRICE_MAX)) return no(`price ${o.price} outside band ${PRICE_MIN}-${PRICE_MAX}`, dayWorst);
+      if ((s.ordersPerTicker[o.ticker] ?? 0) >= MAX_ORDERS_PER_TICKER_WINDOW) return no("orders per ticker reached", dayWorst);
+      // fail closed: without the per-ticker and correlated maps we cannot see stacked exposure
+      if (!s.tickerWorst || !s.correlated) return no("exposure maps missing", dayWorst);
+    }
     const cash = (s.shard2Cash ?? 0) + (s.shard0Cash ?? 0);
     const room = pileRoom(cash, dayWorst);
     const projected = Number((dayWorst - orderWorst).toFixed(4));
     if (o.product === "event" && orderWorst > room + 1e-9) return no(`pile room ${room.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
+    if (o.product === "event" && s.correlated) {
+      const key = correlationKey(o.ticker, o.side === "yes" ? "up" : "down");
+      const stacked = (s.correlated[key] ?? 0) + orderWorst;
+      // a correlated group (e.g. BTC+ETH+SOL YES) moves as one bet: it shares one pile-room budget
+      if (stacked > room + 1e-9) return no(`correlated ${key} ${stacked.toFixed(2)} > room ${room.toFixed(2)}`, dayWorst, projected);
+    }
     if ((this.tickCount.get(o.tickId) ?? 0) >= MAX_ORDERS_PER_TICK) return no("one order per tick", dayWorst, projected);
     if (cash < orderWorst) return no(`cash ${cash.toFixed(2)} < ${orderWorst.toFixed(2)}`, dayWorst, projected);
     return { ok: true, why: "risk ok", dayWorst, projected, orderWorst };

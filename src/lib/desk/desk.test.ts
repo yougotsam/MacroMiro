@@ -82,13 +82,13 @@ describe("AURIX-X risk and emergency stops", () => {
   });
 
   it("includes unknown pending order worst-case in all aggregate risk", () => {
-    // POLICY round 3: −$15 stop (was −$5); realized shifted by −$10 so the ambiguous send still decides it
-    const s = snap({ realizedToday: -11, openWorst: 1.5, restWorst: 0.5, pendingWorst: 2 });
-    expect(dayWorstOf(s)).toBe(-15);
+    // pile policy: $36 cash → the day stops at −25% = −$9; the ambiguous $2 send is what reaches it
+    const s = snap({ realizedToday: -5, openWorst: 1.5, restWorst: 0.5, pendingWorst: 2 });
+    expect(dayWorstOf(s)).toBe(-9);
     const risk = new RiskEngine(folder(), permit);
     expect(risk.check(intent(), s, NOW).ok).toBe(false);
     // without the $2 ambiguous send the same order would pass: pending risk is what blocks it
-    expect(new RiskEngine(folder(), permit).check(intent(), snap({ realizedToday: -11, openWorst: 1.5, restWorst: 0.5 }), NOW).ok).toBe(true);
+    expect(new RiskEngine(folder(), permit).check(intent(), snap({ realizedToday: -5, openWorst: 1.5, restWorst: 0.5 }), NOW).ok).toBe(true);
   });
 });
 
