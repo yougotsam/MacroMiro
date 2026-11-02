@@ -132,6 +132,14 @@ export class PerpsOms {
           return { cid, status: "PROTECTION_FAILED: entry may be open without a stop; reconcile immediately", order_id: r.order_id };
         }
         if (notes.length) this.log({ cid, state: "ACK", order_id: r.order_id, note: `triggers ${notes.join(",")}` });
+        // Immediate/taker fills are verified in the same operation. Resting maker
+        // fills require the user-fills worker to call ensureAfterFill on notification.
+        if (Number(r.fill_count) > 0) {
+          const protectedFill = await this.ensureAfterFill(i, r.order_id);
+          if (protectedFill.state !== "PROTECTION_VERIFIED") {
+            return { cid, status: `${protectedFill.state}: ${protectedFill.why}`, order_id: r.order_id };
+          }
+        }
       }
       return { cid, status: "ACK", order_id: r.order_id };
     } catch (e) {
