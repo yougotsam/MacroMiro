@@ -88,6 +88,26 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
     expect((await o.submit({ ...i, decisionId: "another-entry" })).status).toMatch(/BLOCKED/);
     expect(x.orders).toHaveLength(1);
   });
+  it("confirmed immediate fills require venue stop and target readback", async () => {
+    const x = new FakeExchange();
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const entry = { ...i, decisionId: "instant-protection", plan };
+    const ack = await o.submit(entry);
+    expect(ack.status).toBe("ACK");
+    expect(o.stateOf(ack.cid)).toBe("PROTECTION_VERIFIED");
+    expect(x.triggers.length).toBe(1);
+  });
+  it("a filled position without a protective bracket can be armed after a fill", async () => {
+    const x = new FakeExchange();
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const entry = { ...i, decisionId: "later-fill", plan };
+    x.applyFill("external-order", "KXBTCPERP", "bid", 3, 8.36, true);
+    const result = await o.ensureAfterFill(entry, "external-order");
+    expect(result.state).toBe("PROTECTION_VERIFIED");
+    expect((await x.getCrossExitTriggers("KXBTCPERP"))[0].stop).toBe("8.2600");
+  });
   it("idempotent cid, duplicate refused, timeout → UNKNOWN → reconcile (no resend)", async () => {
     const x = new FakeExchange(); const o = new PerpsOms(x, null, true);
     expect(clientOrderId(i)).toBe(clientOrderId({ ...i })); x.failNextCreateAfterAccept = true;
