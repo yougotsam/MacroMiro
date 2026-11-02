@@ -59,8 +59,8 @@ export function gradePredictionFill(r: PredictionFillEvidence, maxQuoteAgeMs = 3
     ticker: r.ticker,
     modelVersion: r.modelVersion, split: r.datasetSplitId,
     netUsd: +((win ? r.quantity : 0) - r.quantity * r.filledPriceUsd - r.totalFeesUsd).toFixed(6),
-    modelBrier: p === null ? null : +(p - label) ** 2,
-    entryBrier: +(marketP - label) ** 2,
+    modelBrier: p === null ? null : +((p - label) ** 2).toFixed(6),
+    entryBrier: +((marketP - label) ** 2).toFixed(6),
     result: r.result, oos: r.oos,
   } };
 }
