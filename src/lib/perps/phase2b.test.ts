@@ -146,6 +146,18 @@ describe("collector pieces", () => {
 });
 
 describe("pair scanner + intel", () => {
+  it("macro surprise carries actual/forecast timestamps and ranks volatility only after detection", () => {
+    const release = { name: "US CPI", assets: ["GOLD", "BTC"], actual: 3.1, consensus: 2.9, surpriseStd: 0.1,
+      officialUrl: "https://www.bls.gov/", forecastUrl: "https://example.org/forecast",
+      forecastAt: "2026-11-02T12:00:00Z", publishedAt: "2026-11-02T13:00:00Z", detectedAt: "2026-11-02T13:01:00Z" };
+    const inputs = { calendar: null, intelEvents: [], mirofish: null, spark: null, evidence: [], macroReleases: [release] };
+    const early = perpsIntel("KXGOLDPERP", Date.parse("2026-11-02T13:00:30Z"), inputs);
+    const late = perpsIntel("KXGOLDPERP", Date.parse("2026-11-02T13:02:00Z"), inputs);
+    expect(early.rows.find((r) => r.event === "US CPI")!.usable).toBe("LATE");
+    expect(late.rows.find((r) => r.event === "US CPI")!.usable).toBe("PRE_DECISION");
+    expect(late.rows.find((r) => r.event === "US CPI")!.score).toBeGreaterThan(0);
+    expect(late.rows.find((r) => r.event === "US CPI")!.note).toContain("volatility catalyst only");
+  });
   it("single-book YES+NO pair cannot be < $1 unless crossed", () => { expect(pairCost({ ticker: "t", yesBid: 0.5, noBid: 0.48 }, takerFee).status).toBe("NO_ARB"); });
   it("intel only uses items available before the decision", () => {
     const r = perpsIntel("KXXRPPERP", Date.parse("2026-10-09T12:00:00Z"), { calendar: null, intelEvents: [{ title: "x", assets: ["XRP"], publishedAt: "2026-10-09T06:00:00Z", detectedAt: "2026-10-10T00:00:00Z" }], mirofish: null, spark: null, evidence: [] });
