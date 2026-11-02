@@ -60,7 +60,7 @@ export const lockedTransport: PerpsTransport = {
 };
 
 export type Intent = { kind: "entry" | "exit" | "flatten"; ticker: string; dir: "long" | "short"; qty: number; price: number; maker: boolean; plan?: ManagePlan; decisionId: string };
-export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED"; intent?: Intent; order_id?: string; note?: string };
+export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "PROTECTION_VERIFIED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED"; intent?: Intent; order_id?: string; note?: string };
 
 export const CID_PREFIX = "mm-perps-";
 /** Same intent → same client_order_id, so a retry can never create a second order. */
@@ -84,8 +84,12 @@ export class PerpsOms {
       try { this.rows = readFileSync(journalPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); }
       catch { this.blocked = "corrupt journal: sending disabled"; }
       // A new HTTP request must not reset a prior unprotected-entry alarm.
-      if (!this.blocked && this.rows.some((r) => r.state === "PROTECTION_FAILED")) {
-        this.blocked = "unprotected entry in journal: reconcile position and triggers before new entries";
+      if (!this.blocked) {
+        const latest = new Map<string, JournalRow>();
+        for (const r of this.rows) latest.set(r.cid, r);
+        if ([...latest.values()].some((r) => r.state === "PROTECTION_FAILED")) {
+          this.blocked = "unprotected entry in journal: reconcile position and triggers before new entries";
+        }
       }
     }
   }
@@ -134,6 +138,52 @@ export class PerpsOms {
       // network/timeout/5xx: the order may or may not exist. Never resend; reconcile instead.
       this.log({ cid, state: "UNKNOWN", note: String((e as Error).message).slice(0, 200) });
       return { cid, status: "UNKNOWN: will reconcile, not resend" };
+    }
+  }
+
+  /**
+   * Verify or attach protective stop/target AFTER an actual venue fill.
+   * Trigger acceptance during order ACK is not evidence that the filled position
+   * is protected. This method requires the venue's live position and trigger list.
+   * Caller is a dedicated fill/recovery worker, never an unverified browser POST.
+   */
+  async ensureAfterFill(i: Intent, orderId: string): Promise<{ state: "WAITING_FOR_FILL" | "PROTECTION_VERIFIED" | "PROTECTION_FAILED"; why: string }> {
+    if (i.kind !== "entry" || !i.plan || !orderId) {
+      return { state: "PROTECTION_FAILED", why: "entry plan or order id missing" };
+    }
+    const cid = clientOrderId(i);
+    const fail = (why: string) => {
+      this.log({ cid, state: "PROTECTION_FAILED", order_id: orderId, note: why.slice(0, 200) });
+      this.blocked = `unprotected entry ${cid}: ${why.slice(0, 150)}`;
+      return { state: "PROTECTION_FAILED" as const, why };
+    };
+    try {
+      const positions = await this.t.positions();
+      const pos = Number(positions.find((p) => p.market_ticker === i.ticker)?.position ?? 0);
+      if (!Number.isFinite(pos)) return fail("position quantity invalid");
+      if (pos === 0) return { state: "WAITING_FOR_FILL", why: "exchange shows no open filled position" };
+      if ((pos > 0) !== (i.dir === "long")) return fail("position is opposite the entry direction");
+      const stop = i.plan.stop.toFixed(4), take = i.plan.t2.toFixed(4);
+      const hasProtection = (triggers: ExitTrigger[]) =>
+        triggers.some((t) => Number(t.stop) === Number(stop) && Number(t.take) === Number(take) &&
+          (t.count == null || Number(t.count) >= Math.abs(pos)));
+      const before = await this.t.getCrossExitTriggers(i.ticker);
+      if (!hasProtection(before)) {
+        if (!this.allowSend) return fail("protective trigger absent, sending disabled");
+        if (before.length) return fail("other exit triggers already exist; refuse overlapping brackets");
+        await this.t.setCrossExitTrigger(i.ticker, {
+          kind: "bracket", count: String(Math.abs(pos)),
+          client_trigger_id: `${cid}-filled`.slice(0, 64),
+          stop_loss_price: stop, take_profit_price: take,
+        });
+      }
+      const confirmed = await this.t.getCrossExitTriggers(i.ticker);
+      if (!hasProtection(confirmed)) return fail("venue did not confirm stop and target for filled position");
+      this.log({ cid, state: "PROTECTION_VERIFIED", order_id: orderId, note: `venue stop ${stop} target ${take}, open ${pos}` });
+      if (this.blocked?.includes(cid)) this.blocked = null;
+      return { state: "PROTECTION_VERIFIED", why: "venue readback confirmed" };
+    } catch (err) {
+      return fail(String((err as Error).message).slice(0, 180));
     }
   }
 
@@ -226,6 +276,14 @@ export class FakeExchange implements PerpsTransport {
   async positions() { return [...this.pos.entries()].map(([t, p]) => ({ market_ticker: t, position: String(p.q), entry_price: String(p.e), unrealized_pnl: "0", fees: "0" })); }
   async setCrossExitTrigger(ticker: string, body: Record<string, unknown>) { this.triggers.push({ ticker, body }); return { id: `trg-${this.triggers.length}` }; }
   async updateCrossExitTrigger(ticker: string, id: string, body: Record<string, unknown>) { this.triggers.push({ ticker, body: { ...body, id } }); return { id }; }
-  async getCrossExitTriggers() { return []; }
+  async getCrossExitTriggers(ticker: string) {
+    return this.triggers.filter((t) => t.ticker === ticker).map((t, ix) => ({
+      id: String(t.body.id ?? `trg-${ix + 1}`), kind: String(t.body.kind ?? "bracket"),
+      stop: t.body.stop_loss_price == null ? null : String(t.body.stop_loss_price),
+      take: t.body.take_profit_price == null ? null : String(t.body.take_profit_price),
+      count: t.body.count == null ? null : String(t.body.count),
+      trail: t.body.trail_amount == null ? null : String(t.body.trail_amount),
+    }));
+  }
   async cancelCrossExitTriggers() { this.triggers.length = 0; }
 }
