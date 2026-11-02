@@ -99,7 +99,8 @@ export class PerpsOms {
   /** Place an intent once. Refuses duplicates, reversals, unknown-order blocks and the global lock. */
   async submit(i: Intent, positions: VenuePosition[] = []): Promise<{ cid: string; status: string; order_id?: string }> {
     const cid = clientOrderId(i);
-    if (this.blocked) return { cid, status: `BLOCKED: ${this.blocked}` };
+    // Faults block NEW exposure, not protective reduce-only exits.
+    if (this.blocked && i.kind === "entry") return { cid, status: `BLOCKED: ${this.blocked}` };
     if (this.stateOf(cid)) return { cid, status: `DUPLICATE (${this.stateOf(cid)}): not re-sent` };
     const pos = Number(positions.find((p) => p.market_ticker === i.ticker)?.position ?? 0);
     if (i.kind === "entry") { const wd = this.watchdog(); if (!wd.ok) return { cid, status: `REFUSED: ${wd.why} (fail-closed, entries only)` }; }
