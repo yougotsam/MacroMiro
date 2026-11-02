@@ -7,6 +7,7 @@ import { brier, edgeReport } from "./prob-edge";
 import { fundingAsOf, fundingClocksInHold, nextKalshiFundingMs, to15Report, contiguousLookback } from "./sim";
 import { replayBooks, rolloverSeed } from "./book-replay";
 import { LocalBook } from "./stream";
+import { rankPerpsCandidates } from "./rank";
 import { pickCurrentReplay, emptyTradeReport } from "./replay-report";
 import { researchTrace } from "./research-features";
 import { perpsOrders, PerpsOrdersLocked, PERPS_ORDERS_LOCKED } from "./order-adapter";
@@ -58,6 +59,15 @@ describe("perps candidates", () => {
     expect(c.target2! - c.entry!).toBeCloseTo(2 * (c.entry! - c.stop!), 3);
     expect(c.notionalUsd).toBeLessThanOrEqual(100);
     expect(c.decision).toBe("NO_TRADE"); // synthetic bars → no 9+/13
+  });
+  it("existing scanner ranks candidates without fabricating probability or sending orders", () => {
+    const long = buildPerpsCandidate({ ...base, dir: "long", bookFresh: false, receivedMs: 1, decisionMs: 2 });
+    const short = buildPerpsCandidate({ ...base, dir: "short", receivedMs: 1, decisionMs: 2 });
+    const ranked = rankPerpsCandidates([long, short]);
+    expect(ranked).toHaveLength(2);
+    expect(ranked.every((c) => c.probability === "UNMEASURED")).toBe(true);
+    expect(ranked.find((c) => c.dir === "long")!.blockers).toContain("book_fresh");
+    expect(ranked[0].rank).toBe(1);
   });
   it("funding against the side beyond the cap fails the funding gate", () => {
     const c = buildPerpsCandidate({ ...base, dir: "long", fundingRate8h: 0.001 });
