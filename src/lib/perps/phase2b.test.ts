@@ -86,7 +86,11 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
     expect(o.stateOf(result.cid)).toBe("PROTECTION_FAILED");
     expect(o.blocked).toMatch(/unprotected entry/);
     expect((await o.submit({ ...i, decisionId: "another-entry" })).status).toMatch(/BLOCKED/);
-    expect(x.orders).toHaveLength(1);
+    // A stop alarm must never block a reduce-only emergency exit.
+    const reduced = await o.submit({ ...i, kind: "exit", decisionId: "reduce-after-trigger-failure" }, await x.positions());
+    expect(reduced.status).toBe("ACK");
+    expect(x.orders).toHaveLength(2);
+    expect(x.orders[1].reduce_only).toBe(true);
   });
   it("confirmed immediate fills require venue stop and target readback", async () => {
     const x = new FakeExchange();
