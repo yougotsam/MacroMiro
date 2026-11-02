@@ -75,6 +75,19 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
     expect((await o.submit(i)).status).toBe("ACK");
     expect(x.orders.length).toBe(1);
   });
+  it("a rejected exit trigger is not an ACK and blocks subsequent entries", async () => {
+    const x = new FakeExchange();
+    x.setCrossExitTrigger = async () => { throw new Error("simulated venue trigger rejection"); };
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const result = await o.submit({ ...i, plan, decisionId: "failed-protection" });
+    expect(result.status).toMatch(/PROTECTION_FAILED/);
+    expect(result.order_id).toBeTruthy();
+    expect(o.stateOf(result.cid)).toBe("PROTECTION_FAILED");
+    expect(o.blocked).toMatch(/unprotected entry/);
+    expect((await o.submit({ ...i, decisionId: "another-entry" })).status).toMatch(/BLOCKED/);
+    expect(x.orders).toHaveLength(1);
+  });
   it("idempotent cid, duplicate refused, timeout → UNKNOWN → reconcile (no resend)", async () => {
     const x = new FakeExchange(); const o = new PerpsOms(x, null, true);
     expect(clientOrderId(i)).toBe(clientOrderId({ ...i })); x.failNextCreateAfterAccept = true;
