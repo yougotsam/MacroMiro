@@ -68,9 +68,14 @@ describe("STATE.md + lessons memory", () => {
 describe("independent checker (strategy gate)", () => {
   const pos = Array.from({ length: 300 }, (_, i) => ({ t: i, netUsd: 1 + (i % 3 === 0 ? -1.5 : 0.5), oos: true }));
   it("is blind: only t/netUsd/oos survive, reasoning is stripped", () => {
-    const b = blindTrades([{ t: 1, net: 2, reasoning: "secret", setup: "X", score: 9 }]);
+    const b = blindTrades([{ t: 1, net: 2, oos: true, reasoning: "secret", setup: "X", score: 9 }]);
     expect(Object.keys(b[0]).sort()).toEqual(["netUsd", "oos", "t"]);
     expect(JSON.stringify(verdictBundle("s", b, strategyGate(b), "p"))).not.toContain("secret");
+  });
+  it("missing OOS flags or malformed P&L cannot silently pass as holdout trades", () => {
+    const b = blindTrades([{ t: 1, netUsd: 5 }, { t: 2, netUsd: 2, oos: true }, { t: 3, netUsd: -1, oos: false }, { t: 4, netUsd: 5, oos: "true" }, { t: 5, netUsd: null, oos: true }]);
+    expect(b).toEqual([{ t: 2, netUsd: 2, oos: true }, { t: 3, netUsd: -1, oos: false }]);
+    expect(strategyGate(b).stats.oosTrades).toBe(1);
   });
   it("Newey–West t equals the plain t for white noise with lag 0 and shrinks with autocorrelation", () => {
     const x = [1, -1, 2, -2, 3, -3, 1, 1];
