@@ -60,7 +60,7 @@ export const lockedTransport: PerpsTransport = {
 };
 
 export type Intent = { kind: "entry" | "exit" | "flatten"; ticker: string; dir: "long" | "short"; qty: number; price: number; maker: boolean; plan?: ManagePlan; decisionId: string };
-export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED"; intent?: Intent; order_id?: string; note?: string };
+export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED"; intent?: Intent; order_id?: string; note?: string };
 
 export const CID_PREFIX = "mm-perps-";
 /** Same intent → same client_order_id, so a retry can never create a second order. */
@@ -83,6 +83,10 @@ export class PerpsOms {
     if (journalPath && existsSync(journalPath)) {
       try { this.rows = readFileSync(journalPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); }
       catch { this.blocked = "corrupt journal: sending disabled"; }
+      // A new HTTP request must not reset a prior unprotected-entry alarm.
+      if (!this.blocked && this.rows.some((r) => r.state === "PROTECTION_FAILED")) {
+        this.blocked = "unprotected entry in journal: reconcile position and triggers before new entries";
+      }
     }
   }
   private log(r: Omit<JournalRow, "at">) { const row = { at: new Date().toISOString(), ...r }; this.rows.push(row); if (this.journalPath) appendFileSync(this.journalPath, JSON.stringify(row) + "\n"); }
@@ -106,13 +110,22 @@ export class PerpsOms {
       this.log({ cid, state: "ACK", order_id: r.order_id, note: `filled ${r.fill_count} remaining ${r.remaining_count}` });
       if (i.kind === "entry" && i.plan) {
         const notes: string[] = [];
+        let failedProtection = false;
         for (const body of nativeTriggerRequests(i.plan, r.order_id, cid, pos !== 0)) {
           try {
             const trg = await this.t.setCrossExitTrigger(i.ticker, body);
             notes.push(trg.id);
           } catch (e) {
+            failedProtection = true;
             notes.push(`failed ${String((e as Error).message).slice(0, 120)}`);
           }
+        }
+        if (failedProtection) {
+          // The entry may already have filled. Never claim it is protected or re-send it.
+          // Reconcile with venue orders, fills, positions and triggers before further entries.
+          this.log({ cid, state: "PROTECTION_FAILED", order_id: r.order_id, note: `triggers ${notes.join(",")}` });
+          this.blocked = `unprotected entry ${cid}: operator reconciliation required`;
+          return { cid, status: "PROTECTION_FAILED: entry may be open without a stop; reconcile immediately", order_id: r.order_id };
         }
         if (notes.length) this.log({ cid, state: "ACK", order_id: r.order_id, note: `triggers ${notes.join(",")}` });
       }
