@@ -101,7 +101,7 @@ export function mapExitTrigger(x: unknown): ExitTrigger {
   };
   const rawCount = o.count;
   const count = rawCount == null ? null : typeof rawCount === "object" ? (String(row(rawCount).count ?? "") || null) : String(rawCount);
-  return { id, kind: String(o.kind ?? "bracket"), stop: pick("stop_loss_price"), take: pick("take_profit_price"), count, trail: pick("trail_amount") };
+  return { id, kind: String(o.kind ?? "bracket"), status: o.status == null ? null : String(o.status), stop: pick("stop_loss_price"), take: pick("take_profit_price"), count, trail: pick("trail_amount") };
 }
 
 function triggerId(body: Record<string, unknown>) {
