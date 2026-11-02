@@ -30,6 +30,16 @@ describe("perps read adapter", () => {
     expect(b.minBid).toBeCloseTo(Math.min(0.8 * 8.3467, 8.3467 - 0.1), 6);
     expect(b.maxAsk).toBeCloseTo(Math.max(1.2 * 8.3473, 8.3473 + 0.1), 6);
   });
+  it("margin balance requests the authoritative computed available funds", async () => {
+    const paths: string[] = [];
+    const reader = perpsReader(async (p) => {
+      paths.push(p);
+      return { subaccount_balances: [{ subaccount: 0, account_equity: "250.00", available_balance: "182.00" }] };
+    });
+    const result = await reader.balance();
+    expect(paths).toEqual(["/balance?compute_available_balance=true"]);
+    expect(result).toHaveProperty("subaccount_balances");
+  });
   it("reader parses funding estimate with ms timestamps from a mocked GET", async () => {
     const paths: string[] = [];
     const r = perpsReader(async (p) => { paths.push(p); return { funding_rate: 0.00019, next_funding_time: "2026-10-13T04:00:00Z", mark_price: "8.24", computed_time: "2026-10-12T22:43:40Z" }; });
