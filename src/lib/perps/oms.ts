@@ -30,7 +30,7 @@ export type CreateReq = {
 export type VenueOrder = { order_id: string; client_order_id: string; ticker: string; side: "bid" | "ask"; price: string; fill_count: string; remaining_count: string; last_update_reason?: string };
 export type VenueFill = { fill_id: string; order_id: string; is_taker: boolean; side: "bid" | "ask"; count: string; price: string; fees: string; realized_pnl: string; ticker: string; created_time: string };
 export type VenuePosition = { market_ticker: string; position: string; entry_price: string; unrealized_pnl: string; fees: string };
-export type ExitTrigger = { id: string; kind: string; stop: string | null; take: string | null; count: string | null; trail: string | null };
+export type ExitTrigger = { id: string; kind: string; status: string | null; stop: string | null; take: string | null; count: string | null; trail: string | null };
 export interface PerpsTransport {
   createOrder(r: CreateReq): Promise<{ order_id: string; client_order_id?: string; fill_count: string; remaining_count: string; average_fill_price?: string; average_fee_paid?: string }>;
   cancelOrder(orderId: string): Promise<void>;
@@ -60,7 +60,7 @@ export const lockedTransport: PerpsTransport = {
 };
 
 export type Intent = { kind: "entry" | "exit" | "flatten"; ticker: string; dir: "long" | "short"; qty: number; price: number; maker: boolean; plan?: ManagePlan; decisionId: string };
-export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED"; intent?: Intent; order_id?: string; note?: string };
+export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "PROTECTION_VERIFIED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED"; intent?: Intent; order_id?: string; note?: string };
 
 export const CID_PREFIX = "mm-perps-";
 /** Same intent → same client_order_id, so a retry can never create a second order. */
@@ -83,6 +83,14 @@ export class PerpsOms {
     if (journalPath && existsSync(journalPath)) {
       try { this.rows = readFileSync(journalPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); }
       catch { this.blocked = "corrupt journal: sending disabled"; }
+      // A new HTTP request must not reset a prior unprotected-entry alarm.
+      if (!this.blocked) {
+        const latest = new Map<string, JournalRow>();
+        for (const r of this.rows) latest.set(r.cid, r);
+        if ([...latest.values()].some((r) => r.state === "PROTECTION_FAILED")) {
+          this.blocked = "unprotected entry in journal: reconcile position and triggers before new entries";
+        }
+      }
     }
   }
   private log(r: Omit<JournalRow, "at">) { const row = { at: new Date().toISOString(), ...r }; this.rows.push(row); if (this.journalPath) appendFileSync(this.journalPath, JSON.stringify(row) + "\n"); }
@@ -91,7 +99,8 @@ export class PerpsOms {
   /** Place an intent once. Refuses duplicates, reversals, unknown-order blocks and the global lock. */
   async submit(i: Intent, positions: VenuePosition[] = []): Promise<{ cid: string; status: string; order_id?: string }> {
     const cid = clientOrderId(i);
-    if (this.blocked) return { cid, status: `BLOCKED: ${this.blocked}` };
+    // Faults block NEW exposure, not protective reduce-only exits.
+    if (this.blocked && i.kind === "entry") return { cid, status: `BLOCKED: ${this.blocked}` };
     if (this.stateOf(cid)) return { cid, status: `DUPLICATE (${this.stateOf(cid)}): not re-sent` };
     const pos = Number(positions.find((p) => p.market_ticker === i.ticker)?.position ?? 0);
     if (i.kind === "entry") { const wd = this.watchdog(); if (!wd.ok) return { cid, status: `REFUSED: ${wd.why} (fail-closed, entries only)` }; }
@@ -106,21 +115,86 @@ export class PerpsOms {
       this.log({ cid, state: "ACK", order_id: r.order_id, note: `filled ${r.fill_count} remaining ${r.remaining_count}` });
       if (i.kind === "entry" && i.plan) {
         const notes: string[] = [];
+        let failedProtection = false;
         for (const body of nativeTriggerRequests(i.plan, r.order_id, cid, pos !== 0)) {
           try {
             const trg = await this.t.setCrossExitTrigger(i.ticker, body);
             notes.push(trg.id);
           } catch (e) {
+            failedProtection = true;
             notes.push(`failed ${String((e as Error).message).slice(0, 120)}`);
           }
         }
+        if (failedProtection) {
+          // The entry may already have filled. Never claim it is protected or re-send it.
+          // Reconcile with venue orders, fills, positions and triggers before further entries.
+          this.log({ cid, state: "PROTECTION_FAILED", order_id: r.order_id, note: `triggers ${notes.join(",")}` });
+          this.blocked = `unprotected entry ${cid}: operator reconciliation required`;
+          return { cid, status: "PROTECTION_FAILED: entry may be open without a stop; reconcile immediately", order_id: r.order_id };
+        }
         if (notes.length) this.log({ cid, state: "ACK", order_id: r.order_id, note: `triggers ${notes.join(",")}` });
+        // Immediate/taker fills are verified in the same operation. Resting maker
+        // fills require the user-fills worker to call ensureAfterFill on notification.
+        if (Number(r.fill_count) > 0) {
+          const protectedFill = await this.ensureAfterFill(i, r.order_id);
+          if (protectedFill.state !== "PROTECTION_VERIFIED") {
+            return { cid, status: `${protectedFill.state}: ${protectedFill.why}`, order_id: r.order_id };
+          }
+        }
       }
       return { cid, status: "ACK", order_id: r.order_id };
     } catch (e) {
       // network/timeout/5xx: the order may or may not exist. Never resend; reconcile instead.
       this.log({ cid, state: "UNKNOWN", note: String((e as Error).message).slice(0, 200) });
       return { cid, status: "UNKNOWN: will reconcile, not resend" };
+    }
+  }
+
+  /**
+   * Verify or attach protective stop/target AFTER an actual venue fill.
+   * Trigger acceptance during order ACK is not evidence that the filled position
+   * is protected. This method requires the venue's live position and trigger list.
+   * Caller is a dedicated fill/recovery worker, never an unverified browser POST.
+   */
+  async ensureAfterFill(i: Intent, orderId: string): Promise<{ state: "WAITING_FOR_FILL" | "PROTECTION_VERIFIED" | "PROTECTION_FAILED"; why: string }> {
+    if (i.kind !== "entry" || !i.plan || !orderId) {
+      return { state: "PROTECTION_FAILED", why: "entry plan or order id missing" };
+    }
+    const cid = clientOrderId(i);
+    const fail = (why: string) => {
+      this.log({ cid, state: "PROTECTION_FAILED", order_id: orderId, note: why.slice(0, 200) });
+      this.blocked = `unprotected entry ${cid}: ${why.slice(0, 150)}`;
+      return { state: "PROTECTION_FAILED" as const, why };
+    };
+    try {
+      const positions = await this.t.positions();
+      const pos = Number(positions.find((p) => p.market_ticker === i.ticker)?.position ?? 0);
+      if (!Number.isFinite(pos)) return fail("position quantity invalid");
+      if (pos === 0) return { state: "WAITING_FOR_FILL", why: "exchange shows no open filled position" };
+      if ((pos > 0) !== (i.dir === "long")) return fail("position is opposite the entry direction");
+      const stop = i.plan.stop.toFixed(4), take = i.plan.t2.toFixed(4);
+      const hasProtection = (triggers: ExitTrigger[]) =>
+        triggers.some((t) => t.kind === "bracket" && t.status === "active" &&
+          t.stop != null && t.take != null &&
+          Number(t.stop) === Number(stop) && Number(t.take) === Number(take) &&
+          t.count != null && (Number(t.count) === 0 || Number(t.count) >= Math.abs(pos)));
+      const before = await this.t.getCrossExitTriggers(i.ticker);
+      if (!hasProtection(before)) {
+        if (!this.allowSend) return fail("protective trigger absent, sending disabled");
+        if (before.length) return fail("other exit triggers already exist; refuse overlapping brackets");
+        await this.t.setCrossExitTrigger(i.ticker, {
+          kind: "bracket", count: String(Math.abs(pos)),
+          client_trigger_id: `${cid}-filled`.slice(0, 64),
+          stop_loss_price: stop, take_profit_price: take,
+        });
+      }
+      const confirmed = await this.t.getCrossExitTriggers(i.ticker);
+      if (!hasProtection(confirmed)) return fail("venue did not confirm stop and target for filled position");
+      this.log({ cid, state: "PROTECTION_VERIFIED", order_id: orderId, note: `venue stop ${stop} target ${take}, open ${pos}` });
+      if (this.blocked?.includes(cid)) this.blocked = null;
+      return { state: "PROTECTION_VERIFIED", why: "venue readback confirmed" };
+    } catch (err) {
+      return fail(String((err as Error).message).slice(0, 180));
     }
   }
 
@@ -213,6 +287,15 @@ export class FakeExchange implements PerpsTransport {
   async positions() { return [...this.pos.entries()].map(([t, p]) => ({ market_ticker: t, position: String(p.q), entry_price: String(p.e), unrealized_pnl: "0", fees: "0" })); }
   async setCrossExitTrigger(ticker: string, body: Record<string, unknown>) { this.triggers.push({ ticker, body }); return { id: `trg-${this.triggers.length}` }; }
   async updateCrossExitTrigger(ticker: string, id: string, body: Record<string, unknown>) { this.triggers.push({ ticker, body: { ...body, id } }); return { id }; }
-  async getCrossExitTriggers() { return []; }
+  async getCrossExitTriggers(ticker: string) {
+    return this.triggers.filter((t) => t.ticker === ticker).map((t, ix) => ({
+      id: String(t.body.id ?? `trg-${ix + 1}`), kind: String(t.body.kind ?? "bracket"),
+      status: (this.pos.get(ticker)?.q ?? 0) !== 0 ? "active" : "pending_on_entry",
+      stop: t.body.stop_loss_price == null ? null : String(t.body.stop_loss_price),
+      take: t.body.take_profit_price == null ? null : String(t.body.take_profit_price),
+      count: t.body.count == null ? "0" : String(t.body.count),
+      trail: t.body.trail_amount == null ? null : String(t.body.trail_amount),
+    }));
+  }
   async cancelCrossExitTriggers() { this.triggers.length = 0; }
 }

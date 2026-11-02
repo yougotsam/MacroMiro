@@ -63,7 +63,8 @@ export function perpsReader(get: Get = signedGet) {
     fundingHistory: async (t: string, startS: number, endS: number) => ((await get(`/funding_rates/historical?ticker=${t}&start_ts=${startS}&end_ts=${endS}`)) as { funding_rates: Array<{ funding_rate: number; funding_time: string }> }).funding_rates ?? [],
     feeTiers: async () => (await get("/fee_tiers")) as { maker_fee_rates: Record<string, number>; taker_fee_rates: Record<string, number> },
     riskParameters: async () => (await get("/risk_parameters")) as Record<string, unknown>,
-    balance: async () => (await get("/balance")) as Record<string, unknown>,
+    /** Venue computes available balance ONLY when requested; this endpoint has a higher token cost. */
+    balance: async () => (await get("/balance?compute_available_balance=true")) as Record<string, unknown>,
   };
 }
 

@@ -75,6 +75,43 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
     expect((await o.submit(i)).status).toBe("ACK");
     expect(x.orders.length).toBe(1);
   });
+  it("a rejected exit trigger is not an ACK and blocks subsequent entries", async () => {
+    const x = new FakeExchange();
+    x.setCrossExitTrigger = async () => { throw new Error("simulated venue trigger rejection"); };
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const result = await o.submit({ ...i, plan, decisionId: "failed-protection" });
+    expect(result.status).toMatch(/PROTECTION_FAILED/);
+    expect(result.order_id).toBeTruthy();
+    expect(o.stateOf(result.cid)).toBe("PROTECTION_FAILED");
+    expect(o.blocked).toMatch(/unprotected entry/);
+    expect((await o.submit({ ...i, decisionId: "another-entry" })).status).toMatch(/BLOCKED/);
+    // A stop alarm must never block a reduce-only emergency exit.
+    const reduced = await o.submit({ ...i, kind: "exit", decisionId: "reduce-after-trigger-failure" }, await x.positions());
+    expect(reduced.status).toBe("ACK");
+    expect(x.orders).toHaveLength(2);
+    expect(x.orders[1].reduce_only).toBe(true);
+  });
+  it("confirmed immediate fills require venue stop and target readback", async () => {
+    const x = new FakeExchange();
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const entry = { ...i, decisionId: "instant-protection", plan };
+    const ack = await o.submit(entry);
+    expect(ack.status).toBe("ACK");
+    expect(o.stateOf(ack.cid)).toBe("PROTECTION_VERIFIED");
+    expect(x.triggers.length).toBe(1);
+  });
+  it("a filled position without a protective bracket can be armed after a fill", async () => {
+    const x = new FakeExchange();
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const entry = { ...i, decisionId: "later-fill", plan };
+    x.applyFill("external-order", "KXBTCPERP", "bid", 3, 8.36, true);
+    const result = await o.ensureAfterFill(entry, "external-order");
+    expect(result.state).toBe("PROTECTION_VERIFIED");
+    expect((await x.getCrossExitTriggers("KXBTCPERP"))[0].stop).toBe("8.2600");
+  });
   it("idempotent cid, duplicate refused, timeout → UNKNOWN → reconcile (no resend)", async () => {
     const x = new FakeExchange(); const o = new PerpsOms(x, null, true);
     expect(clientOrderId(i)).toBe(clientOrderId({ ...i })); x.failNextCreateAfterAccept = true;
@@ -113,6 +150,18 @@ describe("collector pieces", () => {
 });
 
 describe("pair scanner + intel", () => {
+  it("macro surprise carries actual/forecast timestamps and ranks volatility only after detection", () => {
+    const release = { name: "US CPI", assets: ["GOLD", "BTC"], actual: 3.1, consensus: 2.9, surpriseStd: 0.1,
+      officialUrl: "https://www.bls.gov/", forecastUrl: "https://example.org/forecast",
+      forecastAt: "2026-11-02T12:00:00Z", publishedAt: "2026-11-02T13:00:00Z", detectedAt: "2026-11-02T13:01:00Z" };
+    const inputs = { calendar: null, intelEvents: [], mirofish: null, spark: null, evidence: [], macroReleases: [release] };
+    const early = perpsIntel("KXGOLDPERP", Date.parse("2026-11-02T13:00:30Z"), inputs);
+    const late = perpsIntel("KXGOLDPERP", Date.parse("2026-11-02T13:02:00Z"), inputs);
+    expect(early.rows.find((r) => r.event === "US CPI")!.usable).toBe("LATE");
+    expect(late.rows.find((r) => r.event === "US CPI")!.usable).toBe("PRE_DECISION");
+    expect(late.rows.find((r) => r.event === "US CPI")!.score).toBeGreaterThan(0);
+    expect(late.rows.find((r) => r.event === "US CPI")!.note).toContain("volatility catalyst only");
+  });
   it("single-book YES+NO pair cannot be < $1 unless crossed", () => { expect(pairCost({ ticker: "t", yesBid: 0.5, noBid: 0.48 }, takerFee).status).toBe("NO_ARB"); });
   it("intel only uses items available before the decision", () => {
     const r = perpsIntel("KXXRPPERP", Date.parse("2026-10-09T12:00:00Z"), { calendar: null, intelEvents: [{ title: "x", assets: ["XRP"], publishedAt: "2026-10-09T06:00:00Z", detectedAt: "2026-10-10T00:00:00Z" }], mirofish: null, spark: null, evidence: [] });

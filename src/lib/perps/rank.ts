@@ -20,3 +20,32 @@ export function rankScore(x: RankInput) {
   const score = +(2 * exp * evidence + 0.5 * liq + inval + 0.5 * reward + intel).toFixed(4);
   return { score, parts: { expectancyPerR: +exp.toFixed(4), evidence, liquidity: +liq.toFixed(3), invalidation: inval, reward: +reward.toFixed(3), intel: +intel.toFixed(4) } };
 }
+
+/** The existing scanner's cross-market view. No inferred probability or automatic trade authorization. */
+import type { PerpsCandidate } from "./candidates";
+
+export function rankPerpsCandidates(candidates: PerpsCandidate[]) {
+  const rows = candidates.map((c) => {
+    const win = c.payoff.winUsdNet, loss = c.payoff.lossUsdNet;
+    const rr = win != null && loss != null && win > 0 && loss < 0 ? +(win / -loss).toFixed(3) : null;
+    return {
+      ticker: c.ticker,
+      dir: c.dir,
+      setup: c.setup,
+      ready: c.decision === "RESEARCH_CANDIDATE" && c.executionClass === "venue_book" && c.timeSource === "caller",
+      score13: c.score,
+      netRR: rr,
+      breakEvenWinRate: c.payoff.breakEvenWinRate,
+      probability: "UNMEASURED" as const,
+      spreadPct: c.spreadPct,
+      blockers: Object.entries(c.gates).filter(([, g]) => !g.pass).map(([k]) => k),
+    };
+  });
+  rows.sort((a, b) =>
+    Number(b.ready) - Number(a.ready)
+    || (a.breakEvenWinRate ?? Infinity) - (b.breakEvenWinRate ?? Infinity)
+    || b.score13 - a.score13
+    || (a.spreadPct ?? Infinity) - (b.spreadPct ?? Infinity)
+    || a.ticker.localeCompare(b.ticker));
+  return rows.map((r, i) => ({ rank: i + 1, ...r }));
+}
