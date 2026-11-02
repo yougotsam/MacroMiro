@@ -13,7 +13,7 @@ import { DATA_ROOT } from "../../src/lib/data-root";
 
 const J = (f: string) => { try { return JSON.parse(readFileSync(f, "utf8")); } catch { return null; } };
 const L = (f: string) => { try { return readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
-const inp = { calendar: J(`${DATA_ROOT}/macro-calendar.json`), intelEvents: L(`${DATA_ROOT}/research/intel-events.jsonl`), mirofish: J(`${DATA_ROOT}/mirofish-latest.json`), spark: J(`${DATA_ROOT}/spark-latest.json`), evidence: L(`${DATA_ROOT}/research/evidence.jsonl`) };
+const inp = { calendar: J(`${DATA_ROOT}/macro-calendar.json`), intelEvents: L(`${DATA_ROOT}/research/intel-events.jsonl`), mirofish: J(`${DATA_ROOT}/mirofish-latest.json`), spark: J(`${DATA_ROOT}/spark-latest.json`), evidence: L(`${DATA_ROOT}/research/evidence.jsonl`), macroReleases: L(`${DATA_ROOT}/research/macro-releases.jsonl`) };
 const R = perpsReader(); const fees = await R.feeTiers(); const nowS = Math.floor(Date.now() / 1000);
 async function paged(t: string, p: 1 | 60, span: number) { const o: PerpCandle[] = []; const st = p === 1 ? 14400 : 720000; for (let s = nowS - span; s < nowS; s += st) o.push(...(await R.candles(t, p, s, Math.min(nowS, s + st)))); const seen = new Set<number>(); return o.filter((k) => (seen.has(k.t) ? false : (seen.add(k.t), true))).sort((a, b) => a.t - b.t); }
 const out: any[] = [];
