@@ -14,8 +14,13 @@ export type GateCfg = { minOosTrades: number; minNwT: number; maxDrawdownPct: nu
 export const DEFAULT_GATE: GateCfg = { minOosTrades: 200, minNwT: 2, maxDrawdownPct: 50, minSharpePerTrade: 0.05, startEquityUsd: 500 };
 export type Verdict = "PASS" | "NEEDS_MORE_EVIDENCE" | "REJECT";
 
+/** Missing OOS provenance is UNKNOWN, not a valid holdout observation. */
 export function blindTrades(rows: Array<Record<string, unknown>>): BlindTrade[] {
-  return rows.map((r) => ({ t: Number(r.t), netUsd: Number(r.netUsd ?? r.net), oos: r.oos !== false })).filter((r) => Number.isFinite(r.t) && Number.isFinite(r.netUsd));
+  return rows
+    .filter((r) => typeof r.oos === "boolean"
+      && typeof r.t === "number" && Number.isFinite(r.t)
+      && typeof (r.netUsd ?? r.net) === "number" && Number.isFinite(r.netUsd ?? r.net))
+    .map((r) => ({ t: r.t as number, netUsd: (r.netUsd ?? r.net) as number, oos: r.oos as boolean }));
 }
 
 const mean = (x: number[]) => (x.length ? x.reduce((a, b) => a + b, 0) / x.length : 0);
