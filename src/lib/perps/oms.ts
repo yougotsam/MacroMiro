@@ -30,7 +30,7 @@ export type CreateReq = {
 export type VenueOrder = { order_id: string; client_order_id: string; ticker: string; side: "bid" | "ask"; price: string; fill_count: string; remaining_count: string; last_update_reason?: string };
 export type VenueFill = { fill_id: string; order_id: string; is_taker: boolean; side: "bid" | "ask"; count: string; price: string; fees: string; realized_pnl: string; ticker: string; created_time: string };
 export type VenuePosition = { market_ticker: string; position: string; entry_price: string; unrealized_pnl: string; fees: string };
-export type ExitTrigger = { id: string; kind: string; stop: string | null; take: string | null; count: string | null; trail: string | null };
+export type ExitTrigger = { id: string; kind: string; status: string | null; stop: string | null; take: string | null; count: string | null; trail: string | null };
 export interface PerpsTransport {
   createOrder(r: CreateReq): Promise<{ order_id: string; client_order_id?: string; fill_count: string; remaining_count: string; average_fill_price?: string; average_fee_paid?: string }>;
   cancelOrder(orderId: string): Promise<void>;
@@ -173,8 +173,10 @@ export class PerpsOms {
       if ((pos > 0) !== (i.dir === "long")) return fail("position is opposite the entry direction");
       const stop = i.plan.stop.toFixed(4), take = i.plan.t2.toFixed(4);
       const hasProtection = (triggers: ExitTrigger[]) =>
-        triggers.some((t) => Number(t.stop) === Number(stop) && Number(t.take) === Number(take) &&
-          (t.count == null || Number(t.count) >= Math.abs(pos)));
+        triggers.some((t) => t.kind === "bracket" && t.status === "active" &&
+          t.stop != null && t.take != null &&
+          Number(t.stop) === Number(stop) && Number(t.take) === Number(take) &&
+          t.count != null && (Number(t.count) === 0 || Number(t.count) >= Math.abs(pos)));
       const before = await this.t.getCrossExitTriggers(i.ticker);
       if (!hasProtection(before)) {
         if (!this.allowSend) return fail("protective trigger absent, sending disabled");
@@ -287,9 +289,10 @@ export class FakeExchange implements PerpsTransport {
   async getCrossExitTriggers(ticker: string) {
     return this.triggers.filter((t) => t.ticker === ticker).map((t, ix) => ({
       id: String(t.body.id ?? `trg-${ix + 1}`), kind: String(t.body.kind ?? "bracket"),
+      status: (this.pos.get(ticker)?.q ?? 0) !== 0 ? "active" : "pending_on_entry",
       stop: t.body.stop_loss_price == null ? null : String(t.body.stop_loss_price),
       take: t.body.take_profit_price == null ? null : String(t.body.take_profit_price),
-      count: t.body.count == null ? null : String(t.body.count),
+      count: t.body.count == null ? "0" : String(t.body.count),
       trail: t.body.trail_amount == null ? null : String(t.body.trail_amount),
     }));
   }
