@@ -66,7 +66,14 @@ describe("management (shared by sim and OMS)", () => {
 });
 
 describe("perps OMS (locked) against an in-memory exchange", () => {
-  const i: Intent = { kind: "entry", ticker: "KXBTCPERP", dir: "long", qty: 3, price: 8.36, maker: false, decisionId: "d1" };
+  const i: Intent = { kind: "entry", ticker: "KXBTCPERP", dir: "long", qty: 3, price: 8.36, maker: false, decisionId: "d1", plan: { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 } };
+  it("refuses a malformed or absent stop before the venue receives an entry", async () => {
+    const x = new FakeExchange();
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "fixture" }));
+    expect((await o.submit({ ...i, decisionId: "no-protective-plan", plan: undefined })).status).toMatch(/REFUSED/);
+    expect((await o.submit({ ...i, decisionId: "bad-stop", plan: { ...i.plan!, stop: i.price + 0.1 } })).status).toMatch(/REFUSED/);
+    expect(x.orders).toHaveLength(0);
+  });
   it("the stub transport still refuses, and a fake exchange receives a send", async () => {
     expect(PERPS_ORDERS_LOCKED).toBe(false);
     await expect(lockedTransport.createOrder(toCreateReq(i))).rejects.toThrow(/LOCKED/);
