@@ -106,6 +106,16 @@ export class PerpsOms {
     const cid = clientOrderId(i);
     // Faults block NEW exposure, not protective reduce-only exits.
     if (this.blocked && i.kind === "entry") return { cid, status: `BLOCKED: ${this.blocked}` };
+    // Hard OMS law: no entry may be sent without an attached native protective exit plan.
+    if (i.kind === "entry") {
+      const p = i.plan;
+      const stopOk = p != null && Number.isFinite(p.stop) && Number.isFinite(p.t2) &&
+        Number.isFinite(p.entry) && Number.isFinite(p.qty) && p.qty === i.qty &&
+        p.qty > 0 && p.maxHoldMs > 0 && Number.isFinite(p.maxHoldMs) &&
+        p.dir === i.dir && Math.abs(p.entry - i.price) <= 0.00011 &&
+        (i.dir === "long" ? p.stop < i.price && p.t2 > i.price : p.stop > i.price && p.t2 < i.price);
+      if (!stopOk) return { cid, status: "REFUSED: native stop, target, size, entry and maximum hold must be valid before sending" };
+    }
     if (this.stateOf(cid)) return { cid, status: `DUPLICATE (${this.stateOf(cid)}): not re-sent` };
     const pos = Number(positions.find((p) => p.market_ticker === i.ticker)?.position ?? 0);
     if (i.kind === "entry") { const wd = this.watchdog(); if (!wd.ok) return { cid, status: `REFUSED: ${wd.why} (fail-closed, entries only)` }; }
