@@ -166,7 +166,7 @@ describe("fail-closed entries when the watchdog is stale", () => {
   it("PerpsOms refuses entries but still lets exits/flattens through", async () => {
     const fx = new FakeExchange(); fx.pos.set("KXBTCPERP", { q: 2, e: 8 });
     const oms = new PerpsOms(fx, null, true, stale);
-    const entry: Intent = { kind: "entry", ticker: "KXBTCPERP", dir: "long", qty: 1, price: 8, maker: true, decisionId: "d1" };
+    const entry: Intent = { kind: "entry", ticker: "KXBTCPERP", dir: "long", qty: 1, price: 8, maker: true, decisionId: "d1", plan: { dir: "long", qty: 1, entry: 8, stop: 7.9, t1: 8.1, t2: 8.2, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 } };
     expect((await oms.submit(entry)).status).toContain("REFUSED: watchdog");
     const exit: Intent = { kind: "exit", ticker: "KXBTCPERP", dir: "long", qty: 2, price: 7.9, maker: false, decisionId: "d2" };
     expect((await oms.submit(exit, await fx.positions())).status).toBe("ACK");
