@@ -162,6 +162,25 @@ function readJson(path: string): Record<string, unknown> | null {
   }
 }
 
+/** Fresh locally received evidence is not proof that a remote API is authenticated or reachable. */
+export function intelSourceReadiness(now = Date.now()) {
+  const controls = readIntelControls();
+  const spark = readJson(`${DATA_ROOT}/spark-latest.json`);
+  const alex = readJson(`${DATA_ROOT}/alexandria-latest.json`);
+  const sparkAt = Date.parse(String(spark?.at ?? ""));
+  const alexAt = Date.parse(String(alex?.at ?? ""));
+  let seedReady = false;
+  try {
+    const age = now - statSync(`${DATA_ROOT}/mirofish-seed.md`).mtimeMs;
+    seedReady = age >= 0 && age < 24 * 3_600_000;
+  } catch { /* no Firecrawl source artifact */ }
+  return {
+    spark: controls.spark && spark?.status === "completed" && !!spark.card && Number.isFinite(sparkAt) && now >= sparkAt && now - sparkAt < FRESH_MS,
+    alexandria: controls.alexandria && !!alex && Number.isFinite(alexAt) && now >= alexAt && now - alexAt < 7 * 24 * 3_600_000,
+    firecrawl: controls.firecrawl && seedReady,
+  };
+}
+
 export function readIntelLogit(series: Series, now = Date.now()): number {
   let firecrawlReady = false;
   try {
