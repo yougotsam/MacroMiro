@@ -110,6 +110,7 @@ export function qualifyPerpsSniper(x: SniperInput): SniperResult {
     f.observedUntilMs < f.evaluatedAtMs && f.evaluatedAtMs <= x.decisionMs &&
     x.decisionMs - f.evaluatedAtMs <= 7 * 86_400_000;
   if (!modelOkay) blockers.push("perps_probability_not_oos_calibrated");
+  if (f !== null && !modelOkay) blockers.push("invalid_or_stale_forecast_claim");
 
   const lower = modelOkay ? f!.conservativeLower95! : null;
   const ev = priced && lower !== null ? round(lower * win! + (1 - lower) * loss!) : null;
