@@ -23,9 +23,9 @@ export function rankScore(x: RankInput) {
 
 /** The existing scanner's cross-market view. No inferred probability or automatic trade authorization. */
 import type { PerpsCandidate } from "./candidates";
-import { qualifyPerpsSniper } from "./sniper-evidence";
+import { qualifyPerpsSniper, type SourceEvidence } from "./sniper-evidence";
 
-export function rankPerpsCandidates(candidates: PerpsCandidate[]) {
+export function rankPerpsCandidates(candidates: PerpsCandidate[], sourcesByTicker: Record<string, SourceEvidence[]> = {}) {
   const rows = candidates.map((c) => {
     const win = c.payoff.winUsdNet, loss = c.payoff.lossUsdNet;
     const rr = win != null && loss != null && win > 0 && loss < 0 ? +(win / -loss).toFixed(3) : null;
@@ -39,7 +39,7 @@ export function rankPerpsCandidates(candidates: PerpsCandidate[]) {
       depthMultiple: c.gates.depth?.pass === true ? 3 : null,
       score13: c.score, structureAligned: c.gates.setup?.pass === true && c.gates.confluence_9?.pass === true,
       validStop: c.stop != null && c.target2 != null && c.qtyContracts > 0,
-      macroBlocked: false, winNetUsd: win, lossNetUsd: loss, forecast: null, sources: [],
+      macroBlocked: false, winNetUsd: win, lossNetUsd: loss, forecast: null, sources: sourcesByTicker[c.ticker] ?? [],
     });
     return {
       ticker: c.ticker,
