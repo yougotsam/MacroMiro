@@ -54,7 +54,7 @@ for (const t of tickers) {
   };
 }
 const macroReleases: MacroRelease[] = (() => {
-  try { return readFileSync(`${DATA_ROOT}/research/macro-releases.jsonl`, "utf8").split("\\n").filter(Boolean).map((l) => JSON.parse(l) as MacroRelease); }
+  try { return readFileSync(`${DATA_ROOT}/research/macro-releases.jsonl`, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as MacroRelease); }
   catch { return []; }
 })();
 const evidence = Object.fromEntries(tickers.map((t) => [t, sourcedMacroForPerp(t, Date.now(), macroReleases)]));
