@@ -127,7 +127,7 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
   });
   it("refuses reversal; exits are reduce-only; unknown venue order blocks", async () => {
     const x = new FakeExchange(); const o = new PerpsOms(x, null, true); await o.submit(i);
-    expect((await o.submit({ ...i, dir: "short", decisionId: "d2" }, await x.positions())).status).toMatch(/reverse/);
+    expect((await o.submit({ ...i, dir: "short", decisionId: "d2", plan: { ...i.plan!, dir: "short", stop: 8.46, t1: 8.26, t2: 8.06 } }, await x.positions())).status).toMatch(/reverse/);
     expect(toCreateReq({ ...i, kind: "exit" })).toMatchObject({ side: "ask", reduce_only: true });
     await x.createOrder({ ...toCreateReq({ ...i, decisionId: "manual" }), client_order_id: "manual-1" });
     await o.reconcile(0); expect(o.blocked).toMatch(/unknown venue orders/);
