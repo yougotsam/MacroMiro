@@ -62,7 +62,7 @@ function miroRead(m: Record<string, unknown> | null, now: number): { state: stri
   if (!stage || stage.startsWith("error") || stage === "unavailable") return { state: "down", side: null };
   const at = Number(m.at);
   if (!Number.isFinite(at) || at > now + 60_000 || now - at >= FRESH_MS) return { state: "stale", side: null };
-  const p = Number(m.probability);
+  const p = typeof m.probability === "number" ? m.probability : NaN;
   if (!Number.isFinite(p) || p < 0 || p > 1) return { state: "no_direction", side: null };
   if (p >= 0.55) return { state: "bullish", side: "yes" };
   if (p <= 0.45) return { state: "bearish", side: "no" };
@@ -92,7 +92,7 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
 
   const bias = String(card.bias ?? "unclear");
   const asset = String(card.asset ?? "unclear");
-  const sp = Number(card.probability);
+  const sp = typeof card.probability === "number" ? card.probability : NaN;
   if (covers(series, asset) && Number.isFinite(sp) && sp > 0 && sp < 1 && ((side === "yes" && sp < 0.42) || (side === "no" && sp > 0.58))) {
     return done(false, "spark_probability_veto", bias, asset, sparkL);
   }
@@ -102,7 +102,7 @@ export function judgeIntel(series: Series, side: "yes" | "no", docs: IntelDocs, 
   if (side !== want) return done(false, `spark_${bias}_veto`, bias, asset, sparkL);
   const alex = docs.alexandria;
   const alexAt = Date.parse(String(alex?.at ?? ""));
-  const ap = Number(alex?.probability);
+  const ap = typeof alex?.probability === "number" ? alex.probability : NaN;
   if (Number.isFinite(alexAt) && now >= alexAt && now - alexAt < 7 * 24 * 3600_000 && ap >= 0 && ap <= 1 && ((side === "yes" && ap < 0.42) || (side === "no" && ap > 0.58))) {
     return done(false, "alexandria_veto", bias, asset, sparkL);
   }
@@ -117,7 +117,7 @@ export function sparkLogit(series: Series, docs: IntelDocs, now: number): number
   const card = spark?.card as { bias?: string; asset?: string; probability?: number | null } | null | undefined;
   const fresh = spark?.status === "completed" && card && Number.isFinite(at) && now >= at && now - at < FRESH_MS;
   if (docs.controls?.spark !== false && fresh && covers(series, String(card?.asset ?? ""))) {
-    const sp = Number(card?.probability);
+    const sp = typeof card?.probability === "number" ? card.probability : NaN;
     if (Number.isFinite(sp) && sp > 0 && sp < 1) sparkL += Math.max(-0.8, Math.min(0.8, logit(sp) - logit(0.5)));
     else if (card?.bias === "bullish") sparkL += 0.25;
     else if (card?.bias === "bearish") sparkL -= 0.25;
@@ -213,10 +213,12 @@ let lastIntelKick = 0;
 
 /** Called only after the price gate has a ticket. Asks the research worker for a fresh read by writing a request file. Does not wait, does not spend. At most one request per 10 minutes. */
 export function onGatePass(series: Series, side: "yes" | "no", now = Date.now()): IntelRun {
-  const controls = { spark: true, alexandria: true, firecrawl: true };
+  const controls = readIntelControls();
   const requested: string[] = [];
   if (now - lastIntelKick >= 10 * 60_000) {
-    requested.push("spark", "alexandria", "firecrawl");
+    if (controls.spark) requested.push("spark");
+    if (controls.alexandria) requested.push("alexandria");
+    if (controls.firecrawl) requested.push("firecrawl");
     lastIntelKick = now;
     try {
       mkdirSync(`${DATA_ROOT}/desk`, { recursive: true });
