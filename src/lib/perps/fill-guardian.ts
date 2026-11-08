@@ -25,7 +25,7 @@ export function knownEntryOrders(rows: JournalRow[]): Entry[] {
     state.set(row.cid, a);
   }
   return [...state].flatMap(([cid, a]) => a.intent?.kind === "entry" && a.intent.plan &&
-    a.orderId && a.last !== "CANCELED" && a.last !== "REJECTED"
+    a.orderId && a.last !== "REJECTED"
       ? [{ cid, intent: a.intent, orderId: a.orderId }]
       : []);
 }
@@ -46,6 +46,7 @@ export async function reconcileFilledProtection(oms: PerpsOms, venue: PerpsTrans
     openPositions++;
     const matching = entries.filter(e => e.intent.ticker === position.market_ticker &&
       fills.some(f => f.order_id === e.orderId && f.ticker === e.intent.ticker && Number(f.count) > 0));
+    // A canceled remainder can still leave a partially filled open position.
     if (matching.length !== 1) {
       const why = `unmanaged or ambiguous filled position on ${position.market_ticker} (matched ${matching.length} orders)`;
       oms.latchProtectionFault(why); failures.push(why); continue;
