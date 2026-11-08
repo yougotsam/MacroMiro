@@ -93,6 +93,11 @@ export class PerpsOms {
       }
     }
   }
+  /** Persistent fault visible to every later OMS instance sharing this journal. */
+  latchProtectionFault(why: string) {
+    this.blocked = `unmanaged or unprotected venue exposure: ${why.slice(0, 160)}`;
+    this.log({ cid: `${CID_PREFIX}guardian`, state: "PROTECTION_FAILED", note: why.slice(0, 200) });
+  }
   private log(r: Omit<JournalRow, "at">) { const row = { at: new Date().toISOString(), ...r }; this.rows.push(row); if (this.journalPath) appendFileSync(this.journalPath, JSON.stringify(row) + "\n"); }
   stateOf(cid: string) { return this.rows.filter((r) => r.cid === cid).at(-1)?.state ?? null; }
 
@@ -190,7 +195,8 @@ export class PerpsOms {
       }
       const confirmed = await this.t.getCrossExitTriggers(i.ticker);
       if (!hasProtection(confirmed)) return fail("venue did not confirm stop and target for filled position");
-      this.log({ cid, state: "PROTECTION_VERIFIED", order_id: orderId, note: `venue stop ${stop} target ${take}, open ${pos}` });
+      if (this.stateOf(cid) !== "PROTECTION_VERIFIED" || !hasProtection(before))
+        this.log({ cid, state: "PROTECTION_VERIFIED", order_id: orderId, note: `venue stop ${stop} target ${take}, open ${pos}` });
       if (this.blocked?.includes(cid)) this.blocked = null;
       return { state: "PROTECTION_VERIFIED", why: "venue readback confirmed" };
     } catch (err) {
