@@ -23,17 +23,33 @@ export function rankScore(x: RankInput) {
 
 /** The existing scanner's cross-market view. No inferred probability or automatic trade authorization. */
 import type { PerpsCandidate } from "./candidates";
+import { qualifyPerpsSniper } from "./sniper-evidence";
 
 export function rankPerpsCandidates(candidates: PerpsCandidate[]) {
   const rows = candidates.map((c) => {
     const win = c.payoff.winUsdNet, loss = c.payoff.lossUsdNet;
     const rr = win != null && loss != null && win > 0 && loss < 0 ? +(win / -loss).toFixed(3) : null;
+    const received = Date.parse(c.receivedAt), decided = Date.parse(c.decidedAt);
+    const priority = qualifyPerpsSniper({
+      ticker: c.ticker, dir: c.dir, decisionMs: decided,
+      venueBook: c.executionClass === "venue_book" && c.timeSource === "caller" && c.gates.book_fresh?.pass === true,
+      venueTrading: c.gates.market_open?.pass === true,
+      quoteAgeMs: Number.isFinite(received) && Number.isFinite(decided) ? decided - received : null,
+      spreadBps: c.spreadPct == null ? null : c.spreadPct * 100,
+      depthMultiple: c.gates.depth?.pass === true ? 3 : null,
+      score13: c.score, structureAligned: c.gates.setup?.pass === true && c.gates.confluence_9?.pass === true,
+      validStop: c.stop != null && c.target2 != null && c.qtyContracts > 0,
+      macroBlocked: false, winNetUsd: win, lossNetUsd: loss, forecast: null, sources: [],
+    });
     return {
       ticker: c.ticker,
       dir: c.dir,
       setup: c.setup,
       ready: c.decision === "RESEARCH_CANDIDATE" && c.executionClass === "venue_book" && c.timeSource === "caller",
       score13: c.score,
+      sniperStage: priority.stage,
+      researchPriority: priority.researchPriority,
+      sniperBlockers: priority.blockers,
       netRR: rr,
       breakEvenWinRate: c.payoff.breakEvenWinRate,
       probability: "UNMEASURED" as const,
@@ -43,6 +59,7 @@ export function rankPerpsCandidates(candidates: PerpsCandidate[]) {
   });
   rows.sort((a, b) =>
     Number(b.ready) - Number(a.ready)
+    || b.researchPriority - a.researchPriority
     || (a.breakEvenWinRate ?? Infinity) - (b.breakEvenWinRate ?? Infinity)
     || b.score13 - a.score13
     || (a.spreadPct ?? Infinity) - (b.spreadPct ?? Infinity)
