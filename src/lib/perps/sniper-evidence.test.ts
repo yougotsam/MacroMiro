@@ -30,7 +30,7 @@ describe("sniper evidence gate", () => {
   });
   it("refuses a model trained on a wrong task or a same-sample inflated score", () => {
     expect(qualifyPerpsSniper({ ...base, forecast: { ...forecast, task: "binary_settlement_yes" as any } }).stage).toBe("VETO");
-    expect(qualifyPerpsSniper({ ...base, forecast: { ...forecast, independentHoldout: false } }).stage).toBe("VETO" ? "VETO" : "PAPER_ONLY");
+    expect(qualifyPerpsSniper({ ...base, forecast: { ...forecast, independentHoldout: false } }).stage).toBe("VETO");
   });
   it("refuses stale books, insufficient depth, upside from missing costs, and macro lockout", () => {
     for (const change of [{ quoteAgeMs: 10_000 },{depthMultiple: 0},{winNetUsd: null},{macroBlocked: true}]) {
