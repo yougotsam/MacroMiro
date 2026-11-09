@@ -104,6 +104,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
   const [pos, setPos] = useState<Position | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [fcLive, setFcLive] = useState(false);
+  const [intelStatus, setIntelStatus] = useState({ spark: false, alexandria: false, firecrawl: false });
   const [scan, setScan] = useState<ScanPayload | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [armed, setArmed] = useState(false);
@@ -158,10 +159,12 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       live: h.live,
       loss: h.dayLoss,
       desk: h.desk,
+      intel: h.intel,
     });
     if (sig === heartSig.current) return;
     heartSig.current = sig;
     if (h.desk) setDeskOn(h.desk);
+    if (h.intel) setIntelStatus(h.intel);
     if (typeof h.cash === "number") setCash(h.cash);
     if (h.positions) {
       setPositions(h.positions);
@@ -625,7 +628,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       <header className="sticky top-0 z-30 min-w-0 border-b border-border bg-bg/85 px-4 py-3 backdrop-blur-md sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-mono text-xs uppercase tracking-widest text-primary">Envelope</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-primary">Macro Miro</p>
             <p className="mt-0.5 truncate text-sm text-muted">{view.line}</p>
           </div>
           <div className="flex items-center gap-4">
@@ -652,9 +655,10 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
                 ] as const).map(([key, label]) => (
                   <span
                     key={key}
-                    className="h-7 rounded-sm bg-primary px-2 font-mono text-[10px] leading-7 text-primary-foreground"
+                    className={cn("h-7 rounded-sm border px-2 font-mono text-[10px] leading-7", intelStatus[key] ? "border-primary text-primary" : "border-border text-subtle")}
+                    title={intelStatus[key] ? `${label}: recent local research artifact` : `${label}: no fresh research artifact verified`}
                   >
-                    {label}
+                    {label} {intelStatus[key] ? "fresh" : "no feed"}
                   </span>
                 ))}
               </div>

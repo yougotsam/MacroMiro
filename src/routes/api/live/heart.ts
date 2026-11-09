@@ -5,6 +5,7 @@ import { mutationGuard } from "@/lib/desk/http-guard";
 import { beginFlagOn, liveExecutionAllowed, liveFlagOn, readKill } from "@/lib/envelope/kill.server";
 import { loadHeart } from "@/lib/envelope/store.server";
 import { switchState } from "@/lib/desk/risk";
+import { intelSourceReadiness } from "@/lib/desk/intel-gate";
 import type { BookId } from "@/lib/live/types";
 
 export const Route = createFileRoute("/api/live/heart")({
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/api/live/heart")({
           dayLoss: kill.dailyLossUsd,
           pauseUntil: kill.pauseUntil,
           losses: kill.consecutiveLosses,
-          intel: { spark: true, alexandria: true, firecrawl: true },
+          intel: intelSourceReadiness(),
           desk: switchState(),
         });
       },
@@ -55,7 +56,7 @@ export const Route = createFileRoute("/api/live/heart")({
           dayLoss: kill.dailyLossUsd,
           pauseUntil: kill.pauseUntil,
           losses: kill.consecutiveLosses,
-          intel: { spark: true, alexandria: true, firecrawl: true },
+          intel: intelSourceReadiness(),
           desk: switchState(),
         });
       },

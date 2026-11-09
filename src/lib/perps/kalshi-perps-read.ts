@@ -3,9 +3,10 @@
  * DELETE or amend in this file (enforced by test). Timestamps from the venue are kept as epoch ms.
  * Docs: https://docs.kalshi.com/margin (REST under /trade-api/v2/margin).
  */
-import { kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
+import { KALSHI_HOST, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
 
-export const PERPS_HOST = process.env.KALSHI_PERPS_HOST || "https://external-api.kalshi.com";
+/** Same signed venue host as perps write transport unless intentionally overridden in a controlled environment. */
+export const PERPS_HOST = process.env.KALSHI_PERPS_HOST || KALSHI_HOST;
 const BASE = "/trade-api/v2/margin";
 type Get = (path: string) => Promise<unknown>;
 
