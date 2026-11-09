@@ -628,7 +628,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
       <header className="sticky top-0 z-30 min-w-0 border-b border-border bg-bg/85 px-4 py-3 backdrop-blur-md sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-mono text-xs uppercase tracking-widest text-primary">Envelope</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-primary">Macro Miro</p>
             <p className="mt-0.5 truncate text-sm text-muted">{view.line}</p>
           </div>
           <div className="flex items-center gap-4">
