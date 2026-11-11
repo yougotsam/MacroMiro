@@ -78,12 +78,17 @@ describe("timing policy by time-to-expiry bucket (configurable, not hard-coded)"
     expect(approve({ pYesRaw: 0.9, calibrator: c, candidate: cand({ mode: "maker" }), tteSec: 30, policy: p, cushion: 0.03 }).why).toBe("timing_no_maker_final-60s");
     expect(approve({ pYesRaw: 0.2, calibrator: c, candidate: cand({ price: 0.04 }), tteSec: 30, policy: p, cushion: 0.03 }).why).toBe("timing_min_price_final-60s");
   });
-  it("the evaluator runs the pre-trade checklist, then the macro block, then the guard (source order)", () => {
+  it("the evaluator prices the real settlement before approval, macro, and risk (source order)", () => {
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
     const i = (s: string) => src.indexOf(s);
     expect(i("const check = preTrade(")).toBeGreaterThan(0);
-    expect(i("if (macro.blocked) {")).toBeGreaterThan(i("const check = preTrade("));
-    expect(i("guardVerdict({")).toBeGreaterThan(i("if (!check.fire) {"));
-    expect(i("out.best = quote;")).toBeGreaterThan(i("guardVerdict({"));
+    expect(i("const settlement = estimateContractSettlement(")).toBeGreaterThan(i("const check = preTrade("));
+    expect(i("const priced = scoreSides(")).toBeGreaterThan(i("const settlement = estimateContractSettlement("));
+    expect(i("if (macro.blocked) return fail(")).toBeGreaterThan(i("const priced = scoreSides("));
+    expect(i("const approval = approve(")).toBeGreaterThan(i("if (macro.blocked) return fail("));
+    expect(i("const verdict = guardVerdict(")).toBeGreaterThan(i("const approval = approve("));
+    expect(i("out.best = {")).toBeGreaterThan(i("const verdict = guardVerdict("));
+    expect(src).not.toContain("out.p = check.pUp");
+    expect(src).not.toContain("calibratedP: check.pSide");
   });
 });
