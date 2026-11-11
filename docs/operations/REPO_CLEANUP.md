@@ -27,6 +27,22 @@
 
 Sizes are from the checked-out repository, rounded. Small fixture data, calibration models, settlement rules and tests are NOT candidates for bulk removal.
 
+## Built-in safe inventory and backup
+
+The repository now includes a non-destructive tool. It lists the tracked dataset and largest files without deleting anything:
+
+```bash
+node scripts/ops/archive-tracked-data.mjs --plan
+```
+
+When a trusted, private, durable storage location is available, archive the dataset **outside** the project and verify every SHA-256 copy:
+
+```bash
+node scripts/ops/archive-tracked-data.mjs --archive=/absolute/private/storage/unique-macromiro-backup
+```
+
+Archive mode refuses an existing destination or a path inside Git. It does **not** remove or untrack source files, and does not rewrite history. Restore checks and separate approval to untrack are still required.
+
 ## Cleanup stages
 
 1. **Stabilize the code.** Fix the one outdated regression assertion while proving the perps HTTP route stays locked and there is only one credential-bearing Kalshi POST signer. Run all tests.
