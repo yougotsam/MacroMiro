@@ -30,3 +30,16 @@ data/reports/
 data/signal/funding/
 data/signal/news/tone-*.jsonl
 data/signal/perps-trades.jsonl
+
+# Generated market history and runtime state. These patterns prevent *new*
+# files from being staged. Previously tracked files remain tracked until
+# they have been inventoried, backed up, and explicitly untracked.
+data/perps/cache/
+data/perps/stream/
+data/perps/sim-*.json
+data/desk/prints/
+data/desk/book-*.jsonl
+data/desk/oms-journal.jsonl
+data/desk/decisions*.gz
+data/ledger.jsonl
+data/research/grid-calls.jsonl
