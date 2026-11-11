@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { marginView, maxOpenLeverage, type MarginSpec } from "./margin";
 import { aggressiveProfile, sizePosition, drawdownState, CONSERVATIVE_V1_REJECTED } from "./mandate";
 import { startState, stepBar, nativeTriggerRequests, trailingStopBody, breakEvenStopBody, type ManagePlan } from "./manage";
@@ -119,6 +121,72 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
     expect(result.state).toBe("PROTECTION_VERIFIED");
     expect((await x.getCrossExitTriggers("KXBTCPERP"))[0].stop).toBe("8.2600");
   });
+  it("does not verify a partial bracket when another fill grows exposure during readback", async () => {
+    const x = new FakeExchange();
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const entry = { ...i, plan, decisionId: "partial-growth-readback" };
+    x.applyFill("partial-order", i.ticker, "bid", 1, i.price, true);
+    await x.setCrossExitTrigger(i.ticker, { kind: "bracket", count: "1", stop_loss_price: "8.2600", take_profit_price: "8.6600" });
+    const readTriggers = x.getCrossExitTriggers.bind(x);
+    let reads = 0;
+    x.getCrossExitTriggers = async (ticker: string) => {
+      if (++reads === 2) x.applyFill("partial-order", ticker, "bid", 2, i.price, true);
+      return readTriggers(ticker);
+    };
+    const result = await o.ensureAfterFill(entry, "partial-order");
+    expect(result.state).toBe("PROTECTION_FAILED");
+    expect(o.stateOf(clientOrderId(entry))).toBe("PROTECTION_FAILED");
+    expect(o.blocked).toMatch(/unprotected entry/);
+    expect(x.triggers).toHaveLength(1);
+    expect((await o.submit({ ...i, decisionId: "entry-after-partial-growth" })).status).toMatch(/BLOCKED/);
+  });
+  for (const variant of ["short growth", "new bracket growth"] as const) {
+    it(`rejects insufficient protection after ${variant}`, async () => {
+      const x = new FakeExchange();
+      const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+      const dir = variant === "short growth" ? "short" : "long";
+      const side = dir === "short" ? "ask" : "bid";
+      const stop = dir === "short" ? 8.46 : 8.26;
+      const take = dir === "short" ? 8.06 : 8.66;
+      const plan: ManagePlan = { dir, qty: 3, entry: 8.36, stop, t1: 8.36, t2: take, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+      const entry: Intent = { ...i, dir, plan, decisionId: variant };
+      x.applyFill("growing-order", i.ticker, side, 1, i.price, true);
+      if (variant === "short growth") {
+        await x.setCrossExitTrigger(i.ticker, { kind: "bracket", count: "1", stop_loss_price: stop.toFixed(4), take_profit_price: take.toFixed(4) });
+      }
+      const readTriggers = x.getCrossExitTriggers.bind(x);
+      let reads = 0;
+      x.getCrossExitTriggers = async (ticker: string) => {
+        if (++reads === 2) x.applyFill("growing-order", ticker, side, 2, i.price, true);
+        return readTriggers(ticker);
+      };
+      expect((await o.ensureAfterFill(entry, "growing-order")).state).toBe("PROTECTION_FAILED");
+      expect(o.stateOf(clientOrderId(entry))).toBe("PROTECTION_FAILED");
+      expect(o.blocked).toMatch(/unprotected entry/);
+      expect(x.triggers).toHaveLength(1);
+      expect(x.orders).toHaveLength(0);
+    });
+  }
+  it("fails closed when the second position read rejects", async () => {
+    const x = new FakeExchange();
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const entry = { ...i, plan, decisionId: "second-position-read-rejects" };
+    x.applyFill("readback-order", i.ticker, "bid", 1, i.price, true);
+    await x.setCrossExitTrigger(i.ticker, { kind: "bracket", count: "1", stop_loss_price: "8.2600", take_profit_price: "8.6600" });
+    const positions = x.positions.bind(x);
+    let reads = 0;
+    x.positions = async () => {
+      if (++reads === 2) throw new Error("simulated second read failure");
+      return positions();
+    };
+    expect((await o.ensureAfterFill(entry, "readback-order")).state).toBe("PROTECTION_FAILED");
+    expect(o.stateOf(clientOrderId(entry))).toBe("PROTECTION_FAILED");
+    expect(o.blocked).toMatch(/simulated second read failure/);
+    expect(x.triggers).toHaveLength(1);
+    expect(x.orders).toHaveLength(0);
+  });
   it("idempotent cid, duplicate refused, timeout → UNKNOWN → reconcile (no resend)", async () => {
     const x = new FakeExchange(); const o = new PerpsOms(x, null, true);
     expect(clientOrderId(i)).toBe(clientOrderId({ ...i })); x.failNextCreateAfterAccept = true;
@@ -139,6 +207,127 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
     expect(k.ok).toBe(true); expect(Number((await x.positions())[0].position)).toBe(0);
     expect(PerpsOms.pnlFromFills(await x.fills(), new Set(x.orders.map((q) => q.order_id))).fills).toBe(2);
   });
+  it("restart audit blocks a delayed partial fill without sending protection", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "perps-recovery-"));
+    try {
+      const x = new FakeExchange();
+      const journal = join(dir, "journal.jsonl");
+      const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+      const entry: Intent = { ...i, maker: true, plan, decisionId: "restart-partial" };
+      const first = new PerpsOms(x, journal, true, () => ({ ok: true, why: "test" }));
+      const ack = await first.submit(entry);
+      expect(ack.order_id).toBeTruthy();
+      x.applyFill(ack.order_id!, i.ticker, "bid", 1, i.price, false);
+      x.orders[0].fill_count = "1";
+      x.orders[0].remaining_count = "2";
+      x.triggers = [];
+      const restarted = new PerpsOms(x, journal, false);
+      const result = await restarted.recover(0);
+      expect(result.blocked).not.toBeNull();
+      expect(restarted.stateOf(clientOrderId(entry))).toBe("PROTECTION_FAILED");
+      expect(x.orders).toHaveLength(1);
+      expect(x.triggers).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("a successful read-only recovery audit cannot clear a persisted protection alarm", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "perps-alarm-"));
+    try {
+      const x = new FakeExchange();
+      const journal = join(dir, "journal.jsonl");
+      const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+      const entry: Intent = { ...i, maker: true, plan, decisionId: "alarm-survives-audit" };
+      const first = new PerpsOms(x, journal, true, () => ({ ok: true, why: "test" }));
+      const ack = await first.submit(entry);
+      x.applyFill(ack.order_id!, i.ticker, "bid", 1, i.price, false);
+      x.orders[0].fill_count = "1";
+      x.orders[0].remaining_count = "2";
+      x.triggers = [];
+      const audit = new PerpsOms(x, journal, false);
+      await audit.recover(0);
+      expect(audit.stateOf(clientOrderId(entry))).toBe("PROTECTION_FAILED");
+      await x.setCrossExitTrigger(i.ticker, { kind: "bracket", count: "1", stop_loss_price: "8.2600", take_profit_price: "8.6600" });
+      await audit.recover(0);
+      const restarted = new PerpsOms(x, journal, false);
+      expect(restarted.blocked).toMatch(/unprotected entry/);
+      expect(restarted.stateOf(clientOrderId(entry))).toBe("PROTECTION_FAILED");
+      expect(x.orders).toHaveLength(1);
+      expect(x.triggers).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  const coveredRecovery = async () => {
+    const x = new FakeExchange();
+    const plan: ManagePlan = { dir: "long", qty: 3, entry: 8.36, stop: 8.26, t1: 8.46, t2: 8.66, partialFrac: 0.5, trailR: 1, maxHoldMs: 3600_000 };
+    const entry: Intent = { ...i, maker: true, plan, decisionId: "covered-recovery" };
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "test" }));
+    const ack = await o.submit(entry);
+    x.applyFill(ack.order_id!, i.ticker, "bid", 1, i.price, false);
+    x.orders[0].fill_count = "1";
+    x.orders[0].remaining_count = "2";
+    return { x, o, entry, ack };
+  };
+  for (const changedRead of [2, 3]) {
+    it(`recovery rejects growth after ownership read on position snapshot ${changedRead}`, async () => {
+      const { x, o, ack } = await coveredRecovery();
+      const positions = x.positions.bind(x);
+      let reads = 0;
+      x.positions = async () => {
+        if (++reads === changedRead) x.applyFill(ack.order_id!, i.ticker, "bid", 2, i.price, false);
+        return positions();
+      };
+      const result = await o.recover(0);
+      expect(result.protection[0].state).toBe("PROTECTION_FAILED");
+      expect(result.blocked).not.toBeNull();
+      expect(x.orders).toHaveLength(1);
+      expect(x.triggers).toHaveLength(1);
+    });
+  }
+  it("repeated bracket snapshots neither prove lifecycle ownership nor write to venue", async () => {
+    const { x, o, entry } = await coveredRecovery();
+    let writes = 0;
+    x.createOrder = async () => { writes++; throw new Error("unexpected entry"); };
+    x.setCrossExitTrigger = async () => { writes++; throw new Error("unexpected protection write"); };
+    const before = o.rows.length;
+    for (let n = 0; n < 2; n++) {
+      const result = await o.recover(0);
+      expect(result.blocked).toMatch(/lifecycle unverified/);
+      expect(result.protection[0].state).toBe("BRACKET_SNAPSHOT_VERIFIED");
+      expect(o.stateOf(clientOrderId(entry))).toBe("ACK");
+    }
+    expect(o.rows).toHaveLength(before);
+    expect(writes).toBe(0);
+    expect(x.orders).toHaveLength(1);
+    expect(x.triggers).toHaveLength(1);
+  });
+  for (const reason of ["missing plan", "second entry", "newer exit"] as const) {
+    it(`recovery refuses ${reason} without venue writes`, async () => {
+      const { x, o, entry } = await coveredRecovery();
+      if (reason === "missing plan") delete o.rows.find((r) => r.intent)?.intent?.plan;
+      else {
+        const extra: Intent = { ...entry, kind: reason === "newer exit" ? "exit" : "entry", decisionId: reason };
+        o.rows.push({ at: new Date().toISOString(), cid: clientOrderId(extra), state: "INTENT", intent: extra });
+      }
+      let writes = 0;
+      x.createOrder = async () => { writes++; throw new Error("unexpected entry"); };
+      x.setCrossExitTrigger = async () => { writes++; throw new Error("unexpected protection write"); };
+      const result = await o.recover(0);
+      expect(result.blocked).not.toBeNull();
+      expect(result.protection[0].state).toBe("PROTECTION_FAILED");
+      expect(writes).toBe(0);
+      expect(x.orders).toHaveLength(1);
+      expect(x.triggers).toHaveLength(1);
+    });
+  }
+  for (const prior of ["KILL engaged", "unknown venue orders: prior"]) {
+    it(`recovery preserves the existing in-memory ${prior} block`, async () => {
+      const { o } = await coveredRecovery();
+      o.blocked = prior;
+      expect((await o.recover(0)).blocked).toBe(prior);
+    });
+  }
   it("restart recovery flags unmanaged exchange positions", async () => {
     const x = new FakeExchange(); x.applyFill("ext", "KXGOLDPERP", "bid", 5, 4.2, true);
     const o = new PerpsOms(x, null, true); const r = await o.recover(0); expect(r.unmanaged).toContain("KXGOLDPERP"); expect(o.blocked).toMatch(/unmanaged/);
