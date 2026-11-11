@@ -18,6 +18,16 @@ One trading desk. One canonical GitHub repository: **yougotsam/MacroMiro**, bran
 - Historical perps candle replay shows negative results for several studied assets. No strategy in this repository should be advertised as proven profitable or live-ready.
 - Historical data, cache files and journals exist in `data/` and must be preserved before moving them out of Git. They are not application source files.
 
+## Trading work order
+
+**First: Kalshi 15-minute YES/NO prediction correctness.** The October 30 report's +2.27¢ across 3,559 research trades is based on next-bar close labels and an assumed 51¢ execution for every selected opportunity. Those are not the actual venue contract settlement labels or confirmed fills. The live evaluator now uses the contract settlement index, exact strike, closing time, recent 1-second prints and measured volatility. The bar-direction checklist is context only, cannot create a YES probability, and cannot enable trades. An independent contract-settlement calibrator is required and the approval policy remains disabled.
+
+**Second: perpetuals.** Existing default replay lost around 25–29% on BTC/ETH/SOL/XRP. Evaluate new HTF structure/sweep setups separately, with margin, liquidation, funding, fees and protected exits. Do not cross-apply prediction odds to perps.
+
+**Execution reality:** A read-only scan of the checked-in historical order journal found 220 sent-order acknowledgments, of which 14 reported some immediate fill. These are **not** 14 independently verified full trade outcomes. `scripts/fills-vs-51.ts` now labels only submitted limits and immediate ACK counts; verified execution prices and later fills remain **unknown** until joined with the exchange's fill records.
+
+Both products remain unapproved for new real orders. Profit is a target, not a release condition that can be asserted from assumed fills.
+
 ## Change the right rules
 
 | Change | Place to work | Never confuse with |
