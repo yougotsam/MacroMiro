@@ -82,7 +82,7 @@ describe("one order path", () => {
     // Binary and perpetuals are different products. The old regex also catches
     // an unsigned prepared request in cross-account.ts. Verify both paths,
     // including the signed writer and the independently locked live API.
-    const order = files.filter((f) => /portfolio\/events\/orders|portfolio\/orders["\`]|\/margin\/orders/.test(text.get(f)!) && /method:\s*"POST"|kalshiSignedHeaders\("POST"/.test(text.get(f)!));
+    const order = files.filter((f) => /portfolio\/events\/orders|portfolio\/orders["`]|\/margin\/orders/.test(text.get(f)!) && /method:\s*"POST"|kalshiSignedHeaders\("POST"/.test(text.get(f)!));
     expect(order.map(rel).sort()).toEqual(["src/lib/desk/oms.ts", "src/lib/perps/cross-account.ts"]);
     const scoped = text.get(join(SRC, "lib/perps/cross-account.ts"))!;
     expect(scoped).not.toMatch(/kalshiSignedHeaders\s*\(|signKalshi\s*\(|\bfetch\s*\(/);
