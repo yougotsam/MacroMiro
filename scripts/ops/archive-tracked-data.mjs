@@ -13,7 +13,7 @@ import {
   copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 const root = git("rev-parse", "--show-toplevel").trim();
