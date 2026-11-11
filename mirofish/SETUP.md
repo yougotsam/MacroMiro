@@ -1,5 +1,5 @@
 # MiroFish setup (box)
-Location: mirofish/ (inside MacroMiro) (upstream 666ghj/MiroFish). Dependencies are installed: `npm run setup` and `uv sync` in backend/.
+Source location: `mirofish/` inside MacroMiro (upstream `666ghj/MiroFish`). A fresh download does not include installed dependencies. From `mirofish/`, run `npm run setup:all` to install the frontend and backend dependencies; this requires Node.js, npm and uv. Installation does not configure credentials or start services.
 
 ## Keys to add to mirofish/.env (copy from .env.example)
 - `LLM_API_KEY=`   your xAI API key

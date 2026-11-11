@@ -1,6 +1,6 @@
 # MiroFish (the swarm) on this desk
 
-MiroFish is a separate program: [github.com/666ghj/MiroFish](https://github.com/666ghj/MiroFish), cloned at `/workspace/desk/MiroFish` (local branch `macromiro-desk`). This desk only has the client, `src/lib/intel/mirofish.ts`, which calls port 5001. The client never invents a crowd percentage and never sends an order. The 15-minute book does not read MiroFish (`src/lib/brain/brain.test.ts`).
+MiroFish backend and frontend source are included in this repository under `mirofish/`; upstream provenance, included desk patches and excluded private/runtime files are recorded in `mirofish/UPSTREAM.md`. MiroFish still runs as a separate service: the desk client is `src/lib/intel/mirofish.ts` and connects to its backend on port 5001. Downloading the source does not install dependencies, configure credentials, or start either service. See `mirofish/SETUP.md` for setup. This source inclusion is not proof that MiroFish is running or that its output is ready to authorize trades.
 
 ## Its keys (MiroFish `.env` only, chmod 600, never in this repo)
 
@@ -14,7 +14,7 @@ MiroFish is a separate program: [github.com/666ghj/MiroFish](https://github.com/
 
 Fallback brain: `LLM_API_KEY=<xAI key>`, `LLM_BASE_URL=https://api.x.ai/v1`, `LLM_MODEL_NAME=grok-4.7`, then restart MiroFish.
 
-Gemini note: Gemini 3 rejects a tool-call history that lacks its `thought_signature`, and the agent library MiroFish uses (camel-ai 0.2.78) drops that field. `backend/scripts/gemini_compat.py` (in the MiroFish branch) adds Google's documented placeholder signature only when `LLM_BASE_URL` is Gemini. Without it every agent step after the first fails with HTTP 400.
+Gemini note: Gemini 3 rejects a tool-call history that lacks its `thought_signature`, and the agent library MiroFish uses (camel-ai 0.2.78) drops that field. `mirofish/backend/scripts/gemini_compat.py` (included in this repository) adds Google's documented placeholder signature only when `LLM_BASE_URL` is Gemini. Without it every agent step after the first fails with HTTP 400.
 
 ## What one Knock does (`POST /api/live/swarm {}`)
 

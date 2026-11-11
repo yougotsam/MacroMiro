@@ -20,7 +20,12 @@ const MACRO_SENSITIVE = new Set(["BTC", "ETH", "SOL", "XRP", "GOLD", "SILVER", "
 const MAJOR = /\b(CPI|Consumer Price|FOMC|Federal Reserve|Employment Situation|Producer Price|PPI|nonfarm|Beige Book)\b/i;
 
 export type IntelRow = { source: string; event: string; publishedAt: string | null; availableAt: string | null; usable: "PRE_DECISION" | "LATE" | "NO_TIMESTAMP"; relevance: number; score: number; note: string };
-export type IntelInput = { calendar: unknown; intelEvents: Array<Record<string, any>>; mirofish: Record<string, any> | null; spark: Record<string, any> | null; evidence: Array<Record<string, any>> };
+/** Sourced actual/consensus pair. Shock size is NOT a directional win probability. */
+export type MacroRelease = {
+  name: string; assets: string[]; actual: number; consensus: number; surpriseStd: number;
+  officialUrl: string; forecastUrl: string; forecastAt: string; publishedAt: string; detectedAt: string;
+};
+export type IntelInput = { calendar: unknown; intelEvents: Array<Record<string, any>>; mirofish: Record<string, any> | null; spark: Record<string, any> | null; evidence: Array<Record<string, any>>; macroReleases?: MacroRelease[] };
 
 export function perpsIntel(ticker: string, decisionMs: number, inp: IntelInput) {
   const asset = ASSET_OF[ticker] ?? ticker;
@@ -61,9 +66,35 @@ export function perpsIntel(ticker: string, decisionMs: number, inp: IntelInput) 
     const at = iso(e.detectedAt);
     rows.push({ source: String(e.sourceUrl), event: String(e.title), publishedAt: iso(e.publishedAt), availableAt: at, usable: usability(at), relevance: MACRO_SENSITIVE.has(asset) ? 0.5 : 0, score: 0, note: `${e.summary}; NARRATIVE_CHANGE only, no direction (weight 0)` });
   }
-  // MACRO_SURPRISE needs actual AND consensus from named sources; we do not store consensus → PENDING
-  const surprise = computeFeatures({}).find((x) => x.name === "MACRO_SURPRISE")!;
-  rows.push({ source: "grid/features MACRO_SURPRISE", event: "actual vs expected", publishedAt: null, availableAt: null, usable: "NO_TIMESTAMP", relevance: 1, score: 0, note: `${surprise.status}: no sourced consensus stored (free sources only); cannot score` });
+  // MACRO_SURPRISE: signed, timestamped actual vs pre-release consensus.
+  // The experimental rank contribution is a VOLATILITY/catalyst magnitude only.
+  // No untested "hot CPI means short gold" directional inference is permitted.
+  const prints = inp.macroReleases ?? [];
+  for (const e of prints) {
+    const pub = iso(e.publishedAt), detected = iso(e.detectedAt), forecast = iso(e.forecastAt);
+    const sourced = e.officialUrl?.startsWith("https://") && e.forecastUrl?.startsWith("https://");
+    const complete = sourced && [e.actual, e.consensus, e.surpriseStd].every(Number.isFinite) &&
+      e.surpriseStd > 0 && pub != null && detected != null && forecast != null &&
+      Date.parse(forecast) <= Date.parse(pub) && Date.parse(detected) >= Date.parse(pub);
+    const atDecision = complete && Date.parse(detected!) <= decisionMs;
+    const z = complete ? (e.actual - e.consensus) / e.surpriseStd : null;
+    // A +0.4 score means an unusually large, sourced release, NOT "buy."
+    const magnitude = z == null ? 0 : +Math.min(1, Math.abs(z) / 3).toFixed(3);
+    rows.push({
+      source: `${e.officialUrl} | consensus ${e.forecastUrl}`,
+      event: e.name,
+      publishedAt: pub,
+      availableAt: detected,
+      usable: !complete ? "NO_TIMESTAMP" : atDecision ? "PRE_DECISION" : "LATE",
+      relevance: e.assets.includes(asset) ? 1 : 0,
+      score: atDecision ? +((0.4 * magnitude)).toFixed(3) : 0,
+      note: complete ? `actual ${e.actual}, consensus ${e.consensus}, historical miss std ${e.surpriseStd}, z=${z!.toFixed(2)}; volatility catalyst only` : "missing or inconsistent official/consensus provenance",
+    });
+  }
+  if (!prints.length) {
+    const pending = computeFeatures({}).find((x) => x.name === "MACRO_SURPRISE")!;
+    rows.push({ source: "grid/features MACRO_SURPRISE", event: "actual vs expected", publishedAt: null, availableAt: null, usable: "NO_TIMESTAMP", relevance: 1, score: 0, note: `${pending.status}: no actual + sourced pre-release consensus stored` });
+  }
 
   const usable = rows.filter((r) => r.usable === "PRE_DECISION");
   const intelScore = +usable.reduce((s, r) => s + r.relevance * r.score, 0).toFixed(3);

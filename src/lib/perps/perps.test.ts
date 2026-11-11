@@ -7,6 +7,7 @@ import { brier, edgeReport } from "./prob-edge";
 import { fundingAsOf, fundingClocksInHold, nextKalshiFundingMs, to15Report, contiguousLookback } from "./sim";
 import { replayBooks, rolloverSeed } from "./book-replay";
 import { LocalBook } from "./stream";
+import { rankPerpsCandidates } from "./rank";
 import { pickCurrentReplay, emptyTradeReport } from "./replay-report";
 import { researchTrace } from "./research-features";
 import { perpsOrders, PerpsOrdersLocked, PERPS_ORDERS_LOCKED } from "./order-adapter";
@@ -30,6 +31,16 @@ describe("perps read adapter", () => {
     expect(b.minBid).toBeCloseTo(Math.min(0.8 * 8.3467, 8.3467 - 0.1), 6);
     expect(b.maxAsk).toBeCloseTo(Math.max(1.2 * 8.3473, 8.3473 + 0.1), 6);
   });
+  it("margin balance requests the authoritative computed available funds", async () => {
+    const paths: string[] = [];
+    const reader = perpsReader(async (p) => {
+      paths.push(p);
+      return { subaccount_balances: [{ subaccount: 0, account_equity: "250.00", available_balance: "182.00" }] };
+    });
+    const result = await reader.balance();
+    expect(paths).toEqual(["/balance?compute_available_balance=true"]);
+    expect(result).toHaveProperty("subaccount_balances");
+  });
   it("reader parses funding estimate with ms timestamps from a mocked GET", async () => {
     const paths: string[] = [];
     const r = perpsReader(async (p) => { paths.push(p); return { funding_rate: 0.00019, next_funding_time: "2026-10-13T04:00:00Z", mark_price: "8.24", computed_time: "2026-10-12T22:43:40Z" }; });
@@ -48,6 +59,15 @@ describe("perps candidates", () => {
     expect(c.target2! - c.entry!).toBeCloseTo(2 * (c.entry! - c.stop!), 3);
     expect(c.notionalUsd).toBeLessThanOrEqual(100);
     expect(c.decision).toBe("NO_TRADE"); // synthetic bars → no 9+/13
+  });
+  it("existing scanner ranks candidates without fabricating probability or sending orders", () => {
+    const long = buildPerpsCandidate({ ...base, dir: "long", bookFresh: false, receivedMs: 1, decisionMs: 2 });
+    const short = buildPerpsCandidate({ ...base, dir: "short", receivedMs: 1, decisionMs: 2 });
+    const ranked = rankPerpsCandidates([long, short]);
+    expect(ranked).toHaveLength(2);
+    expect(ranked.every((c) => c.probability === "UNMEASURED")).toBe(true);
+    expect(ranked.find((c) => c.dir === "long")!.blockers).toContain("book_fresh");
+    expect(ranked[0].rank).toBe(1);
   });
   it("funding against the side beyond the cap fails the funding gate", () => {
     const c = buildPerpsCandidate({ ...base, dir: "long", fundingRate8h: 0.001 });

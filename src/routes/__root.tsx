@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Envelope";
+const APP_NAME = "Macro Miro";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -13,7 +13,7 @@ export const Route = createRootRoute({
       { title: APP_NAME },
       {
         name: "description",
-        content: "Kalshi 15-minute desk. Bitcoin, ether, solana, and gold. The heart scans on its own.",
+        content: "Macro Miro trading research desk: Kalshi 15-minute markets, perpetuals, sniper setups and source-backed intelligence.",
       },
       { name: "theme-color", content: "#24211c" },
     ],

@@ -3,9 +3,10 @@
  * DELETE or amend in this file (enforced by test). Timestamps from the venue are kept as epoch ms.
  * Docs: https://docs.kalshi.com/margin (REST under /trade-api/v2/margin).
  */
-import { kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
+import { KALSHI_HOST, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
 
-export const PERPS_HOST = process.env.KALSHI_PERPS_HOST || "https://external-api.kalshi.com";
+/** Same signed venue host as perps write transport unless intentionally overridden in a controlled environment. */
+export const PERPS_HOST = process.env.KALSHI_PERPS_HOST || KALSHI_HOST;
 const BASE = "/trade-api/v2/margin";
 type Get = (path: string) => Promise<unknown>;
 
@@ -63,7 +64,8 @@ export function perpsReader(get: Get = signedGet) {
     fundingHistory: async (t: string, startS: number, endS: number) => ((await get(`/funding_rates/historical?ticker=${t}&start_ts=${startS}&end_ts=${endS}`)) as { funding_rates: Array<{ funding_rate: number; funding_time: string }> }).funding_rates ?? [],
     feeTiers: async () => (await get("/fee_tiers")) as { maker_fee_rates: Record<string, number>; taker_fee_rates: Record<string, number> },
     riskParameters: async () => (await get("/risk_parameters")) as Record<string, unknown>,
-    balance: async () => (await get("/balance")) as Record<string, unknown>,
+    /** Venue computes available balance ONLY when requested; this endpoint has a higher token cost. */
+    balance: async () => (await get("/balance?compute_available_balance=true")) as Record<string, unknown>,
   };
 }
 
