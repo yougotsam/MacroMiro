@@ -1,0 +1,29 @@
+name: "CodeQL Deep-Level Repository Configuration"
+
+# Enable extended threat models:
+# - 'remote': HTTP requests, network sockets, webhooks (default)
+# - 'local': CLI arguments, environment variables, local files, standard input
+threat-models:
+  - remote
+  - local
+
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+
+# Focus deep static analysis on production code; ignore build artifacts and test mocks
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/coverage/**'
+  - '**/__pycache__/**'
+  - '**/venv/**'
+  - '**/.venv/**'
+  - '**/*.test.js'
+  - '**/*.spec.js'
+  - '**/*.test.ts'
+  - '**/*.spec.ts'
+  - '**/tests/**'
+  - '**/__tests__/**'
+  - '**/fixtures/**'
