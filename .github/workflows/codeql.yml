@@ -2,127 +2,89 @@ name: "CodeQL Deep-Level Analysis"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
     paths-ignore:
-      - '**.md'
-      - '**.txt'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+      - "**.md"
+      - "**.txt"
+      - "docs/**"
+      - ".gitignore"
+      - "LICENSE"
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
     paths-ignore:
-      - '**.md'
-      - '**.txt'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+      - "**.md"
+      - "**.txt"
+      - "docs/**"
+      - ".gitignore"
+      - "LICENSE"
   schedule:
-    - cron: '34 22 * * 2'
+    - cron: "34 22 * * 2"
   workflow_dispatch:
     inputs:
       debug_mode:
-        description: 'Enable CodeQL diagnostic debug artifacts'
+        description: "Enable CodeQL diagnostic debug artifacts"
         required: false
         default: false
         type: boolean
 
-# Prevent overlapping runs on rapid PR commits while never interrupting main branch or scheduled scans
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Maximize CodeQL thread and memory utilization on standard/larger GitHub runners
   CODEQL_RAM: 6144
-  CODEQL_THREADS: 0 # 0 uses all available cores on the runner
+  CODEQL_THREADS: 0
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
-
     permissions:
       security-events: write
       packages: read
       actions: read
       contents: read
-
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Scans GitHub Actions workflows (.github/workflows/*.yml) for script injection & privilege escalation
           - language: actions
             build-mode: none
-          # Scans JS/TS with extended taint tracking
           - language: javascript-typescript
             build-mode: none
-          # Scans Python with dependency graph resolution
           - language: python
             build-mode: none
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # Required for accurate PR diff-informed analysis
+          fetch-depth: 2
 
-      - name: Setup Node.js Runtime (for JS/TS AST & Type Resolution)
+      - name: Setup Node.js Runtime
         if: matrix.language == 'javascript-typescript'
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: "lts/*"
 
-      - name: Setup Python Runtime (for Python Type & Dependency Resolution)
+      - name: Setup Python Runtime
         if: matrix.language == 'python'
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
-      - name: Check for custom CodeQL configuration file
-        id: check_config
-        shell: bash
-        run: |
-          if [ -f ".github/codeql/codeql-config.yml" ]; then
-            echo "has_config=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_config=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Initialize CodeQL (Deep-Level Suite)
+      - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # "+" appends security-extended & security-and-quality to any custom config queries
-          queries: +security-extended,security-and-quality
-          config-file: ${{ steps.check_config.outputs.has_config == 'true' && '.github/codeql/codeql-config.yml' || '' }}
+          config-file: .github/codeql/codeql-config.yml
           ram: ${{ env.CODEQL_RAM }}
           threads: ${{ env.CODEQL_THREADS }}
           debug: ${{ inputs.debug_mode || false }}
           dependency-caching: true
 
-      - name: Run manual build steps (Fallback if build-mode == manual)
-        if: matrix.build-mode == 'manual'
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "::group::Executing Manual Build for ${{ matrix.language }}"
-          if [ "${{ matrix.language }}" == "javascript-typescript" ] && [ -f "package.json" ]; then
-            npm ci --ignore-scripts || npm install --ignore-scripts
-            npm run build --if-present
-          elif [ "${{ matrix.language }}" == "python" ] && [ -f "requirements.txt" ]; then
-            pip install --no-cache-dir -r requirements.txt
-          else
-            echo "::error::Manual build mode specified for ${{ matrix.language }}, but no build logic matched."
-            exit 1
-          fi
-          echo "::endgroup::"
-
       - name: Perform CodeQL Analysis
-        id: codeql_analyze
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
@@ -132,43 +94,52 @@ jobs:
           upload: true
           wait-for-processing: true
 
-      - name: Generate Deep-Level SARIF Telemetry & Job Summary
+      - name: Generate SARIF summary
         if: always()
         shell: bash
+        env:
+          LANGUAGE: ${{ matrix.language }}
+          BUILD_MODE: ${{ matrix.build-mode }}
         run: |
-          SARIF_FILE="../results/${{ matrix.language }}.sarif"
-          
-          echo "### 🛡️ CodeQL Deep-Scan Report (\`${{ matrix.language }}\`)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Query Suite:** \`security-extended\` + \`security-and-quality\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Build Mode:** \`${{ matrix.build-mode }}\`" >> "$GITHUB_STEP_SUMMARY"
-          
-          if [ ! -f "$SARIF_FILE" ]; then
-            echo "⚠️ **Warning:** No SARIF output found at \`$SARIF_FILE\`." >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          sarif_file="../results/${LANGUAGE}.sarif"
+
+          {
+            echo "### CodeQL analysis report (${LANGUAGE})"
+            echo "- **Query suites:** security-extended + security-and-quality"
+            echo "- **Build mode:** ${BUILD_MODE}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ ! -f "$sarif_file" ]]; then
+            echo "SARIF output was not produced at \`${sarif_file}\`." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          TOTAL_RESULTS=$(jq '[.runs[].results[]] | length' "$SARIF_FILE")
-          ERROR_COUNT=$(jq '[.runs[].results[] | select(.level == "error")] | length' "$SARIF_FILE")
-          WARNING_COUNT=$(jq '[.runs[].results[] | select(.level == "warning")] | length' "$SARIF_FILE")
-          NOTE_COUNT=$(jq '[.runs[].results[] | select(.level == "note")] | length' "$SARIF_FILE")
+          total_results=$(jq '[.runs[]?.results[]?] | length' "$sarif_file")
+          error_count=$(jq '[.runs[]?.results[]? | select(.level == "error")] | length' "$sarif_file")
+          warning_count=$(jq '[.runs[]?.results[]? | select(.level == "warning")] | length' "$sarif_file")
+          note_count=$(jq '[.runs[]?.results[]? | select(.level == "note")] | length' "$sarif_file")
 
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Severity Level | Findings Count |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| :--- | :--- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| 🔴 **Error (High/Critical)** | **$ERROR_COUNT** |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| 🟡 **Warning (Medium)** | **$WARNING_COUNT** |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| 🔵 **Note (Quality/Info)** | **$NOTE_COUNT** |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Total Alerts** | **$TOTAL_RESULTS** |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo
+            echo "| Severity | Findings |"
+            echo "| :--- | ---: |"
+            echo "| Error | ${error_count} |"
+            echo "| Warning | ${warning_count} |"
+            echo "| Note | ${note_count} |"
+            echo "| **Total** | **${total_results}** |"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$TOTAL_RESULTS" -gt 0 ]; then
-            echo "#### 🔍 Detected Rule Violations" >> "$GITHUB_STEP_SUMMARY"
-            echo "| Rule ID | Level | Location | Message |" >> "$GITHUB_STEP_SUMMARY"
+          if (( total_results > 0 )); then
+            echo "#### Findings (first 25)" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Rule | Level | Location | Message |" >> "$GITHUB_STEP_SUMMARY"
             echo "| :--- | :--- | :--- | :--- |" >> "$GITHUB_STEP_SUMMARY"
-            
-            jq -r '.runs[].results[] | 
-              "| `\(.ruleId)` | `\(.level // "warning")` | `\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine // 1)` | \(.message.text | gsub("\n"; " ") | .[0:120])... |"' \
-              "$SARIF_FILE" | head -n 25 >> "$GITHUB_STEP_SUMMARY"
+            jq -r '
+              [.runs[]?.results[]? |
+                "| `\(.ruleId // \"unknown\")` | `\(.level // \"warning\")` | `\(.locations[0].physicalLocation.artifactLocation.uri // \"unknown\"):\(.locations[0].physicalLocation.region.startLine // 1)` | \((.message.text // \"No message\") | gsub("[|]"; "/") | gsub("[\\r\\n]"; " ")) |"
+              ] | .[:25] | .[]
+            ' "$sarif_file" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "✅ **Zero security or code-quality violations detected in \`${{ matrix.language }}\`.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "No findings detected." >> "$GITHUB_STEP_SUMMARY"
           fi
