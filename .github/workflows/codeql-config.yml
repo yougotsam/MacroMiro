@@ -1,29 +1,14 @@
-name: "CodeQL Deep-Level Repository Configuration"
+name: Retired CodeQL config placeholder
 
-# Enable extended threat models:
-# - 'remote': HTTP requests, network sockets, webhooks (default)
-# - 'local': CLI arguments, environment variables, local files, standard input
-threat-models:
-  - remote
-  - local
+# GitHub treats every YAML file in .github/workflows as a workflow. The former
+# codeql-config.yml was configuration, not a workflow, and caused a failing run.
+# The actual CodeQL config now lives at .github/codeql/codeql-config.yml.
+on:
+  workflow_dispatch:
 
-queries:
-  - uses: security-extended
-  - uses: security-and-quality
-
-# Focus deep static analysis on production code; ignore build artifacts and test mocks
-paths-ignore:
-  - '**/node_modules/**'
-  - '**/dist/**'
-  - '**/build/**'
-  - '**/coverage/**'
-  - '**/__pycache__/**'
-  - '**/venv/**'
-  - '**/.venv/**'
-  - '**/*.test.js'
-  - '**/*.spec.js'
-  - '**/*.test.ts'
-  - '**/*.spec.ts'
-  - '**/tests/**'
-  - '**/__tests__/**'
-  - '**/fixtures/**'
+jobs:
+  retired:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain retired path
+        run: echo "This legacy path is intentionally inert; CodeQL config is in .github/codeql/codeql-config.yml."
