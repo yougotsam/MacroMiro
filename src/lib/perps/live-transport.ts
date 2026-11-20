@@ -1,5 +1,6 @@
 import { createCrossAccountTransport } from "./cross-account";
-import { KALSHI_HOST, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
+import { kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
+import { MARGIN_HOSTS } from "./venue-config";
 import { postMarginOrder, putMargin } from "@/lib/desk/oms";
 import type { CreateReq, PerpsTransport } from "./oms";
 import type { SnapshotReads } from "./scoped-snapshot";
@@ -11,7 +12,7 @@ const POSITIONS = "/trade-api/v2/margin/positions";
 type Reply = { status: number; body: Record<string, unknown>; text: string };
 
 async function margin(method: "GET" | "DELETE", path: string): Promise<Reply> {
-  const res = await fetch(`${KALSHI_HOST}${path}`, {
+  const res = await fetch(`${MARGIN_HOSTS.rest}${path}`, {
     method,
     headers: kalshiSignedHeaders(method, path),
     signal: AbortSignal.timeout(8_000),
@@ -77,7 +78,7 @@ export const liveMarginTransport: PerpsTransport = {
 
 /** Raw read-only attribution source. Not an OMS transport or authorization path. */
 export const marginSnapshotReads: SnapshotReads = {
-  sourceOrigin: KALSHI_HOST,
+  sourceOrigin: MARGIN_HOSTS.rest,
   async positions() {
     const rows = await readMarginArray(POSITIONS, "positions", (p) => margin("GET", p));
     rows.forEach(mapMarginPosition); // Validate required values, retain raw metadata.
@@ -92,16 +93,16 @@ export async function marginAccountRequestEvidence(
   selection: import("./scoped-snapshot").MarginAccount, tickers: readonly string[],
 ) {
   if (selection.subaccount_type === "cross") {
-    return createCrossAccountTransport({ origin: KALSHI_HOST, subaccount: selection.subaccount, subaccount_type: "cross" }, {
+    return createCrossAccountTransport({ origin: MARGIN_HOSTS.rest, subaccount: selection.subaccount, subaccount_type: "cross" }, {
       read: async (request) => {
         const url = new URL(request.url);
-        if (url.origin !== KALSHI_HOST || request.method !== "GET") throw new Error("read-only origin/method mismatch");
+        if (url.origin !== MARGIN_HOSTS.rest || request.method !== "GET") throw new Error("read-only origin/method mismatch");
         return margin("GET", url.pathname + url.search);
       },
     }).readEvidence(tickers);
   }
   const { readAccountRequestEvidence } = await import("./request-evidence");
-  return readAccountRequestEvidence(KALSHI_HOST, selection, tickers,
+  return readAccountRequestEvidence(MARGIN_HOSTS.rest, selection, tickers,
     (path, field) => readMarginHistory(path, field, (p) => margin("GET", p)),
     (path, field) => readMarginArray(path, field, (p) => margin("GET", p)));
 }

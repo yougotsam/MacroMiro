@@ -11,10 +11,11 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { kalshiSignedHeaders } from "../../src/lib/scan/kalshi-auth";
 import { perpsReader, signedGet } from "../../src/lib/perps/kalshi-perps-read";
 import { CandleBuilder, LocalBook, SeqTracker, eligibleMarkets, type TradeMsg } from "../../src/lib/perps/stream";
+import { MARGIN_HOSTS } from "../../src/lib/perps/venue-config";
 import { rolloverSeed } from "../../src/lib/perps/book-replay";
 import { DATA_ROOT } from "../../src/lib/data-root";
 
-const WS_HOST = process.env.KALSHI_PERPS_WS || "wss://external-api-margin-ws.kalshi.com";
+const WS_HOST = MARGIN_HOSTS.marketWs;
 const WS_PATH = "/trade-api/ws/v2/margin";
 const secArg = process.argv.indexOf("--seconds"); const runFor = secArg > 0 ? Number(process.argv[secArg + 1]) * 1000 : Infinity;
 const R = perpsReader();
@@ -64,7 +65,7 @@ function connect() {
       if (sid != null && m.msg?.market_ticker) bookSid.set(m.msg.market_ticker, sid);
       out("book", { kind: "orderbook_delta", market_ticker: m.msg?.market_ticker, sid: sid ?? null, seq: m.seq ?? null, venueTs: m.msg?.ts_ms ?? null, rx: Date.now(), price: m.msg?.price, delta: m.msg?.delta, side: m.msg?.side });
       const book = books.get(m.msg.market_ticker);
-      book?.delta(m.msg);
+      book?.delta(m.msg, Date.now());
       if (book && m.seq != null) book.lastSeq = m.seq;
     } else if (m.type === "ticker") { stats.tickerMsgs++; const x = m.msg; out("ticker", { t: x.ts_ms, rx: Date.now(), k: x.market_ticker, bid: x.bid, ask: x.ask, bs: x.bid_size_fp, as: x.ask_size_fp, px: x.price, mark: x.settlement_mark_price, liqMark: x.liquidation_mark_price, ref: x.reference_price, funding: x.funding_rate, oi: x.open_interest_notional_value_dollars }); }
     else if (m.type === "trade") {
