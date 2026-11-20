@@ -9,7 +9,7 @@ One trading desk. One canonical GitHub repository: **yougotsam/MacroMiro**, bran
 - **Fundamentals:** source- and timestamp-aware calendar, macro releases, Firecrawl, Spark, Alexandria and MiroFish research. Fresh narrative confidence **is not** independently calibrated trade probability.
 - **Dashboard:** the TanStack application. The live trading worker is **not** proven to be running by a successful Vercel deployment.
 
-## Current operational state (reviewed November 11, 2026, main 671fe1b)
+## Current operational state (research-branch snapshot; reconfirm for release)
 
 - Vercel website: built from the current `main` branch.
 - The perps HTTP order endpoint `/api/live/perp-fire` explicitly returns `locked: true`, `sendsOrders: false`.
@@ -18,15 +18,29 @@ One trading desk. One canonical GitHub repository: **yougotsam/MacroMiro**, bran
 - Historical perps candle replay shows negative results for several studied assets. No strategy in this repository should be advertised as proven profitable or live-ready.
 - Historical data, cache files and journals exist in `data/` and must be preserved before moving them out of Git. They are not application source files.
 
-## Trading work order
+## Trading work order: agreed November 19, 2026
 
-**First: Kalshi 15-minute YES/NO prediction correctness.** The October 30 report's +2.27¢ across 3,559 research trades is based on next-bar close labels and an assumed 51¢ execution for every selected opportunity. Those are not the actual venue contract settlement labels or confirmed fills. The live evaluator now uses the contract settlement index, exact strike, closing time, recent 1-second prints and measured volatility. The bar-direction checklist is context only, cannot create a YES probability, and cannot enable trades. An independent contract-settlement calibrator is required and the approval policy remains disabled.
+**First: Kalshi margin perpetuals, with owner-approved rules.** Start with the actual Kalshi product list and funding/margin/fee specifications, then design and review entries, market-selection, news, position-sizing and exits one rule at a time. The existing perpetuals candidate scanner, order-manager groundwork and historical backtest are **research code, not an approved strategy**. Historical default replay lost around 25–29% on BTC/ETH/SOL/XRP. Do not use those reports to claim a profitable live strategy.
 
-**Second: perpetuals.** Existing default replay lost around 25–29% on BTC/ETH/SOL/XRP. Evaluate new HTF structure/sweep setups separately, with margin, liquidation, funding, fees and protected exits. Do not cross-apply prediction odds to perps.
+**Second: Kalshi 15-minute YES/NO, retained as separate research.** The October 30 report's +2.27¢ across 3,559 research trades is based on next-bar labels and an assumed 51¢ execution, not actual contract settlement or verified fills. The research evaluator now estimates the actual contract's index/strike/close, and requires independent settlement calibration. Prediction-model approval remains disabled.
 
-**Execution reality:** A read-only scan of the checked-in historical order journal found 220 sent-order acknowledgments, of which 14 reported some immediate fill. These are **not** 14 independently verified full trade outcomes. `scripts/fills-vs-51.ts` now labels only submitted limits and immediate ACK counts; verified execution prices and later fills remain **unknown** until joined with the exchange's fill records.
+**Historical order audit:** The checked-in journal has 220 sent-order acknowledgments, 14 with an immediate nonzero fill count. These are not verified completed trade outcomes. `scripts/fills-vs-51.ts` now distinguishes requested limits from unknown actual execution prices.
 
-Both products remain unapproved for new real orders. Profit is a target, not a release condition that can be asserted from assumed fills.
+**Owner approval:** No trading strategy, indicator/news weight, risk percentage, scaling rule or market whitelist becomes an approved live-trading rule without an explicit owner decision and a separate versioned test. Research and code corrections may be merged without activating trading. No live order sending, no account deposit, and no deletion of historical data is authorized by repository consolidation.
+
+## Pick the trading features, not GitHub versions
+
+The following is the **feature selection menu**, not a claim that the capabilities are production-ready. Decisions are made in order, one area at a time.
+
+| Feature | Existing foundation | Approved for live trading? |
+|---|---|---|
+| Market scanner (Kalshi perps) | Candidate scanner and read-only market access | No; choose markets and refresh rules |
+| Technical sniper entries | Structure, sweep, FVG, indicators and candlestick research | No; approve each rule |
+| Macro news and fundamentals | Research connectors and calendar/news components | No; verify exact live inputs and freshness |
+| Firecrawl / Spark / Alexandria | Separate research/data sources; integration health not verified end-to-end | No; define role and gating |
+| Aggressive position sizing and scale-ins | Experimental risk profiles and margin math | No; operator must approve limits |
+| Take profit, stop loss, trailing and recovery | OMS and protection groundwork, live endpoint hard-locked | No; server-side verification required |
+| Predictions (separate from perps) | Settlement-aware research estimator | No; model calibration not approved |
 
 ## Change the right rules
 
