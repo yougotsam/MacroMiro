@@ -132,14 +132,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if (( total_results > 0 )); then
-            echo "#### Findings (first 25)" >> "$GITHUB_STEP_SUMMARY"
-            echo "| Rule | Level | Location | Message |" >> "$GITHUB_STEP_SUMMARY"
-            echo "| :--- | :--- | :--- | :--- |" >> "$GITHUB_STEP_SUMMARY"
-            jq -r '
-              [.runs[]?.results[]? |
-                "| `\(.ruleId // \"unknown\")` | `\(.level // \"warning\")` | `\(.locations[0].physicalLocation.artifactLocation.uri // \"unknown\"):\(.locations[0].physicalLocation.region.startLine // 1)` | \((.message.text // \"No message\") | gsub("[|]"; "/") | gsub("[\\r\\n]"; " ")) |"
-              ] | .[:25] | .[]
-            ' "$sarif_file" >> "$GITHUB_STEP_SUMMARY"
+            echo "Details: GitHub Security > Code scanning alerts. The complete SARIF results were already uploaded by CodeQL." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No findings detected." >> "$GITHUB_STEP_SUMMARY"
           fi
