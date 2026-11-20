@@ -5,7 +5,7 @@
  */
 export type Level = [number, number];
 export class LocalBook {
-  bids = new Map<number, number>(); asks = new Map<number, number>(); lastSeq: number | null = null; stale = true; updatedMs = 0;
+  bids = new Map<number, number>(); asks = new Map<number, number>(); lastSeq: number | null = null; stale = true; updatedMs = 0; venueTsMs: number | null = null;
   snapshot(msg: { bid?: string[][]; ask?: string[][] }, seq: number, ts = Date.now()) {
     this.bids.clear(); this.asks.clear();
     for (const [p, c] of msg.bid ?? []) this.bids.set(Number(p), Number(c));
@@ -13,12 +13,14 @@ export class LocalBook {
     this.lastSeq = seq; this.stale = false; this.updatedMs = ts;
   }
   /** apply one delta; sequence checking is per subscription (see SeqTracker), not per market */
-  delta(msg: { price: string; delta: string; side: "bid" | "ask"; ts_ms?: number }): boolean {
+  delta(msg: { price: string; delta: string; side: "bid" | "ask"; ts_ms?: number }, receivedAtMs = Date.now()): boolean {
     if (this.stale) return false;
     const m = msg.side === "bid" ? this.bids : this.asks; const p = Number(msg.price);
     const v = (m.get(p) ?? 0) + Number(msg.delta);
     if (v <= 1e-9) m.delete(p); else m.set(p, v);
-    this.updatedMs = msg.ts_ms ?? Date.now();
+    // Venue ts_ms can decrease; only local receive time measures freshness.
+    this.updatedMs = receivedAtMs;
+    this.venueTsMs = msg.ts_ms ?? this.venueTsMs;
     return true;
   }
   top(n = 10) {

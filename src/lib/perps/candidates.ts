@@ -5,6 +5,7 @@
  */
 import { atr, confirmedSwings, evaluateSniper, type Candle } from "@/lib/desk/sniper";
 import type { Book, PerpMarket } from "./kalshi-perps-read";
+import { estimatePerpPnl } from "./economics";
 
 export const PERPS_CANDIDATE_SCHEMA = "perps-candidate/v2";
 export type PerpsParams = { riskUsd: number; maxNotionalUsd: number; holdHours: number; maxFundingAgainst: number; minDepthMultiple: number; macroClear: boolean };
@@ -86,13 +87,31 @@ export function buildPerpsCandidate(input: {
   const fundingKnown = rate != null && Number.isFinite(rate);
   const prints = fundingPrintsInHold(input.nextFundingMs, input.decisionMs ?? input.observedMs, p.holdHours);
   const fundingPct = fundingKnown ? (long ? 1 : -1) * rate * prints : null;
-  const winGross = r ? qty * (0.5 * r + 0.5 * 2 * r) : 0;
-  const winCost = fundingKnown ? notional * (input.makerRate * 2) + notional * fundingPct! : null;
-  const lossGross = r ? qty * r : 0;
-  const lossCost = fundingKnown ? notional * (input.makerRate + input.takerRate) + qty * m.tick + notional * fundingPct! : null;
-  const winNet = fundingKnown ? +(winGross - winCost!).toFixed(4) : null;
-  const lossNet = fundingKnown ? +(-(lossGross + lossCost!)).toFixed(4) : null;
-  const be = fundingKnown && winNet != null && lossNet != null && winNet > 0 ? +(-lossNet / (winNet - lossNet)).toFixed(4) : null;
+  // Spread and execution slippage are embedded in fill prices, not charged twice.
+  const canPrice = fundingKnown && qty > 0 && entry != null && stop != null &&
+    target1 != null && target2 != null && stop > 0 && target1 > 0 && target2 > 0;
+  const firstQty = Math.floor(qty / 2), lastQty = qty - firstQty;
+  const fundingUsd = canPrice ? -notional * fundingPct! : 0;
+  const win = canPrice ? estimatePerpPnl({
+    direction: dir, entries: [{ price: entry!, qty, rate: input.makerRate }],
+    exits: [
+      ...(firstQty ? [{ price: target1!, qty: firstQty, rate: input.makerRate }] : []),
+      { price: target2!, qty: lastQty, rate: input.makerRate },
+    ],
+    fundingUsd: [fundingUsd],
+  }) : null;
+  const stopFill = stop == null ? null : (long ? stop - m.tick : stop + m.tick);
+  const loss = canPrice && stopFill != null && stopFill > 0 ? estimatePerpPnl({
+    direction: dir, entries: [{ price: entry!, qty, rate: input.makerRate }],
+    exits: [{ price: stopFill, qty, rate: input.takerRate }],
+    fundingUsd: [fundingUsd],
+  }) : null;
+  const winNet = win == null ? null : +win.netUsd.toFixed(4);
+  const winCost = win == null ? null : +(win.grossUsd - win.netUsd).toFixed(4);
+  const lossGross = loss == null ? 0 : -loss.grossUsd;
+  const lossNet = loss == null ? null : +loss.netUsd.toFixed(4);
+  const lossCost = loss == null ? null : +(-loss.netUsd - lossGross).toFixed(4);
+  const be = winNet != null && lossNet != null && winNet > 0 && lossNet < 0 ? +(-lossNet / (winNet - lossNet)).toFixed(4) : null;
   const stopSideDepth = (long ? book.bids : book.asks).filter((x) => (long ? x[0] >= (stop ?? 0) : x[0] <= (stop ?? Infinity))).reduce((s, x) => s + x[1], 0);
   const synthetic = bookKind === "synthetic_candle";
   const gates = {
@@ -103,8 +122,8 @@ export function buildPerpsCandidate(input: {
     depth: { pass: !synthetic && qty > 0 && stopSideDepth >= p.minDepthMultiple * qty, why: synthetic ? "synthetic candle book is not executable depth" : `${stopSideDepth} contracts between entry and stop on our side vs need ${p.minDepthMultiple}×${qty}` },
     size: { pass: qty >= 1, why: qty >= 1 ? `${qty} contracts (risk cap ${qtyRisk}, notional cap $${p.maxNotionalUsd})` : `stop distance ${r?.toFixed(4)} > risk $${p.riskUsd} per contract` },
     after_cost_positive_payoff: { pass: fundingKnown && winNet != null && winNet > 0, why: fundingKnown ? `win ${winNet} / loss ${lossNet}` : "payoff not estimated; funding missing" },
-    book_fresh: { pass: input.bookFresh !== false, why: input.bookFresh === false ? "book snapshot is stale or was taken before the candle pull" : "fresh, or the caller did not check" },
-    market_open: { pass: input.tradingActive !== false && (!m.status || m.status === "active"), why: m.status && m.status !== "active" ? `market status ${m.status}` : input.tradingActive === false ? "trading_active is false" : "open, or the caller did not check" },
+    book_fresh: { pass: input.bookFresh === true, why: input.bookFresh === true ? "caller verified book freshness" : "book freshness unverified or stale" },
+    market_open: { pass: input.tradingActive === true && m.status === "active", why: m.status !== "active" ? `market status ${m.status || "unknown"}` : input.tradingActive !== true ? "trading_active unverified or false" : "venue and market active" },
   };
   const failed = Object.entries(gates).filter(([, g]) => !g.pass).map(([k]) => k);
   const eventAt = new Date(input.observedMs).toISOString();

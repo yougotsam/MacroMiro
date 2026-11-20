@@ -3,10 +3,11 @@
  * DELETE or amend in this file (enforced by test). Timestamps from the venue are kept as epoch ms.
  * Docs: https://docs.kalshi.com/margin (REST under /trade-api/v2/margin).
  */
-import { KALSHI_HOST, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
+import { kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
+import { MARGIN_HOSTS } from "./venue-config";
 
 /** Same signed venue host as perps write transport unless intentionally overridden in a controlled environment. */
-export const PERPS_HOST = process.env.KALSHI_PERPS_HOST || KALSHI_HOST;
+export const PERPS_HOST = MARGIN_HOSTS.rest;
 const BASE = "/trade-api/v2/margin";
 type Get = (path: string) => Promise<unknown>;
 
@@ -66,6 +67,29 @@ export function perpsReader(get: Get = signedGet) {
     riskParameters: async () => (await get("/risk_parameters")) as Record<string, unknown>,
     /** Venue computes available balance ONLY when requested; this endpoint has a higher token cost. */
     balance: async () => (await get("/balance?compute_available_balance=true")) as Record<string, unknown>,
+    /** Observational readiness: never authorizes an order. */
+    capabilityProbe: async () => {
+      const checkedAt = new Date().toISOString();
+      try {
+        const enabled = await get("/enabled") as { enabled?: unknown };
+        if (enabled.enabled !== true) return { ready: false as const, checkedAt, perpsEnabled: enabled.enabled === false ? false as const : null, reasons: ["perps_not_enabled"] };
+        const [status, risk, fees, balance] = await Promise.all([
+          get("/exchange/status") as Promise<{ exchange_active?: unknown; trading_active?: unknown }>,
+          get("/risk_parameters") as Promise<Record<string, unknown>>,
+          get("/fee_tiers") as Promise<{ maker_fee_rates?: Record<string, unknown>; taker_fee_rates?: Record<string, unknown> }>,
+          get("/balance?compute_available_balance=true") as Promise<Record<string, unknown>>,
+        ]);
+        const reasons: string[] = [];
+        if (status.exchange_active !== true || status.trading_active !== true) reasons.push("exchange_not_trading");
+        if (!risk || typeof risk !== "object" || !Object.keys(risk).length) reasons.push("risk_parameters_missing");
+        if (!fees?.maker_fee_rates || !fees?.taker_fee_rates ||
+            !Object.keys(fees.maker_fee_rates).length || !Object.keys(fees.taker_fee_rates).length) reasons.push("fee_tiers_missing");
+        if (!balance || typeof balance !== "object" || !Object.keys(balance).length) reasons.push("balance_missing");
+        return { ready: reasons.length === 0, checkedAt, perpsEnabled: true as const, reasons };
+      } catch {
+        return { ready: false as const, checkedAt, perpsEnabled: null, reasons: ["capability_probe_failed"] };
+      }
+    },
   };
 }
 

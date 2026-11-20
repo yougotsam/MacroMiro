@@ -8,6 +8,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { KALSHI_HOST, kalshiDelete, kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
+import { MARGIN_HOSTS } from "@/lib/perps/venue-config";
 import { eventCancelPath } from "@/lib/scan/kalshi-order-status";
 import { CALIBRATED_MODEL_APPROVED, MAX_ORDERS_PER_TICKER_WINDOW, ORDER_SHARD, TICKER_RE, dataDir } from "./config";
 import { ordersByClientIds, type KOrder } from "./kalshi-read";
@@ -68,7 +69,8 @@ export type Lookup = (cids: string[]) => Promise<KOrder[]>;
 
 /** Real transport: signed single-host POST (no host fallback — a fallback could double-send). */
 export const kalshiOrderPost: Transport = async (path, body) => {
-  const res = await fetch(`${KALSHI_HOST}${path}`, {
+  const host = path.startsWith("/trade-api/v2/margin/") ? MARGIN_HOSTS.rest : KALSHI_HOST;
+  const res = await fetch(`${host}${path}`, {
     method: "POST",
     headers: kalshiSignedHeaders("POST", path),
     body: JSON.stringify(body),
@@ -91,7 +93,9 @@ export function postMarginOrder(body: Record<string, unknown>) {
 
 /** Margin exit trigger. PUT is a write, so it stays in this file with the other signed writes. */
 export async function putMargin(path: string, body: Record<string, unknown>) {
-  const res = await fetch(`${KALSHI_HOST}${path}`, {
+  if (!path.startsWith("/trade-api/v2/margin/")) throw new Error("margin write path required");
+  const host = MARGIN_HOSTS.rest;
+  const res = await fetch(`${host}${path}`, {
     method: "PUT",
     headers: kalshiSignedHeaders("PUT", path),
     body: JSON.stringify(body),

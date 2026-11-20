@@ -76,7 +76,7 @@ export function replayBooks(events: PersistedBookEvent[], opts?: { tradingActive
     const image = e.kind === "rollover_seed" || (e.kind === "orderbook_snapshot" && e.seeded === true);
     if (image) {
       const b = touch(ticker);
-      b.snapshot({ bid: e.bid, ask: e.ask }, e.bookSeq ?? e.seq ?? 0, e.venueTs ?? e.rx);
+      b.snapshot({ bid: e.bid, ask: e.ask }, e.bookSeq ?? e.seq ?? 0, e.rx);
       b.stale = e.stale === true;
       limited.set(ticker, e.depthLimited === true);
       continue;
@@ -91,11 +91,11 @@ export function replayBooks(events: PersistedBookEvent[], opts?: { tradingActive
     }
     if (seq === "unsequenced" && e.kind !== "orderbook_snapshot") { skipped++; continue; }
     if (e.kind === "orderbook_snapshot") {
-      b.snapshot({ bid: e.bid, ask: e.ask }, e.seq ?? 0, e.venueTs ?? e.rx);
+      b.snapshot({ bid: e.bid, ask: e.ask }, e.seq ?? 0, e.rx);
       b.stale = e.stale === true;
       limited.set(ticker, e.depthLimited === true);
     } else if (!b.stale && e.price != null && e.delta != null && (e.side === "bid" || e.side === "ask")) {
-      b.delta({ price: e.price, delta: e.delta, side: e.side, ts_ms: e.venueTs ?? undefined });
+      b.delta({ price: e.price, delta: e.delta, side: e.side, ts_ms: e.venueTs ?? undefined }, e.rx);
       if (e.seq != null) b.lastSeq = e.seq;
     } else skipped++;
   }

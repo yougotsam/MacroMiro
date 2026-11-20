@@ -15,6 +15,7 @@
  *  - The book built from the candle close is synthetic. Depth is not a fill. Label stays CANDLE_ONLY_NOT_EXECUTABLE.
  */
 import { buildPerpsCandidate } from "./candidates";
+import { calculatePerpPnl } from "./economics";
 import { startState, stepBar, type ManagePlan } from "./manage";
 import { sizePosition, aggressiveProfile, AGGRESSIVE_EXPERIMENTAL_VERSION, type Profile } from "./mandate";
 import type { MarginSpec } from "./margin";
@@ -37,17 +38,16 @@ export function fundingAsOf(funding: { tMs: number; rate: number }[], decideMs: 
   return best ? { rate8h: best.rate, asOfMs: best.tMs } : { rate8h: null, asOfMs: null };
 }
 
-/** 04:00, 12:00, 20:00 UTC. That is 12:00 AM, 8:00 AM and 4:00 PM ET while the US is on daylight time. Help center uses one clock for crypto and metals. A ticker's own next_funding_time still wins when the venue sends it. */
+/** Crypto funding is 00:00, 08:00, 16:00 Eastern. Other assets need venue-provided times. */
+const NEW_YORK_HOUR = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York", hour: "2-digit", hourCycle: "h23",
+});
 export function fundingClocksInHold(fromMs: number, holdMs: number): number[] {
-  const end = fromMs + holdMs;
-  const out: number[] = [];
-  const d = new Date(fromMs);
-  for (let add = 0; add < 4; add++) {
-    const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + add);
-    for (const h of [4, 12, 20]) {
-      const t = midnight + h * 3_600_000;
-      if (t > fromMs && t <= end) out.push(t);
-    }
+  if (!Number.isFinite(fromMs) || !Number.isFinite(holdMs) || holdMs < 0) return [];
+  const out: number[] = [], hourMs = 3_600_000;
+  for (let ms = (Math.floor(fromMs / hourMs) + 1) * hourMs; ms <= fromMs + holdMs; ms += hourMs) {
+    const hour = Number(NEW_YORK_HOUR.format(new Date(ms)));
+    if (hour === 0 || hour === 8 || hour === 16) out.push(ms);
   }
   return out;
 }
@@ -59,15 +59,9 @@ export function contiguousLookback<T extends { t: number }>(bars: T[], j: number
   return bars.slice(Math.max(start, j - (max - 1)), j + 1);
 }
 export function nextKalshiFundingMs(decideMs: number): number {
-  const d = new Date(decideMs);
-  for (let add = 0; add < 3; add++) {
-    const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + add);
-    for (const h of [4, 12, 20]) {
-      const t = midnight + h * 3_600_000;
-      if (t > decideMs) return t;
-    }
-  }
-  return decideMs + 8 * 3_600_000;
+  const next = fundingClocksInHold(decideMs, 48 * 3_600_000)[0];
+  if (next == null) throw new Error("next crypto funding time unavailable");
+  return next;
 }
 
 /** 15 one-minute prints, each on its minute, or the bucket is incomplete and is not a bar. */
@@ -182,7 +176,13 @@ export function simulate(d: SimData, cfg: SimCfg): SimResult {
     const entryFee = qty * entry * (cfg.entry === "maker" ? d.maker : d.taker);
     const exitFees = st.exits.reduce((s, e) => s + e.qty * e.price * (e.taker ? d.taker : d.maker), 0);
     const fund = d.funding.filter((f) => f.tMs > m1[fillIdx].t && f.tMs <= endMs).reduce((s, f) => s + (long ? -1 : 1) * f.rate * qty * entry, 0);
-    const net = st.realized - entryFee - exitFees + fund;
+    const fillPnl = calculatePerpPnl({
+      direction: best.dir,
+      entryFills: [{ price: entry, qty, feeUsd: entryFee }],
+      exitFills: st.exits.map((e) => ({ price: e.price, qty: e.qty, feeUsd: e.qty * e.price * (e.taker ? d.taker : d.maker) })),
+      fundingPaymentsUsd: [fund],
+    });
+    const net = fillPnl.netUsd;
     equity += net; peak = Math.max(peak, equity); maxDd = Math.max(maxDd, (peak - equity) / peak);
     const hold = (endMs - m1[fillIdx].t) / 60_000; inMarketMin += hold;
     trades.push({ t: m1[fillIdx].t, dir: best.dir, setup: best.setup, score: best.score, entry, stop, qty, notional: +(qty * entry).toFixed(2), lev: +((qty * entry) / (equity - net)).toFixed(2), filledFrac: frac, exits: st.exits.map((e) => `${e.reason}@${e.price.toFixed(4)}x${e.qty}`).join(" "), gross: +st.realized.toFixed(4), fees: +(entryFee + exitFees).toFixed(4), funding: +fund.toFixed(4), fundingRateAtDecision: known.rate8h, net: +net.toFixed(4), holdMin: hold, equityAfter: +equity.toFixed(2), executionClass: "candle_proxy_not_a_fill" });

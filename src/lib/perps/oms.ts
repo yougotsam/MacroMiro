@@ -62,7 +62,7 @@ export const lockedTransport: PerpsTransport = {
 };
 
 export type Intent = { kind: "entry" | "exit" | "flatten"; ticker: string; dir: "long" | "short"; qty: number; price: number; maker: boolean; plan?: ManagePlan; decisionId: string };
-export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "PROTECTION_VERIFIED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED"; intent?: Intent; order_id?: string; note?: string; intendedRouting?: CrossScope; serializedRequest?: PreparedCreate; protectionRequest?: Request };
+export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "PROTECTION_VERIFIED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED" | "KILL"; intent?: Intent; order_id?: string; note?: string; intendedRouting?: CrossScope; serializedRequest?: PreparedCreate; protectionRequest?: Request };
 
 export const CID_PREFIX = "mm-perps-";
 /** Same legacy intent → same identifier; not an exactly-once venue guarantee. */
@@ -108,6 +108,9 @@ export class PerpsOms {
       try { this.rows = readFileSync(journalPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); }
       catch { this.blocked = "corrupt journal: sending disabled"; }
       // A new HTTP request must not reset a prior unprotected-entry alarm.
+      if (this.rows.some((r) => r?.state === "KILL")) {
+        this.blocked = "KILL: manual operator review required; no automatic rearm";
+      }
       if (!this.blocked && !scopedTransport(this.t)) {
         const latest = new Map<string, JournalRow>();
         for (const r of this.rows) latest.set(r.cid, r);
@@ -496,38 +499,75 @@ export class PerpsOms {
     }
   }
 
-  /** Kill: cancel every resting order (needed before a close), then flatten each position with reduce-only IOC. */
+  /**
+   * Latch entries before contacting the venue. Cancel resting orders first.
+   * Keep protective triggers while any position is open or a flatten is unconfirmed.
+   * An out-of-process watchdog is still required before live authorization.
+   */
   async killAndFlatten(operatorToken: string, expectedToken: string, books: Record<string, { bestBid: number | null; bestAsk: number | null }>, decisionId: string) {
     if (!operatorToken || operatorToken !== expectedToken) return { ok: false, why: "unauthenticated kill request" };
     if (scopedTransport(this.t)) {
-      this.blocked = "KILL engaged: bulk killAndFlatten closed pending lifecycle ownership";
+      this.blocked = "KILL engaged: scoped flatten closed pending lifecycle ownership";
       return { ok: false, why: this.blocked };
     }
     this.blocked = "KILL engaged";
-    const tickers = new Set<string>();
     try {
-      for (const o of await this.t.listOrders({})) if (o.ticker) tickers.add(o.ticker);
-      for (const p of await this.t.positions()) if (Number(p.position) !== 0) tickers.add(p.market_ticker);
-      for (const t of tickers) await this.t.cancelCrossExitTriggers(t);
-    } catch (e) {
-      if (scopedTransport(this.t)) throw new Error("scoped kill audit failed; no fallback cancellation/flatten");
-      this.log({ cid: `kill-${decisionId}`, state: "UNKNOWN", note: `trigger cancel ${String((e as Error).message).slice(0, 160)}` });
+      this.log({ cid: "kill-" + decisionId, state: "KILL", note: "operator_manual; entries blocked until explicit review" });
+    } catch {
+      return { ok: false, why: "kill journal persistence failed; entries remain blocked" };
     }
-    await this.t.cancelAll();
-    const out: string[] = [];
-    for (const p of await this.t.positions()) {
-      const q = Number(p.position); if (!q) continue;
-      const b = books[p.market_ticker]; const long = q > 0;
-      const px = long ? b?.bestBid : b?.bestAsk; if (px == null) { out.push(`${p.market_ticker}: no book, cannot flatten`); continue; }
-      const i: Intent = { kind: "flatten", ticker: p.market_ticker, dir: long ? "long" : "short", qty: Math.abs(q), price: long ? px * 0.98 : px * 1.02, maker: false, decisionId };
-      const req = this.request(i); const cid = req.client_order_id;
-      const prepared = this.prepare(req);
-      this.log({ cid, state: "INTENT", intent: i, ...(prepared ? { serializedRequest: prepared } : {}) });
-      if (scopedTransport(this.t)) this.log({ cid, state: "SENT" });
-      try { const r = await this.dispatch(req, prepared); this.log({ cid, state: "ACK", order_id: r.order_id }); out.push(`${p.market_ticker}: flatten sent ${req.side} ${req.count} reduce_only`); }
-      catch (e) { this.log({ cid, state: "UNKNOWN", note: String((e as Error).message) }); out.push(`${p.market_ticker}: flatten UNKNOWN`); }
+    try {
+      await this.t.cancelAll();
+    } catch {
+      return { ok: false, why: "cancel orders not verified; entries blocked; protective triggers retained" };
     }
-    return { ok: true, actions: out };
+    let positions: VenuePosition[];
+    try {
+      positions = await this.t.positions();
+    } catch {
+      return { ok: false, why: "position inventory unavailable; protective triggers retained" };
+    }
+    const actions: string[] = [];
+    for (const p of positions) {
+      const qty = Number(p.position);
+      if (!Number.isFinite(qty)) return { ok: false, why: "unknown position quantity; triggers retained", actions };
+      if (!qty) continue;
+      const book = books[p.market_ticker], long = qty > 0;
+      const px = long ? book?.bestBid : book?.bestAsk;
+      if (px == null || !Number.isFinite(px) || px <= 0) {
+        actions.push(p.market_ticker + ": no executable book; cannot flatten");
+        continue;
+      }
+      const intent: Intent = { kind: "flatten", ticker: p.market_ticker, dir: long ? "long" : "short",
+        qty: Math.abs(qty), price: long ? px * 0.98 : px * 1.02, maker: false, decisionId };
+      const request = this.request(intent), cid = request.client_order_id;
+      const prepared = this.prepare(request);
+      this.log({ cid, state: "INTENT", intent, ...(prepared ? { serializedRequest: prepared } : {}) });
+      try {
+        const result = await this.dispatch(request, prepared);
+        this.log({ cid, state: "ACK", order_id: result.order_id });
+        actions.push(p.market_ticker + ": reduce-only flatten sent; awaiting position verification");
+      } catch {
+        this.log({ cid, state: "UNKNOWN", note: "flatten outcome unknown; reconcile; no blind retry" });
+        actions.push(p.market_ticker + ": flatten outcome unknown");
+      }
+    }
+    let after: VenuePosition[];
+    try {
+      after = await this.t.positions();
+    } catch {
+      return { ok: false, why: "post-flatten positions unavailable; protective triggers retained", actions };
+    }
+    if (after.some((p) => !Number.isFinite(Number(p.position)) || Number(p.position) !== 0)) {
+      return { ok: false, why: "positions not confirmed flat; protective triggers retained", actions };
+    }
+    const tickers = new Set([...positions, ...after].map((p) => p.market_ticker));
+    try {
+      for (const ticker of tickers) await this.t.cancelCrossExitTriggers(ticker);
+    } catch {
+      return { ok: false, why: "positions flat, but residual protective triggers not fully cleared", actions };
+    }
+    return { ok: true, actions };
   }
 
   /** Realized P&L and fees from venue fills (MarginFill.realized_pnl and .fees), filtered to our orders. */
