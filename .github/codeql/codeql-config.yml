@@ -1,0 +1,22 @@
+# CodeQL configuration consumed by .github/workflows/codeql.yml.
+# Keep tests, dependencies, and generated output out of source analysis while
+# retaining security-extended and security-and-quality coverage for source.
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/coverage/**'
+  - '**/__pycache__/**'
+  - '**/venv/**'
+  - '**/.venv/**'
+  - '**/*.test.js'
+  - '**/*.spec.js'
+  - '**/*.test.ts'
+  - '**/*.spec.ts'
+  - '**/tests/**'
+  - '**/__tests__/**'
+  - '**/fixtures/**'
