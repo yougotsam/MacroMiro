@@ -32,6 +32,10 @@ function rollDay() {
   for (const [sid, seqNo] of seq.last) out("book", { kind: "day_cursor", sid, seq: seqNo, venueTs: null, rx: Date.now() });
   for (const [t, b] of books) out("book", rolloverSeed(t, b, bookSid.get(t) ?? null));
 }
+// Observe and journal account capabilities; this collector never arms an order sender.
+const capability = await R.capabilityProbe();
+out("rest", { kind: "margin_capability_probe", at: capability.checkedAt,
+  perps_enabled: capability.perpsEnabled, ready: capability.ready, reasons: capability.reasons });
 const tickers = eligibleMarkets(await R.markets()).slice(0, 12);
 const books = new Map(tickers.map((t) => [t, new LocalBook()]));
 const builders = new Map(tickers.map((t) => [t, [60_000, 300_000, 900_000].map((p) => new CandleBuilder(p))]));

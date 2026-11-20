@@ -72,7 +72,7 @@ export function perpsReader(get: Get = signedGet) {
       const checkedAt = new Date().toISOString();
       try {
         const enabled = await get("/enabled") as { enabled?: unknown };
-        if (enabled.enabled !== true) return { ready: false as const, checkedAt, reasons: ["perps_not_enabled"] };
+        if (enabled.enabled !== true) return { ready: false as const, checkedAt, perpsEnabled: enabled.enabled === false ? false as const : null, reasons: ["perps_not_enabled"] };
         const [status, risk, fees, balance] = await Promise.all([
           get("/exchange/status") as Promise<{ exchange_active?: unknown; trading_active?: unknown }>,
           get("/risk_parameters") as Promise<Record<string, unknown>>,
@@ -85,9 +85,9 @@ export function perpsReader(get: Get = signedGet) {
         if (!fees?.maker_fee_rates || !fees?.taker_fee_rates ||
             !Object.keys(fees.maker_fee_rates).length || !Object.keys(fees.taker_fee_rates).length) reasons.push("fee_tiers_missing");
         if (!balance || typeof balance !== "object" || !Object.keys(balance).length) reasons.push("balance_missing");
-        return { ready: reasons.length === 0, checkedAt, reasons };
+        return { ready: reasons.length === 0, checkedAt, perpsEnabled: true as const, reasons };
       } catch {
-        return { ready: false as const, checkedAt, reasons: ["capability_probe_failed"] };
+        return { ready: false as const, checkedAt, perpsEnabled: null, reasons: ["capability_probe_failed"] };
       }
     },
   };
