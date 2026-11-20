@@ -1,10 +1,13 @@
 /**
- * One series, one decision. The side and the probability come from the pre-trade checklist
- * (src/lib/signal/checklist.ts): structure, sweep, gaps, EMA stack, RSI, ADR, VWAP, killzone, release clock,
- * news and scenario reads (numbers from files only), then the measured model and its walk-forward verdict, then edge after fees at the live bid.
- * This file does not send. The OMS release gate (CALIBRATED_MODEL_APPROVED) and risk.ts still decide.
+ * One market, one decision. P(YES) must correspond to the actual Kalshi
+ * settlement index, strike and close time. The signal checklist predicts the
+ * next 15-minute price-bar direction: it is only directional context and NEVER
+ * the probability of the venue contract settling YES.
+ * This evaluator does not send orders. Approval and the OMS remain independent.
  */
 import {
+  APPROVAL_CUSHION,
+  APPROVAL_POLICY_ENFORCED,
   BAR_MAX_AGE_MS,
   BOOK_MAX_AGE_MS,
   INDEX_MAX_AGE_MS,
@@ -13,15 +16,17 @@ import {
   MODEL_REV,
   MODEL_VERSION,
   REFERENCE,
+  TIMING_POLICY,
   type Series,
   calibratorPath,
 } from "./config";
-import { loadCalibrator, type Approval, type Calibrator } from "./approval";
+import { approve, loadCalibrator, TIMING_POLICIES, type Approval, type Calibrator } from "./approval";
+import { estimateContractSettlement } from "./contract-quote";
 import { minuteBars, type FeatureSnapshot } from "./features";
 import { orderFee, type FeeInfo } from "./fees";
 import { guardVerdict } from "./guard";
 import { type Feeds } from "./feeds";
-import { type Book, type Candidate, sizeFor } from "./gate";
+import { type Book, type Candidate, scoreSides, sizeFor } from "./gate";
 import { readIntelControls, readIntelLogit } from "./intel-gate";
 import { preTrade, type PreTrade } from "@/lib/signal/checklist";
 import { LiveBars } from "@/lib/signal/live-bars";
@@ -82,7 +87,7 @@ export class Evaluator {
 
   /** Approved calibrator for this model version (re-read at most once a minute). */
   calibrator(now: number): Calibrator | null {
-    if (now - this.cal.at > 60_000) this.cal = { c: loadCalibrator(this.calPath(), `${MODEL_VERSION}+${MODEL_REV}`), at: now };
+    if (now - this.cal.at > 60_000) this.cal = { c: loadCalibrator(this.calPath(), `${MODEL_VERSION}+${MODEL_REV}+contract-settlement-v1`), at: now };
     return this.cal.c;
   }
 
@@ -130,7 +135,7 @@ export class Evaluator {
       docs: readNewsDocs(),
       hist: readNewsHistory(asset, now),
       file: loadSignalModel(now),
-      // maker at our own bid: the price we pay if filled; Kalshi charges makers no fee on these series
+      // The bar-direction model is context only, not a settlement probability.
       priceFor: (side) => {
         const bid = bidOf(side);
         if (!bid || !(bid.price > 0) || !(bid.price < 1)) return null;
@@ -139,36 +144,63 @@ export class Evaluator {
       },
     });
     out.check = check;
-    if (check.pUp != null) out.p = check.pUp;
-    if (check.bias === "neutral" || check.pSide == null) return fail(`SIGNAL_${check.why.replace(/ /g, "_")}`);
-    const side = check.bias === "long" ? "yes" : "no";
-    const bid = bidOf(side);
-    const other = side === "yes" ? book.noBid : book.yesBid;
-    const ask = other ? Math.round((1 - other.price) * 10_000) / 10_000 : null;
-    if (!bid || !(bid.price > 0) || !(bid.price < 1)) return fail("SIGNAL_no_bid");
-    if (ask != null && ask - bid.price > 0.04) return fail("SIGNAL_spread");
-    const count = sizeFor(bid.price, true, fee, budget);
-    const paid = count > 0 ? orderFee(count, bid.price, true, fee) : 0;
-    const edge = check.edge ?? 0;
-    const quote: Candidate = { side, mode: "maker", price: bid.price, count, fee: paid, feePer: count > 0 ? paid / count : 0, edge, edgeBase: edge, pSide: check.pSide };
-    if (macro.blocked) {
-      out.shadow = quote;
-      return fail(`MACRO_${macro.reason ?? "release_window"}`);
-    }
-    if (!check.fire) {
-      out.shadow = quote;
-      return fail(`SIGNAL_${check.why.replace(/ /g, "_")}`);
-    }
-    if (count < 1) {
-      out.shadow = quote;
-      return fail("SIGNAL_size");
-    }
-    const verdict = guardVerdict({ side, cash: acct?.cash ?? 0, dayWorst: acct?.dayWorst ?? 0, kept: true, calibratedP: check.pSide, lossesInARow: acct?.lossesInARow ?? 0 });
-    if (!verdict.fire) {
-      out.shadow = quote;
-      return fail(`GUARD_${verdict.why.replace(/ /g, "_")}`);
-    }
-    out.best = quote;
+
+    // Use the contract's authoritative settlement index, strike and close.
+    // Never substitute check.pUp or check.pSide (next-bar up/down proxy).
+    const settlement = estimateContractSettlement(this.feeds, series, m, now);
+    if (!settlement.ok) return fail(`SETTLEMENT_${settlement.why}`);
+    out.pBase = settlement.pYes;
+    out.p = settlement.pYes;
+    out.sigma = settlement.sigma;
+    this.sigmaBy.set(series, settlement.sigma);
+    const priced = scoreSides(settlement.pYes, settlement.pYes, book, fee, {
+      allowMaker: true,
+      allowTaker: true,
+      budget,
+      priceRanges: m.priceRanges,
+    });
+    out.quotes = priced.quotes;
+    const candidate = priced.best;
+    if (!candidate) return fail(`SETTLEMENT_${priced.failed ?? "no_executable_edge"}`);
+    out.shadow = candidate;
+    if (macro.blocked) return fail(`MACRO_${macro.reason ?? "release_window"}`);
+
+    // The older next-candle model may veto an out-of-regime contract candidate.
+    // Its training verdict or confidence can never authorize a YES/NO contract.
+    const contextKept = check.steps.some((step) => step.name === "Measured verdict (#124)" && step.state === "pass");
+    if (!contextKept || check.pUp == null) return fail("SIGNAL_directional_context_unavailable");
+    const candidateBias = candidate.side === "yes" ? "long" : "short";
+    if (check.bias !== candidateBias) return fail("SIGNAL_direction_disagrees_with_settlement");
+
+    const approval = approve({
+      pYesRaw: settlement.pYes,
+      calibrator: this.calibrator(now),
+      candidate,
+      tteSec: left,
+      policy: TIMING_POLICIES[TIMING_POLICY],
+      cushion: APPROVAL_CUSHION,
+    });
+    out.approval = approval;
+    out.timing = { policy: TIMING_POLICY, bucket: approval.bucket };
+    if (!APPROVAL_POLICY_ENFORCED) return fail("APPROVAL_policy_disabled");
+    if (!approval.ok || approval.pCal == null)
+      return fail(`APPROVAL_${approval.why}`);
+    const pSide = candidate.side === "yes" ? approval.pCal : 1 - approval.pCal;
+    const verdict = guardVerdict({
+      side: candidate.side,
+      cash: acct?.cash ?? 0,
+      dayWorst: acct?.dayWorst ?? 0,
+      kept: true,
+      calibratedP: pSide,
+      lossesInARow: acct?.lossesInARow ?? 0,
+    });
+    if (!verdict.fire) return fail(`GUARD_${verdict.why.replace(/ /g, "_")}`);
+    out.best = {
+      ...candidate,
+      pSide,
+      edge: approval.evPerContract ?? candidate.edge,
+    };
+    out.shadow = null;
     return out;
   }
 }

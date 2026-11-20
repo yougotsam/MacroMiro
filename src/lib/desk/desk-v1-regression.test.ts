@@ -79,8 +79,21 @@ describe("one order path", () => {
     const auth = text.get(join(SRC, "lib/scan/kalshi-auth.ts"))!;
     expect(auth).not.toMatch(/export (async )?function kalshi(Post|Put|Patch)\b/);
     expect(auth).not.toMatch(/method:\s*"(POST|PUT|PATCH)"/);
+    // Binary and perpetuals are different products. The old regex also catches
+    // an unsigned prepared request in cross-account.ts. Verify both paths,
+    // including the signed writer and the independently locked live API.
     const order = files.filter((f) => /portfolio\/events\/orders|portfolio\/orders["`]|\/margin\/orders/.test(text.get(f)!) && /method:\s*"POST"|kalshiSignedHeaders\("POST"/.test(text.get(f)!));
-    expect(order.map(rel)).toEqual(["src/lib/desk/oms.ts"]);
+    expect(order.map(rel).sort()).toEqual(["src/lib/desk/oms.ts", "src/lib/perps/cross-account.ts"]);
+    const scoped = text.get(join(SRC, "lib/perps/cross-account.ts"))!;
+    expect(scoped).not.toMatch(/kalshiSignedHeaders\s*\(|signKalshi\s*\(|\bfetch\s*\(/);
+    const liveTransport = text.get(join(SRC, "lib/perps/live-transport.ts"))!;
+    const scopedRead = liveTransport.slice(liveTransport.indexOf("return createCrossAccountTransport("));
+    expect(scopedRead).toMatch(/\bread:\s*async/);
+    expect(scopedRead).not.toMatch(/\bwrite\s*:/);
+    const perpsApi = text.get(join(SRC, "routes/api/live/perp-fire.ts"))!;
+    expect(perpsApi).toMatch(/locked:\s*true/);
+    expect(perpsApi).toMatch(/sendsOrders:\s*false/);
+    expect(perpsApi).not.toMatch(/liveMarginTransport|new PerpsOms\(|postMarginOrder\(/);
   });
 
   it("the OMS POST is only reachable through Oms.submit, which calls risk.check first", () => {

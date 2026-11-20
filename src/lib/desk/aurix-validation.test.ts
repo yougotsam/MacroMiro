@@ -114,9 +114,12 @@ describe("macro calendar gate (Codex P2: FAIL-CLOSED; order path reads only the 
     // round 3: the evaluation moved verbatim from engine.ts to evaluator.ts (shared with the read-only collector)
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
     expect(src).not.toContain("G0_${macro.reason");
-    // priced first (checklist), then the macro block moves the quote to shadow
-    expect(src.indexOf("if (macro.blocked) {")).toBeGreaterThan(src.indexOf("const check = preTrade("));
-    expect(src).toMatch(/if \(macro\.blocked\) \{\s*out\.shadow = quote;/);
+    // Price the actual contract first. Once a candidate exists, a blocked
+    // calendar must refuse it without removing its research-only shadow.
+    expect(src.indexOf("const priced = scoreSides(")).toBeGreaterThan(src.indexOf("const settlement = estimateContractSettlement("));
+    expect(src.indexOf("out.shadow = candidate;")).toBeGreaterThan(src.indexOf("const candidate = priced.best"));
+    expect(src.indexOf("if (macro.blocked) return fail(")).toBeGreaterThan(src.indexOf("out.shadow = candidate;"));
+    expect(src.indexOf("const approval = approve(")).toBeGreaterThan(src.indexOf("if (macro.blocked) return fail("));
     // no network or paid research client is imported; news arrives as numbers parsed from files (lib/signal/news)
     expect(src).not.toMatch(/from\s+["'][^"']*(firecrawl|mirofish|spark\.server)/i);
     expect(src).not.toMatch(/import\(\s*["'][^"']*(firecrawl|mirofish|spark\.server)/i);
@@ -384,9 +387,14 @@ describe("review B4: shadow ledger keeps the would-be trade while live is disabl
   });
   it("approval and the uncalibrated stop move the candidate to shadow; a news print does not", () => {
     const src = readFileSync(new URL("./evaluator.ts", import.meta.url), "utf8") as string;
-    // macro block, checklist no-fire, size, and the guard all keep the quote as shadow; only a full pass sets best
-    expect(src.match(/out\.shadow = quote;/g)?.length).toBe(4);
-    expect(src.match(/out\.best = quote;/g)?.length).toBe(1);
+    // The quote is retained for research, but never becomes an order until
+    // settlement calibration and the account guard both pass.
+    expect(src).toContain("out.shadow = candidate;");
+    expect(src.indexOf("if (!APPROVAL_POLICY_ENFORCED) return fail(")).toBeGreaterThan(src.indexOf("const approval = approve("));
+    expect(src.indexOf("if (!verdict.fire) return fail(")).toBeGreaterThan(src.indexOf("const verdict = guardVerdict("));
+    expect(src.indexOf("out.best = {")).toBeGreaterThan(src.indexOf("if (!verdict.fire) return fail("));
+    expect(src).not.toMatch(/out\\.best = quote/);
+    expect(src).not.toContain("out.p = check.pUp");
     const engine = readFileSync(new URL("./engine.ts", import.meta.url), "utf8") as string;
     expect(engine).not.toMatch(/from\s+["'][^"']*(firecrawl|mirofish|spark\.server)/i);
     expect(engine).not.toMatch(/import\(\s*["'][^"']*(firecrawl|mirofish|spark\.server)/i);
