@@ -50,7 +50,7 @@ describe("one rule set", () => {
     expect(LOSS_STREAK_PAUSE).toBe(3);
     expect(POST_LOSS_PAUSE_MS).toBe(20 * 60_000);
     expect(CALIBRATED_MODEL_APPROVED).toBe(false);
-    expect(PERPS_ORDERS_LOCKED).toBe(false);
+    expect(PERPS_ORDERS_LOCKED).toBe(true);
   });
 
   it("the pages that operators read do not still describe the old band or the old news rule", () => {

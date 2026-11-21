@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { DATA_ROOT } from "../../src/lib/data-root";
 import { liveMarginTransport } from "../../src/lib/perps/live-transport";
 import { PerpsOms } from "../../src/lib/perps/oms";
-import { reconcileFilledProtection } from "../../src/lib/perps/fill-guardian";
+import { reconcilePerpsCycle } from "../../src/lib/perps/fill-guardian";
 
 if (process.env.MACROMIRO_PROTECTION_WORKER !== "1") {
   throw new Error("Protection worker is opt-in; MACROMIRO_PROTECTION_WORKER=1 required");
@@ -21,7 +21,7 @@ if (!existsSync(journal)) throw new Error("Persistent OMS journal missing; no ex
 const periodMs = 1_000;
 while (true) {
   const oms = new PerpsOms(liveMarginTransport, journal, true, () => ({ ok: false, why: "guardian never sends entries" }));
-  const r = await reconcileFilledProtection(oms, liveMarginTransport);
+  const r = await reconcilePerpsCycle(oms, liveMarginTransport, journal);
   process.stdout.write(JSON.stringify({ at: new Date().toISOString(), ...r }) + "\n");
   if (r.status !== "OK") {
     process.stderr.write("SEV1: Exchange position lacks independently confirmed protection. New entries latched; reconcile and reduce exposure.\n");

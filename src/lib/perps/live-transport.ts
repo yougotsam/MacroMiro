@@ -2,6 +2,7 @@ import { createCrossAccountTransport } from "./cross-account";
 import { kalshiSignedHeaders } from "@/lib/scan/kalshi-auth";
 import { MARGIN_HOSTS } from "./venue-config";
 import { postMarginOrder, putMargin } from "@/lib/desk/oms";
+import { PERPS_ORDERS_LOCKED, PerpsOrdersLocked } from "./order-adapter";
 import type { CreateReq, PerpsTransport } from "./oms";
 import type { SnapshotReads } from "./scoped-snapshot";
 import { marginCancelPath, exitTriggerPath, qs, triggerId, mapMarginOrder, mapMarginFill, mapMarginPosition, mapExitTrigger, readMarginHistory, readMarginArray } from "./margin-wire";
@@ -26,7 +27,9 @@ async function margin(method: "GET" | "DELETE", path: string): Promise<Reply> {
 }
 
 export const liveMarginTransport: PerpsTransport = {
+  requiresDurableJournal: true,
   async createOrder(r: CreateReq) {
+    if (PERPS_ORDERS_LOCKED && r.reduce_only !== true) throw new PerpsOrdersLocked("entry");
     const res = await postMarginOrder({ ...r });
     if (res.status !== 200 && res.status !== 201) throw new Error(`margin http ${res.status} ${res.text.slice(0, 160)}`);
     const body = (res.body.order && typeof res.body.order === "object" ? res.body.order : res.body) as Record<string, unknown>;

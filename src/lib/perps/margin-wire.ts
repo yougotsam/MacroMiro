@@ -24,14 +24,17 @@ export function mapMarginOrder(x: unknown): VenueOrder {
   const o = row(x);
   const side = o.side === "ask" ? "ask" : o.side === "bid" ? "bid" : null;
   if (typeof o.order_id !== "string" || !side) throw new Error("margin order missing id or side");
+  for (const key of ["fill_count", "remaining_count"]) {
+    if (typeof o[key] !== "string" || !/^\d+(?:\.\d{1,2})?$/.test(o[key])) throw new Error("invalid margin order " + key);
+  }
   return {
     order_id: o.order_id,
     client_order_id: String(o.client_order_id ?? ""),
     ticker: String(o.ticker ?? ""),
     side,
     price: String(o.price ?? ""),
-    fill_count: String(o.fill_count ?? "0"),
-    remaining_count: String(o.remaining_count ?? "0"),
+    fill_count: String(o.fill_count),
+    remaining_count: String(o.remaining_count),
     ...(o.last_update_reason == null ? {} : { last_update_reason: String(o.last_update_reason) }),
   };
 }
@@ -156,6 +159,8 @@ export async function readMarginArray(path: string, field: "positions" | "exit_t
   if (res.status !== 200) throw new Error(`margin ${field} http ${res.status}`);
   if (!res.body || typeof res.body !== "object" || Array.isArray(res.body)) throw new Error(`malformed margin ${field} response`);
   const items = (res.body as Record<string, unknown>)[field];
+  const cursor = (res.body as Record<string, unknown>).cursor;
+  if (cursor != null && cursor !== "") throw new Error(`incomplete margin ${field} response`);
   if (!Array.isArray(items)) throw new Error(`malformed margin ${field} array`);
   return items;
 }

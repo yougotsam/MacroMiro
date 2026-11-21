@@ -646,7 +646,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
               >
                 {deskOn.live && deskOn.begin && deskOn.arm ? "LIVE" : "OFF"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-muted">Perps · 8% at the stop · 3 losses end the day · account stops at 25%</p>
+              <p className="mt-1 font-mono text-[10px] text-muted">Perps research · Live orders locked</p>
               <div className="mt-2 flex gap-1">
                 {([
                   ["spark", "Spark"],
@@ -668,8 +668,8 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             { job: "Scan", line: clock - Date.parse(heartTick ?? "") > 90_000 ? "Scanner asleep" : "Watching five books" },
-            { job: "Day", line: `Down $${dayLoss.toFixed(2)}. The day ends after 3 losses in a row.` },
-            { job: "Stop", line: "Account stops if the pile is down 25%." },
+            { job: "Day", line: `Down $${dayLoss.toFixed(2)}.` },
+            { job: "Stop", line: "Perps risk limits await owner approval." },
             { job: "Open", line: positions.length ? `${positions.length} ticket${positions.length === 1 ? "" : "s"}` : "Flat" },
           ].map((seat) => (
             <div key={seat.job} className="min-w-0 rounded-sm bg-card/40 px-3 py-2">
@@ -679,15 +679,15 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
           ))}
         </div>
         <div className="mt-3 rounded-sm border border-border bg-card/50 px-3 py-3">
-          <p className="font-mono text-xs uppercase tracking-widest text-primary">Path</p>
-          <p className="mt-1 text-sm text-fg">You pick the side with the button. Bitcoin, Ether, Solana, XRP, gold, silver, or the S&P. The stop can lose 8% of the pile, so three losses are 24% and the account still dies at 25%. Half off at 1 times the risk, the rest at the target you set, then the stop trails. A headline does not pick the side.</p>
+          <p className="font-mono text-xs uppercase tracking-widest text-primary">Legacy perps research example</p>
+          <p className="mt-1 text-sm text-fg">This example uses the original sizing and exit assumptions. Live risk limits require owner approval.</p>
           <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm text-muted">
             <li>Pick one of the seven. Press long or short. That press is the side.</li>
-            <li>The order rests. It does not cross.</li>
-            <li>If the stop is hit, that trade can lose 8% of the pile. Not more.</li>
+            <li>The example assumes a resting limit entry.</li>
+            <li>The original sizing target was 8% per stop. Actual fills can produce a larger loss.</li>
             <li>Take half one risk-unit from the entry. Take the rest at the target on the slider.</li>
             <li>After the half, the stop moves to the entry and then trails.</li>
-            <li>Three losses in a row end the day. Down 25% and the account stops.</li>
+            <li>The original study ended the day after three consecutive losses and used a 25% account drawdown threshold.</li>
           </ol>
         </div>
         <p className="mt-3 font-mono text-xs text-subtle">
@@ -758,7 +758,7 @@ export function Envelope({ initialBegun = false }: { initialBegun?: boolean }) {
         {gear ? (
           <div className="mt-3 rounded-sm border border-border bg-card p-4">
             <p className="font-mono text-xs uppercase tracking-widest text-primary">Broker</p>
-            <p className="mt-1 text-sm text-muted">Press long or short. That press is the side. The stop can lose 8% of the pile. Three losses end the day. Down 25% and it stops. If the switches are off, the box under the buttons says the click was not sent.</p>
+            <p className="mt-1 text-sm text-muted">Use the buttons to select a side. Live perpetual order submission is locked.</p>
             <div className="mt-3">
               <BrokerPanel selected={brokerId} onSelect={setBrokerId} />
             </div>

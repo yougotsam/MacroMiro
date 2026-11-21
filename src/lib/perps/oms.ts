@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { nativeTriggerRequests, type ManagePlan } from "./manage";
 import { watchdogFresh } from "@/lib/loop/watchdog";
+import { PerpsSubmissionBarrier, perpsSupervisionFresh, reportPerpsIncident } from "./emergency-control";
 
 export { PERPS_ORDERS_LOCKED, PerpsOrdersLocked } from "./order-adapter";
 import { PERPS_ORDERS_LOCKED, PerpsOrdersLocked } from "./order-adapter";
@@ -34,6 +35,7 @@ export type VenueFill = { fill_id: string; order_id: string; is_taker: boolean; 
 export type VenuePosition = { market_ticker: string; position: string; entry_price: string; unrealized_pnl: string; fees: string };
 export type ExitTrigger = { id: string; kind: string; status: string | null; stop: string | null; take: string | null; count: string | null; trail: string | null; filled_count?: string };
 export interface PerpsTransport {
+  readonly requiresDurableJournal?: true;
   createOrder(r: CreateReq): Promise<{ order_id: string; client_order_id?: string; fill_count: string; remaining_count: string; average_fill_price?: string; average_fee_paid?: string }>;
   cancelOrder(orderId: string): Promise<void>;
   cancelAll(): Promise<void>;
@@ -62,7 +64,11 @@ export const lockedTransport: PerpsTransport = {
 };
 
 export type Intent = { kind: "entry" | "exit" | "flatten"; ticker: string; dir: "long" | "short"; qty: number; price: number; maker: boolean; plan?: ManagePlan; decisionId: string };
-export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "PROTECTION_VERIFIED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED" | "KILL"; intent?: Intent; order_id?: string; note?: string; intendedRouting?: CrossScope; serializedRequest?: PreparedCreate; protectionRequest?: Request };
+export type JournalRow = { at: string; cid: string; state: "INTENT" | "SENT" | "ACK" | "PROTECTION_FAILED" | "PROTECTION_VERIFIED" | "UNKNOWN" | "RECONCILED" | "REJECTED" | "CANCELED" | "KILL"; intent?: Intent; order_id?: string; note?: string; tickers?: string[]; intendedRouting?: CrossScope; serializedRequest?: PreparedCreate; protectionRequest?: Request };
+type Quote = { bestBid: number | null; bestAsk: number | null };
+type KillBooks = Record<string, Quote> | ((ticker: string) => Promise<Quote>);
+type KillResult = { ok: boolean; why?: string; state?: "UNKNOWN" | "FLAT"; actions?: string[] };
+class DispatchRefused extends Error {}
 
 export const CID_PREFIX = "mm-perps-";
 /** Same legacy intent → same identifier; not an exactly-once venue guarantee. */
@@ -97,13 +103,17 @@ function captureIntent(input: Intent): Intent {
 
 export class PerpsOms {
   rows: JournalRow[] = [];
+  private barrier: PerpsSubmissionBarrier;
   private serial: Promise<unknown> = Promise.resolve();
   private reserved = new Set<string>();
   private enqueue<T>(work: () => Promise<T>): Promise<T> {
     const next = this.serial.then(work, work); this.serial = next.catch(() => undefined); return next;
   }
   blocked: string | null = null;
-  constructor(private t: PerpsTransport, private journalPath: string | null = null, private allowSend = !PERPS_ORDERS_LOCKED, private watchdog: () => { ok: boolean; why: string } = () => watchdogFresh()) {
+  constructor(private t: PerpsTransport, private journalPath: string | null = null, private allowSend = !PERPS_ORDERS_LOCKED, private watchdog: () => { ok: boolean; why: string } = () => watchdogFresh(), private drainMs = 5_000) {
+    if (!Number.isFinite(drainMs) || drainMs <= 0 || drainMs > 5_000) throw new Error("invalid submission drain timeout");
+    this.barrier = new PerpsSubmissionBarrier(journalPath);
+    if (this.barrier.latched) this.blocked = "KILL: manual operator review required";
     if (journalPath && existsSync(journalPath)) {
       try { this.rows = readFileSync(journalPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); }
       catch { this.blocked = "corrupt journal: sending disabled"; }
@@ -167,6 +177,11 @@ export class PerpsOms {
   }
   private prepare(req: CreateReq) { return scopedTransport(this.t) ? this.t.prepareCreate(req) : undefined; }
   private dispatch(req: CreateReq, prepared?: PreparedCreate) {
+    if (this.t.requiresDurableJournal) {
+      if (!this.journalPath) throw new DispatchRefused("durable OMS journal required");
+      if (!req.reduce_only && (PERPS_ORDERS_LOCKED || !perpsSupervisionFresh(this.journalPath))) throw new DispatchRefused("live entry gate closed");
+    }
+    if (!req.reduce_only && this.barrier.latched) throw new DispatchRefused("KILL: entry blocked at dispatch");
     if (scopedTransport(this.t)) {
       if (!prepared) throw new Error("scoped prepared request missing");
       if (!this.allowSend || !this.t.writeAvailable || !this.journalPath) throw new Error("scoped dispatch permission closed");
@@ -183,8 +198,8 @@ export class PerpsOms {
       catch (error) { this.blocked ??= "scoped journal persistence failure"; throw error; }
       this.rows.push(Object.freeze(row));
     } else {
+      if (this.journalPath) appendFileSync(this.journalPath, JSON.stringify(row) + "\n", { flush: true });
       this.rows.push(row);
-      if (this.journalPath) appendFileSync(this.journalPath, JSON.stringify(row) + "\n");
     }
   }
   /** Persistent fault visible to every later OMS instance sharing this journal. */
@@ -196,7 +211,16 @@ export class PerpsOms {
 
   /** Place an intent once. Refuses duplicates, reversals, unknown-order blocks and the global lock. */
   async submit(i: Intent, positions: VenuePosition[] = []): Promise<{ cid: string; status: string; order_id?: string }> {
-    if (!scopedTransport(this.t)) return this.submitCaptured(i, positions);
+    if (!scopedTransport(this.t)) {
+      const cid = this.identity(i);
+      const release = this.barrier.enter(cid, i.kind !== "entry");
+      if (!release) return { cid, status: this.barrier.latched ? "BLOCKED: KILL latched" : "DUPLICATE (in flight): not re-sent" };
+      try {
+        // A different process can have handled this CID since construction.
+        if (this.journalPath && existsSync(this.journalPath)) this.reloadJournal();
+        return await this.submitCaptured(i, positions);
+      } finally { release(); }
+    }
     const captured = captureIntent(i), cid = this.identity(captured);
     if (this.reserved.has(cid)) return { cid, status: "DUPLICATE (reserved): not re-sent" };
     this.reserved.add(cid);
@@ -205,6 +229,7 @@ export class PerpsOms {
   }
   private async submitCaptured(i: Intent, positions: VenuePosition[]): Promise<{ cid: string; status: string; order_id?: string }> {
     let cid = this.identity(i);
+    if (i.kind === "entry" && this.barrier.latched) return { cid, status: "BLOCKED: KILL latched" };
     // Faults block NEW exposure, not protective reduce-only exits.
     if (this.blocked && i.kind === "entry") return { cid, status: `BLOCKED: ${this.blocked}` };
     // Hard OMS law: no entry may be sent without an attached native protective exit plan.
@@ -218,6 +243,9 @@ export class PerpsOms {
       if (!stopOk) return { cid, status: "REFUSED: native stop, target, size, entry and maximum hold must be valid before sending" };
     }
     if (this.stateOf(cid)) return { cid, status: `DUPLICATE (${this.stateOf(cid)}): not re-sent` };
+    if (i.kind === "entry" && !scopedTransport(this.t) && this.unresolved().length) {
+      return { cid, status: "BLOCKED: unresolved previous dispatch" };
+    }
     if (scopedTransport(this.t)) {
       if (!this.allowSend || !this.t.writeAvailable || !this.journalPath) {
         const req = this.request(i), prepared = this.prepare(req);
@@ -245,6 +273,7 @@ export class PerpsOms {
     this.log({ cid, state: "SENT" });
     try {
       const r = await this.dispatch(req, prepared);
+      if (!r.order_id?.trim() || (r.client_order_id && r.client_order_id !== cid)) throw new Error("unidentified order acknowledgment");
       if (scopedTransport(this.t)) this.t.rememberIntendedOrder(r.order_id, cid);
       this.log({ cid, state: "ACK", order_id: r.order_id, note: `filled ${r.fill_count} remaining ${r.remaining_count}` });
       if (i.kind === "entry" && i.plan) {
@@ -278,6 +307,10 @@ export class PerpsOms {
       }
       return { cid, status: "ACK", order_id: r.order_id };
     } catch (e) {
+      if (e instanceof DispatchRefused) {
+        this.log({ cid, state: "REJECTED", note: e.message });
+        return { cid, status: "BLOCKED: " + e.message };
+      }
       // network/timeout/5xx: the order may or may not exist. Never resend; reconcile instead.
       if (scopedTransport(this.t)) this.blocked ??= "unknown scoped dispatch; reconcile before new entries";
       this.log({ cid, state: "UNKNOWN", note: String((e as Error).message).slice(0, 200) });
@@ -317,7 +350,11 @@ export class PerpsOms {
     return this.t.dispatchProtection(prepared);
   }
   async ensureAfterFill(i: Intent, orderId: string, expectedPosition?: number | string): Promise<{ state: "WAITING_FOR_FILL" | "PROTECTION_VERIFIED" | "PROTECTION_FAILED"; why: string }> {
-    if (!scopedTransport(this.t)) return this.ensureCaptured(i,orderId,expectedPosition);
+    if (!scopedTransport(this.t)) {
+      const release = this.barrier.enter("protect-" + orderId, true);
+      if (!release) return { state: "PROTECTION_FAILED", why: "emergency stop or protection check in progress" };
+      try { return await this.ensureCaptured(i,orderId,expectedPosition); } finally { release(); }
+    }
     const captured = captureIntent(i);
     return this.enqueue(() => this.ensureCaptured(captured,orderId,expectedPosition));
   }
@@ -379,7 +416,7 @@ export class PerpsOms {
       }
       if (!auditOnly && (!scopedTransport(this.t) || !this.rows.some((r) => r.cid === cid && r.state === "PROTECTION_FAILED")) &&
         (this.stateOf(cid) !== "PROTECTION_VERIFIED" || !hasProtection(before))) this.log({ cid, state: "PROTECTION_VERIFIED", order_id: orderId, note: `venue stop ${stop} target ${take}, open ${currentPos}` });
-      if (!scopedTransport(this.t) && this.blocked?.includes(cid)) this.blocked = null;
+      if (!scopedTransport(this.t) && !this.barrier.latched && this.blocked?.startsWith(`unprotected entry ${cid}:`)) this.blocked = null;
       return { state: "PROTECTION_VERIFIED", why: "venue readback confirmed" };
     } catch (err) {
       return fail(String((err as Error).message).slice(0, 180));
@@ -389,7 +426,9 @@ export class PerpsOms {
   /** Resolve UNKNOWN/SENT rows by listing venue orders; flag venue orders with our prefix that we never journaled. */
   async reconcile(sinceMs: number) {
     const venue = await this.t.listOrders({ min_ts: Math.floor(sinceMs / 1000) });
-    const ours = new Map(venue.map((o) => [o.client_order_id, o]));
+    return this.matchOrders(venue);
+  }
+  private matchOrders(venue: VenueOrder[]) {
     const out: { resolved: string[]; missing: string[]; unknownVenueOrders: string[] } = { resolved: [], missing: [], unknownVenueOrders: [] };
     const cids = [...new Set(this.rows.map((r) => r.cid))];
     for (const cid of cids) {
@@ -398,18 +437,48 @@ export class PerpsOms {
         out.missing.push(cid); continue;
       }
       const st = this.stateOf(cid);
-      if (st !== "UNKNOWN" && st !== "SENT") continue;
-      const v = ours.get(cid);
+      if (st !== "UNKNOWN" && st !== "SENT" && !(st === "INTENT" && this.rows.find(r => r.cid === cid)?.intent?.kind === "flatten")) continue;
+      const matches = venue.filter(o => o.client_order_id === cid);
+      const intent = this.rows.find(r => r.cid === cid && r.state === "INTENT")?.intent;
+      const v = matches.length === 1 && intent && this.matchesIntent(matches[0], intent) ? matches[0] : undefined;
       if (v) { this.log({ cid, state: "RECONCILED", order_id: v.order_id, note: `venue fill ${v.fill_count} rem ${v.remaining_count}` }); out.resolved.push(cid); }
       else if (scopedTransport(this.t)) {
         this.log({ cid, state: "UNKNOWN", note: "absent from requested history; not proof of cancellation" });
         this.blocked ??= "unknown scoped order history"; out.missing.push(cid);
       }
-      else { this.log({ cid, state: "CANCELED", note: "not found at venue after reconcile; treated as never placed (not resent)" }); out.missing.push(cid); }
+      else {
+        if (st !== "UNKNOWN") this.log({ cid, state: "UNKNOWN", note: "no unique matching venue order; do not resend" });
+        this.blocked ??= "unresolved venue order"; out.missing.push(cid);
+      }
     }
     for (const o of venue) if (!cids.includes(o.client_order_id)) out.unknownVenueOrders.push(`${o.order_id}/${o.client_order_id || "no-cid"}`);
     if (out.unknownVenueOrders.length) this.blocked = (scopedTransport(this.t) ? this.blocked : null) ?? `unknown venue orders: ${out.unknownVenueOrders.join(",")}`;
-    return out;
+    return { ...out, orders: venue };
+  }
+
+  private matchesIntent(order: VenueOrder, intent: Intent) {
+    const req = this.request(intent);
+    const filled = scopedUnits(order.fill_count, 2), remaining = scopedUnits(order.remaining_count, 2);
+    return !!order.order_id && order.ticker === req.ticker && order.side === req.side &&
+      filled >= 0n && remaining >= 0n && filled + remaining <= scopedUnits(req.count, 2) &&
+      order.client_order_id === req.client_order_id && scopedUnits(order.price, 6) === scopedUnits(req.price, 6);
+  }
+
+  private reloadJournal() {
+    if (!this.journalPath) return;
+    const rows: JournalRow[] = readFileSync(this.journalPath, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+    if (rows.some(r => !r || typeof r.cid !== "string" || typeof r.state !== "string")) throw new Error("invalid OMS journal");
+    this.rows = rows;
+    if (rows.some(r => r.state === "KILL")) this.blocked = "KILL: manual operator review required";
+    else if (!this.blocked && [...new Map(rows.map(r => [r.cid, r.state])).values()].includes("PROTECTION_FAILED")) {
+      this.blocked = "unprotected entry in journal: operator review required";
+    }
+  }
+
+  private unresolved() {
+    const latest = new Map(this.rows.map(r => [r.cid, r.state]));
+    return [...latest].filter(([cid, state]) => state === "UNKNOWN" || state === "SENT" ||
+      (state === "INTENT" && this.rows.find(r => r.cid === cid)?.intent?.kind === "flatten"));
   }
 
   /** Restart audit only: never repairs triggers or grants order permission. */
@@ -502,72 +571,117 @@ export class PerpsOms {
   /**
    * Latch entries before contacting the venue. Cancel resting orders first.
    * Keep protective triggers while any position is open or a flatten is unconfirmed.
-   * An out-of-process watchdog is still required before live authorization.
+   * All coordinators sharing the durable journal observe the same halt and leases.
    */
-  async killAndFlatten(operatorToken: string, expectedToken: string, books: Record<string, { bestBid: number | null; bestAsk: number | null }>, decisionId: string) {
+  async killAndFlatten(operatorToken: string, expectedToken: string, books: KillBooks, decisionId: string): Promise<KillResult> {
     if (!operatorToken || operatorToken !== expectedToken) return { ok: false, why: "unauthenticated kill request" };
-    if (scopedTransport(this.t)) {
-      this.blocked = "KILL engaged: scoped flatten closed pending lifecycle ownership";
-      return { ok: false, why: this.blocked };
-    }
     this.blocked = "KILL engaged";
-    try {
-      this.log({ cid: "kill-" + decisionId, state: "KILL", note: "operator_manual; entries blocked until explicit review" });
-    } catch {
-      return { ok: false, why: "kill journal persistence failed; entries remain blocked" };
-    }
-    try {
-      await this.t.cancelAll();
-    } catch {
-      return { ok: false, why: "cancel orders not verified; entries blocked; protective triggers retained" };
-    }
-    let positions: VenuePosition[];
-    try {
-      positions = await this.t.positions();
-    } catch {
-      return { ok: false, why: "position inventory unavailable; protective triggers retained" };
-    }
+    let release: (() => void) | null = null;
     const actions: string[] = [];
-    for (const p of positions) {
-      const qty = Number(p.position);
-      if (!Number.isFinite(qty)) return { ok: false, why: "unknown position quantity; triggers retained", actions };
-      if (!qty) continue;
-      const book = books[p.market_ticker], long = qty > 0;
-      const px = long ? book?.bestBid : book?.bestAsk;
-      if (px == null || !Number.isFinite(px) || px <= 0) {
-        actions.push(p.market_ticker + ": no executable book; cannot flatten");
-        continue;
-      }
-      const intent: Intent = { kind: "flatten", ticker: p.market_ticker, dir: long ? "long" : "short",
-        qty: Math.abs(qty), price: long ? px * 0.98 : px * 1.02, maker: false, decisionId };
-      const request = this.request(intent), cid = request.client_order_id;
-      const prepared = this.prepare(request);
-      this.log({ cid, state: "INTENT", intent, ...(prepared ? { serializedRequest: prepared } : {}) });
-      try {
-        const result = await this.dispatch(request, prepared);
-        this.log({ cid, state: "ACK", order_id: result.order_id });
-        actions.push(p.market_ticker + ": reduce-only flatten sent; awaiting position verification");
-      } catch {
-        this.log({ cid, state: "UNKNOWN", note: "flatten outcome unknown; reconcile; no blind retry" });
-        actions.push(p.market_ticker + ": flatten outcome unknown");
-      }
-    }
-    let after: VenuePosition[];
     try {
-      after = await this.t.positions();
-    } catch {
-      return { ok: false, why: "post-flatten positions unavailable; protective triggers retained", actions };
+      this.barrier.latch(decisionId);
+      if (scopedTransport(this.t)) throw new Error("scoped flatten closed pending lifecycle ownership");
+      if (this.t.requiresDurableJournal && !this.journalPath) throw new Error("durable journal required");
+      this.log({ cid: "kill-" + decisionId, state: "KILL", note: "entries blocked until operator review" });
+      if (!this.allowSend) throw new Error("venue writes are disabled");
+      release = this.barrier.claimFlatten();
+      if (!release) throw new Error("another emergency flatten holds the lease");
+      const started = performance.now();
+      const crashedBeforeAck = (cid: string) => {
+        this.reloadJournal();
+        const rows = this.rows.filter(r => r.cid === cid);
+        return rows.some(r => r.state === "SENT") && !rows.some(r => r.state === "ACK" || r.protectionRequest || r.state.startsWith("PROTECTION_"));
+      };
+      if (!await this.barrier.drain(this.drainMs, crashedBeforeAck)) throw new Error("in-flight submission did not drain");
+      this.reloadJournal();
+      if (this.rows.some(r => r.intendedRouting)) throw new Error("scoped lifecycle requires an owned cleanup path");
+      if (this.unresolved().length) {
+        // Bound the venue lookup as well. Only immutable read results may
+        // arrive after the deadline. No cancellation or flatten runs in a losing task.
+        const left = this.drainMs - (performance.now() - started);
+        if (left <= 0) throw new Error("submission resolution timed out");
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const orders = await Promise.race([this.t.listOrders({}), new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error("submission lookup timed out")), left);
+          })]);
+          if (this.matchOrders(orders).missing.length) throw new Error("submitted order has no unique venue acknowledgment");
+        } finally { clearTimeout(timer); }
+      }
+      await this.t.cancelAll();
+      const orders = await this.t.listOrders({});
+      if (orders.some(o => scopedUnits(o.remaining_count, 2) !== 0n)) throw new Error("resting orders remain after cancellation");
+      // An empty order list cannot prove a previously acknowledged entry terminal.
+      const known = new Map(orders.map(o => [o.order_id, o.client_order_id]));
+      if (this.rows.some(r => r.order_id && known.get(r.order_id) !== r.cid)) throw new Error("venue order history incomplete");
+      const positions = await this.t.positions();
+      const owned = new Set(this.rows.filter(r => r.intent).map(r => r.cid));
+      const unitsByTicker = new Map<string, bigint>();
+      for (const order of orders) if (owned.has(order.client_order_id)) {
+        const signed = scopedUnits(order.fill_count, 2) * (order.side === "bid" ? 1n : -1n);
+        unitsByTicker.set(order.ticker, (unitsByTicker.get(order.ticker) ?? 0n) + signed);
+      }
+      for (const [ticker, units] of unitsByTicker) {
+        if (units !== 0n && !positions.some(p => p.market_ticker === ticker && scopedUnits(p.position, 2) === units)) {
+          throw new Error("venue positions disagree with owned orders on " + ticker);
+        }
+      }
+      const tickers = new Set(this.rows.flatMap(r => r.tickers ?? []));
+      for (const row of this.rows) if (row.intent?.kind === "entry" && this.stateOf(row.cid) !== "REJECTED") tickers.add(row.intent.ticker);
+      for (const p of positions) tickers.add(p.market_ticker);
+      this.log({ cid: "kill-" + decisionId, state: "KILL", tickers: [...tickers] });
+      if (new Set(positions.map(p => p.market_ticker)).size !== positions.length) throw new Error("ambiguous account positions");
+      const closes = new Map<string, Intent>();
+      const unpriced: string[] = [];
+      for (const p of positions) {
+        const units = scopedUnits(p.position, 2);
+        if (!units) continue;
+        const book = typeof books === "function" ? await books(p.market_ticker) : books[p.market_ticker];
+        const long = units > 0n, px = long ? book?.bestBid : book?.bestAsk;
+        if (px == null || !Number.isFinite(px) || px <= 0) { unpriced.push(p.market_ticker); continue; }
+        const intent: Intent = { kind: "flatten", ticker: p.market_ticker, dir: long ? "long" : "short",
+          qty: Math.abs(Number(p.position)), price: long ? px * 0.98 : px * 1.02, maker: false, decisionId };
+        const request = this.request(intent), cid = request.client_order_id;
+        if (this.stateOf(cid)) throw new Error("flatten already submitted; review residual exposure");
+        this.log({ cid, state: "INTENT", intent });
+        this.log({ cid, state: "SENT" });
+        try {
+          const result = await this.dispatch(request);
+          if (!result.order_id?.trim()) throw new Error("missing flatten acknowledgment");
+          this.log({ cid, state: "ACK", order_id: result.order_id });
+          closes.set(result.order_id, intent);
+          actions.push(p.market_ticker + ": reduce-only IOC acknowledged");
+        } catch {
+          this.log({ cid, state: "UNKNOWN", note: "flatten outcome unknown; no blind retry" });
+          throw new Error("flatten outcome unknown");
+        }
+      }
+      if (closes.size) {
+        const receipts = await this.t.listOrders({});
+        for (const [id, intent] of closes) {
+          const order = receipts.find(o => o.order_id === id);
+          if (!order || !this.matchesIntent(order, intent) || scopedUnits(order.fill_count, 2) !== scopedUnits(String(intent.qty), 2)) {
+            throw new Error("reduce-only flatten fill not fully confirmed");
+          }
+        }
+      }
+      const after = await this.t.positions();
+      if (unpriced.length) throw new Error("executable quote unavailable: " + unpriced.join(", "));
+      if (after.some(p => scopedUnits(p.position, 2) !== 0n)) throw new Error("venue positions not confirmed flat");
+      for (const p of after) tickers.add(p.market_ticker);
+      for (const ticker of tickers) {
+        if (!(await this.t.getCrossExitTriggers(ticker)).length) continue;
+        await this.t.cancelCrossExitTriggers(ticker);
+        if ((await this.t.getCrossExitTriggers(ticker)).length) throw new Error("residual protective triggers remain");
+      }
+      return { ok: true, state: "FLAT", actions };
+    } catch (e) {
+      const why = String((e as Error).message);
+      try { reportPerpsIncident(this.journalPath, why); } catch { /* stderr emitted first */ }
+      return { ok: false, state: "UNKNOWN", why, actions };
+    } finally {
+      release?.();
     }
-    if (after.some((p) => !Number.isFinite(Number(p.position)) || Number(p.position) !== 0)) {
-      return { ok: false, why: "positions not confirmed flat; protective triggers retained", actions };
-    }
-    const tickers = new Set([...positions, ...after].map((p) => p.market_ticker));
-    try {
-      for (const ticker of tickers) await this.t.cancelCrossExitTriggers(ticker);
-    } catch {
-      return { ok: false, why: "positions flat, but residual protective triggers not fully cleared", actions };
-    }
-    return { ok: true, actions };
   }
 
   /** Realized P&L and fees from venue fills (MarginFill.realized_pnl and .fees), filtered to our orders. */
@@ -616,5 +730,5 @@ export class FakeExchange implements PerpsTransport {
       trail: t.body.trail_amount == null ? null : String(t.body.trail_amount),
     }));
   }
-  async cancelCrossExitTriggers() { this.triggers.length = 0; }
+  async cancelCrossExitTriggers(ticker: string) { this.triggers = this.triggers.filter(t => t.ticker !== ticker); }
 }

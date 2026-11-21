@@ -1,19 +1,22 @@
 import WebSocket from "ws";
 import { kalshiWsHeaders } from "@/lib/scan/kalshi-auth";
 import { PERP_TICKERS, notePerpPrice } from "@/lib/scan/perp-desk";
-
-const URL = "wss://external-api-margin-ws.kalshi.com/trade-api/ws/v2/margin";
-const PATH = "/trade-api/ws/v2/margin";
+import { MARGIN_HOSTS, MARGIN_WS_PATH } from "@/lib/perps/venue-config";
+import { perpsReader } from "@/lib/perps/kalshi-perps-read";
 
 /** Mark prices for the margin book. The order still needs the REST quote. */
-export function ensurePerpSocket() {
+export function ensurePerpSocket(
+  connect = (url: string) => new WebSocket(url, { headers: kalshiWsHeaders(MARGIN_WS_PATH), handshakeTimeout: 8_000 }),
+  eligible = () => perpsReader().enabled(),
+) {
   const g = globalThis as typeof globalThis & { __perpSock?: boolean };
   if (g.__perpSock) return;
   g.__perpSock = true;
   let ws: WebSocket | null = null;
-  const open = () => {
+  const open = async () => {
     try {
-      ws = new WebSocket(URL, { headers: kalshiWsHeaders(PATH), handshakeTimeout: 8_000 });
+      if (!await eligible()) { g.__perpSock = false; return; }
+      ws = connect(MARGIN_HOSTS.marketWs + MARGIN_WS_PATH);
     } catch {
       g.__perpSock = false;
       return;
