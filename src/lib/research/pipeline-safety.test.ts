@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Archive } from "./alexandria-archive";
 import { ACTIVE_STAGES, SCENARIOS, JobStore, drive, estimateCostUsd, extractStructured, jobKey, refreshJobCost, step, TownError, type Deps, type JobSpec, type Stage } from "./pipeline";
 import { meterSpent } from "./cost-ledger.server";
+import { researchModelVersion } from "./model-config.server";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "town-safety-"));
 const now = Date.parse("2026-11-22T12:00:00Z");
@@ -198,6 +199,59 @@ describe("scenario identity, freshness and budget admission", () => {
 });
 
 describe("shutdown, cancellation and deadlines", () => {
+  it("cancel during an accepted but unacknowledged start attempts remote shutdown", async () => {
+    const x = setup("run"); let remoteRunning = false, stops = 0;
+    x.d.transport = async (path, init) => {
+      if (path.endsWith("run-status")) return ok({ runner_status: "idle" });
+      if (path === "/api/simulation/s") return ok({ profiles_count: 12 });
+      if (path === "/api/simulation/stop") { stops++; remoteRunning = false; return ok({}); }
+      if (path === "/api/simulation/start") {
+        expect(x.store.get(x.job.id)!.ids.runStartUncertain).toBe(true);
+        remoteRunning = true;
+        return new Promise((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(new Error("response aborted")), { once: true });
+          setTimeout(() => x.store.cancel(x.job.id, "operator"), 5);
+        });
+      }
+      throw new Error("unexpected request");
+    };
+    const done = await drive(x.store, x.job.id, x.d, { cancelPollMs: 5 });
+    expect(done.stage).toBe("cancelled");
+    expect(stops).toBeGreaterThan(0);
+    expect(remoteRunning).toBe(false);
+  });
+  it("a persisted uncertain start is not resent merely because status still says idle", async () => {
+    const x = setup("run"); x.job.ids.runStartUncertain = true; x.store.save(x.job);
+    const paths: string[] = [];
+    x.d.transport = async path => { paths.push(path); return ok({ runner_status: "idle" }); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.stage).toBe("failed");
+    expect(paths).not.toContain("/api/simulation/start");
+    expect(paths).toContain("/api/simulation/stop");
+  });
+  it("expired extract jobs receive bounded read-only completed-report recovery", async () => {
+    const x = setup("extract"); x.job.deadlineAt = new Date(Date.now() - 1).toISOString(); x.store.save(x.job);
+    const calls: string[] = []; const transport = x.d.transport;
+    x.d.transport = async (path, init) => { calls.push(init.method); return transport(path, init); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.stage).toBe("done");
+    expect(done.reportRecoveryDeadlineAt).toBeDefined();
+    expect(calls).toEqual(["GET"]);
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("report recovery deadline is not renewed by another restart", async () => {
+    const x = setup("extract");
+    x.job.deadlineAt = x.job.reportRecoveryDeadlineAt = new Date(Date.now() - 1).toISOString(); x.store.save(x.job);
+    let calls = 0; x.d.transport = async () => { calls++; return ok({}); };
+    expect((await drive(x.store, x.job.id, x.d)).stage).toBe("failed");
+    expect(calls).toBe(0);
+  });
+  it("model assumptions use the configured backend env file and its override semantics", () => {
+    const file = join(tmp(), "backend.env");
+    writeFileSync(file, 'LLM_MODEL_NAME="gemini-3.8-flash"\n');
+    expect(researchModelVersion("test", { MIROFISH_ENV_FILE: file, LLM_MODEL_NAME: "ignored", MIROFISH_COMMIT: "abc" })).toBe("mirofish@abc+gemini-3.8-flash+test");
+    expect(() => researchModelVersion("test", { MIROFISH_ENV_FILE: file + ".missing" })).toThrow("unreadable");
+  });
   it("a stale worker save cannot overwrite a concurrent cancel", async () => {
     const x = setup("ontology");
     x.store.cancel(x.job.id, "operator");

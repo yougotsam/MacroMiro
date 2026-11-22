@@ -14,6 +14,7 @@ import { catalystsFromCalendar, officialSeeder, meterSpent, mirofishTransport } 
 import { officialCalendarPath, type OfficialCalendar } from "../src/lib/desk/official-calendar";
 import { PRICES } from "../src/lib/research/llm-meter";
 import { researchLock } from "../src/lib/research/storage";
+import { researchModelVersion } from "../src/lib/research/model-config.server";
 
 const DIR = process.env.RESEARCH_DIR || "/workspace/data/research";
 mkdirSync(DIR, { recursive: true });
@@ -22,11 +23,8 @@ const cmd = args[0] ?? "status";
 const opt = (k: string, d: string) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const store = new JobStore(DIR);
 const archive = new Archive(DIR);
-const MODEL_VERSION = (() => {
-  let llm = "unknown";
-  try { llm = readFileSync("/workspace/desk/MiroFish/.env", "utf8").match(/^LLM_MODEL_NAME=(.+)$/m)?.[1]?.trim() ?? "unknown"; } catch { /* unreadable */ }
-  return `mirofish@${process.env.MIROFISH_COMMIT ?? "local"}+${llm}+${PROMPT_VERSION}`;
-})();
+// Read-only status and cancellation must still work if the backend configuration is unavailable.
+const MODEL_VERSION = ["plan", "enqueue", "run"].includes(cmd) ? researchModelVersion(PROMPT_VERSION) : "unknown";
 const cal = (): OfficialCalendar | null => { try { return JSON.parse(readFileSync(officialCalendarPath(), "utf8")) as OfficialCalendar; } catch { return null; } };
 
 function costBasis() {

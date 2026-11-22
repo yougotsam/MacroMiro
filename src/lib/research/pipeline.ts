@@ -32,9 +32,10 @@ export type Job = {
   id: string; key: string; spec: JobSpec; stage: Stage; createdAt: string; updatedAt: string; heartbeatAt: string | null;
   attempts: number; retries: number; totalRetries?: number; error: string | null; failedAt: Stage | null; cancelRequested: boolean;
   deadlineAt?: string;
+  reportRecoveryDeadlineAt?: string;
   stopAttempts?: number;
   pendingReport?: { file: string; sha256: string; chars: number; extracted: ScenarioExtract; archivedAs?: string };
-  ids: { projectId: string; graphTask: string; graphId: string; simulationId: string; prepTask: string; runStarted: boolean; reportId: string; reportTask: string };
+  ids: { projectId: string; graphTask: string; graphId: string; simulationId: string; prepTask: string; runStarted: boolean; runStartUncertain?: boolean; reportId: string; reportTask: string };
   seed: {
     chars: number;
     sources: Array<{ url: string; title: string; fetchedAt: string; publishedAt?: string; publishedBasis?: string; docType?: string }>;
@@ -237,7 +238,7 @@ const need = (v: string, what: string, path: string) => { if (!v) throw new Town
 export type Seeder = (c: Catalyst, simStartMs?: number) => Promise<{ text: string; sources: Job["seed"]["sources"]; spark: Job["seed"]["spark"]; rejected?: Job["seed"]["rejected"] }>;
 /** Must be idempotent by job.id, including a crash after committing but before returning its receipt. */
 export type Archiver = (job: Job, reportMarkdown: string) => Promise<string | null>;
-export type Deps = { transport: Transport; seeder: Seeder; archiver: Archiver; seedDir: string; pollMs?: number; meterSpentUsd?: (jobId: string) => number | null; checkBudget?: (job: Job) => void; modelVersion?: string };
+export type Deps = { transport: Transport; seeder: Seeder; archiver: Archiver; seedDir: string; pollMs?: number; meterSpentUsd?: (jobId: string) => number | null; checkBudget?: (job: Job) => void; modelVersion?: string; checkpoint?: (job: Job, note: string) => void };
 
 /** The meter returns a cumulative ledger total. Never sum snapshots or replace a known cost with null. */
 export function refreshJobCost(job: Job, d: Pick<Deps, "meterSpentUsd">, stage: Stage = job.stage) {
@@ -364,11 +365,15 @@ export async function step(job: Job, d: Deps): Promise<number> {
         // recovery: a start that timed out on our side may have started over there — look first, start at most once
         const seen = await call(T, path, { method: "GET", timeoutMs: 20_000 });
         const already = str(seen.runner_status);
-        if (["starting", "running", "paused", "stopping", "stopped", "completed", "failed"].includes(already)) { job.ids.runStarted = true; return 0; }
+        if (["starting", "running", "paused", "stopping", "stopped", "completed", "failed"].includes(already)) { job.ids.runStarted = true; job.ids.runStartUncertain = false; return 0; }
         if (already !== "idle") throw new TownError("simulation start state unknown; refusing duplicate start", 0, false);
+        if (job.ids.runStartUncertain) throw new TownError("previous simulation start unresolved; refusing resend", 0, false);
         await preparedAgentCount(job, d);
+        job.ids.runStartUncertain = true;
+        d.checkpoint?.(job, "simulation start intent persisted");
         await call(T, "/api/simulation/start", { method: "POST", json: { simulation_id: job.ids.simulationId, platform: "twitter", max_rounds: Math.min(job.spec.maxRounds, MAX_ROUNDS_CAP) }, timeoutMs: 120_000 });
         job.ids.runStarted = true;
+        job.ids.runStartUncertain = false;
         return poll;
       }
       const r = await call(T, path, { method: "GET", timeoutMs: 20_000 });
@@ -466,9 +471,10 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
   const minutes = opts.maxMinutes ?? 90;
   if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("maxMinutes must be finite and positive");
   const stop = async (job: Job) => {
-    if (job.ids.simulationId && job.ids.runStarted) {
+    if (job.ids.simulationId && (job.ids.runStarted || job.ids.runStartUncertain)) {
       if ((job.stopAttempts ?? 0) >= MAX_STOP_ATTEMPTS) { job.progress.message = "simulation stop unconfirmed; inspect backend"; return; }
       job.stopAttempts = (job.stopAttempts ?? 0) + 1;
+      job.progress.message = "remote stop requested; completion unconfirmed until backend reconciliation";
       await call(d.transport, "/api/simulation/stop", { method: "POST", json: { simulation_id: job.ids.simulationId }, timeoutMs: 5000 }).catch(() => {
         job.progress.message = "simulation stop unconfirmed; inspect backend before another paid run";
       });
@@ -487,9 +493,17 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
       job.deadlineAt = new Date(Date.now() + minutes * 60_000).toISOString();
       store.save(job, "execution deadline set");
     }
-    const deadline = Date.parse(job.deadlineAt);
-    const finishingReport = job.stage === "archive" && !!job.pendingReport;
-    if (job.cancelRequested || ((!Number.isFinite(deadline) || Date.now() >= deadline) && !finishingReport)) {
+    const executionDeadline = Date.parse(job.deadlineAt);
+    let deadline = executionDeadline;
+    const recoverableReport = job.stage === "extract" || job.stage === "report" && !!job.ids.reportId || job.stage === "archive" && !!job.pendingReport;
+    if (Number.isFinite(executionDeadline) && Date.now() >= executionDeadline && recoverableReport) {
+      if (!job.reportRecoveryDeadlineAt) {
+        job.reportRecoveryDeadlineAt = new Date(Date.now() + 5 * 60_000).toISOString();
+        store.save(job, "bounded completed-report recovery opened; new paid work remains forbidden");
+      }
+      deadline = Date.parse(job.reportRecoveryDeadlineAt);
+    }
+    if (job.cancelRequested || !Number.isFinite(deadline) || Date.now() >= deadline) {
       await stop(job);
       refreshJobCost(job, d);
       job.failedAt = job.stage;
@@ -504,13 +518,15 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
     const controller = new AbortController();
     const timer = setInterval(() => {
       try {
-        if (store.get(id)?.cancelRequested || (!finishingReport && Date.now() >= deadline)) controller.abort();
+        if (store.get(id)?.cancelRequested || Date.now() >= deadline) controller.abort();
       } catch { controller.abort(); }
     }, opts.cancelPollMs ?? 250);
     try {
-      const deps: Deps = { ...d, checkBudget: j => checkResearchBudget(store, j), transport: (path, init) => {
+      const deps: Deps = { ...d, checkpoint: (j, note) => store.save(j, note), checkBudget: j => checkResearchBudget(store, j), transport: (path, init) => {
         // Budget gates block new paid work, never retrieval/archiving of an already-paid report.
         if (init.method === "POST" && ["/api/graph/ontology/generate", "/api/graph/build", "/api/simulation/create", "/api/simulation/prepare", "/api/simulation/start", "/api/report/generate"].includes(path)) {
+          if (Date.now() >= executionDeadline) throw new TownError("execution deadline passed; new paid work refused", 0, false);
+          if (store.get(id)?.cancelRequested) throw new TownError("cancel requested; new paid work refused", 0, false);
           if (d.modelVersion && d.modelVersion !== job.modelVersion) throw new TownError("configured model changed; reconcile the job cost basis before paid work", 0, false);
           checkResearchBudget(store, job);
         }
