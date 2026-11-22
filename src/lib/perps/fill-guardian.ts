@@ -113,10 +113,10 @@ export async function reconcilePerpsCycle(oms: PerpsOms, venue: PerpsTransport, 
     beatPerpsWorker(journal);
     return result;
   } catch (e) {
-    const why = (e as Error).message;
-    barrier.latch(why);
+    const why = String((e as Error).message).slice(0, 200);
+    barrier.latch("RECONCILIATION_FAILED");
     oms.blocked = "KILL: " + why;
-    reportPerpsIncident(journal, why);
+    reportPerpsIncident(journal, "RECONCILIATION_FAILED");
     return { status: "INCIDENT", verified: 0, openPositions: null, failures: [why] };
   }
 }

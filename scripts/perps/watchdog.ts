@@ -11,8 +11,8 @@ if ([...args].some(arg => !["--kill", "--once", "--flatten-demo"].includes(arg))
 if (args.has("--flatten-demo") && MARGIN_HOSTS.mode !== "demo") throw new Error("emergency dispatch requires the demo environment");
 
 if (args.has("--kill")) {
-  new PerpsSubmissionBarrier(journal).latch("operator file kill");
-  reportPerpsIncident(journal, "operator file kill");
+  new PerpsSubmissionBarrier(journal).latch("OPERATOR_HALT");
+  reportPerpsIncident(journal, "OPERATOR_HALT");
 }
 for (;;) {
   const state = perpsWatchdogTick(journal);

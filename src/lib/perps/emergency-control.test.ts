@@ -66,7 +66,7 @@ describe("perps emergency stop against an isolated venue", () => {
       expect(await killer.killAndFlatten("op", "op", quotes, "timeout")).toMatchObject({ ok: false, state: "UNKNOWN" });
       expect(cancels).toBe(0); expect(reads).toBe(0);
       expect(venue.triggers).toHaveLength(1);
-      expect(readFileSync(journal + ".alerts.jsonl", "utf8")).toContain("did not drain");
+      expect(JSON.parse(readFileSync(journal + ".alerts.jsonl", "utf8")).code).toBe("SUBMISSIONS_UNRESOLVED");
     } finally { pending.open(); }
     await submission;
     expect((await positions())[0].position).toBe("2");
@@ -200,6 +200,16 @@ describe("perps emergency stop against an isolated venue", () => {
     await pagePerpsStop(journal, url, send);
     await pagePerpsStop(journal, url, send);
     expect(keys.length).toBe(2); expect(keys[0]).toBe(keys[1]);
+  });
+
+  it("stores a fixed reconciliation code when a venue returns an error body", async () => {
+    venue.positions = async () => { throw new Error("untrusted-venue-response"); };
+    const result = await reconcilePerpsCycle(oms, venue, journal);
+    expect(result.status).toBe("INCIDENT");
+    const alert = JSON.parse(readFileSync(journal + ".alerts.jsonl", "utf8"));
+    expect(alert.code).toBe("RECONCILIATION_FAILED");
+    expect(JSON.stringify(alert)).not.toContain("untrusted-venue-response");
+    expect(JSON.parse(readFileSync(journal + ".kill", "utf8")).reason).toBe("RECONCILIATION_FAILED");
   });
 
   it("blocks live entry writes before signing and rejects incomplete venue evidence", async () => {

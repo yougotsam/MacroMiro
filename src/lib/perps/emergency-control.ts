@@ -22,8 +22,14 @@ function syncDirectory(path: string) {
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }
 
-export function reportPerpsIncident(journal: string | null, reason: string) {
-  const line = JSON.stringify({ at: new Date().toISOString(), severity: "SEV1", state: "UNKNOWN", reason });
+type HaltCause = "OPERATOR_HALT" | "HEARTBEAT_LOST" | "RECONCILIATION_FAILED";
+export type PerpsIncident = HaltCause | "HALT_UNCONFIRMED" | "SUBMISSIONS_UNRESOLVED" | "CANCEL_UNVERIFIED" |
+  "POSITIONS_UNVERIFIED" | "FLATTEN_UNVERIFIED" | "TRIGGER_CLEANUP_UNVERIFIED";
+
+export function reportPerpsIncident(journal: string | null, code: PerpsIncident) {
+  // Only local incident codes enter the durable alert stream. Venue payloads
+  // and provider error text are not operator records.
+  const line = JSON.stringify({ at: new Date().toISOString(), severity: "SEV1", state: "UNKNOWN", code });
   console.error(line);
   if (journal) appendFileSync(journal + ".alerts.jsonl", line + "\n", { mode: 0o600, flush: true });
 }
@@ -55,7 +61,7 @@ export class PerpsSubmissionBarrier {
     return this.killed || !!(this.journal && statSync(this.journal + ".kill", { throwIfNoEntry: false }));
   }
 
-  latch(reason: string) {
+  latch(reason: HaltCause) {
     this.killed = true;
     if (this.journal) {
       exclusiveFile(this.journal + ".kill", JSON.stringify({ reason, at: new Date().toISOString() }) + "\n");
@@ -154,7 +160,7 @@ export function perpsWatchdogTick(journal: string, now = Date.now()) {
     return { ok: true, why: "venue reconciliation heartbeat fresh" };
   }
   const why = "venue reconciliation heartbeat missing, invalid or stale";
-  barrier.latch(why);
-  reportPerpsIncident(journal, why);
+  barrier.latch("HEARTBEAT_LOST");
+  reportPerpsIncident(journal, "HEARTBEAT_LOST");
   return { ok: false, why };
 }

@@ -20,7 +20,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { nativeTriggerRequests, type ManagePlan } from "./manage";
 import { watchdogFresh } from "@/lib/loop/watchdog";
-import { PerpsSubmissionBarrier, perpsSupervisionFresh, reportPerpsIncident } from "./emergency-control";
+import { PerpsSubmissionBarrier, perpsSupervisionFresh, reportPerpsIncident, type PerpsIncident } from "./emergency-control";
 
 export { PERPS_ORDERS_LOCKED, PerpsOrdersLocked } from "./order-adapter";
 import { PERPS_ORDERS_LOCKED, PerpsOrdersLocked } from "./order-adapter";
@@ -578,14 +578,16 @@ export class PerpsOms {
     this.blocked = "KILL engaged";
     let release: (() => void) | null = null;
     const actions: string[] = [];
+    let incident: PerpsIncident = "HALT_UNCONFIRMED";
     try {
-      this.barrier.latch(decisionId);
+      this.barrier.latch("OPERATOR_HALT");
       if (scopedTransport(this.t)) throw new Error("scoped flatten closed pending lifecycle ownership");
       if (this.t.requiresDurableJournal && !this.journalPath) throw new Error("durable journal required");
       this.log({ cid: "kill-" + decisionId, state: "KILL", note: "entries blocked until operator review" });
       if (!this.allowSend) throw new Error("venue writes are disabled");
       release = this.barrier.claimFlatten();
       if (!release) throw new Error("another emergency flatten holds the lease");
+      incident = "SUBMISSIONS_UNRESOLVED";
       const started = performance.now();
       const crashedBeforeAck = (cid: string) => {
         this.reloadJournal();
@@ -608,12 +610,14 @@ export class PerpsOms {
           if (this.matchOrders(orders).missing.length) throw new Error("submitted order has no unique venue acknowledgment");
         } finally { clearTimeout(timer); }
       }
+      incident = "CANCEL_UNVERIFIED";
       await this.t.cancelAll();
       const orders = await this.t.listOrders({});
       if (orders.some(o => scopedUnits(o.remaining_count, 2) !== 0n)) throw new Error("resting orders remain after cancellation");
       // An empty order list cannot prove a previously acknowledged entry terminal.
       const known = new Map(orders.map(o => [o.order_id, o.client_order_id]));
       if (this.rows.some(r => r.order_id && known.get(r.order_id) !== r.cid)) throw new Error("venue order history incomplete");
+      incident = "POSITIONS_UNVERIFIED";
       const positions = await this.t.positions();
       const owned = new Set(this.rows.filter(r => r.intent).map(r => r.cid));
       const unitsByTicker = new Map<string, bigint>();
@@ -633,6 +637,7 @@ export class PerpsOms {
       if (new Set(positions.map(p => p.market_ticker)).size !== positions.length) throw new Error("ambiguous account positions");
       const closes = new Map<string, Intent>();
       const unpriced: string[] = [];
+      incident = "FLATTEN_UNVERIFIED";
       for (const p of positions) {
         const units = scopedUnits(p.position, 2);
         if (!units) continue;
@@ -665,10 +670,12 @@ export class PerpsOms {
           }
         }
       }
+      incident = "POSITIONS_UNVERIFIED";
       const after = await this.t.positions();
       if (unpriced.length) throw new Error("executable quote unavailable: " + unpriced.join(", "));
       if (after.some(p => scopedUnits(p.position, 2) !== 0n)) throw new Error("venue positions not confirmed flat");
       for (const p of after) tickers.add(p.market_ticker);
+      incident = "TRIGGER_CLEANUP_UNVERIFIED";
       for (const ticker of tickers) {
         if (!(await this.t.getCrossExitTriggers(ticker)).length) continue;
         await this.t.cancelCrossExitTriggers(ticker);
@@ -676,8 +683,8 @@ export class PerpsOms {
       }
       return { ok: true, state: "FLAT", actions };
     } catch (e) {
-      const why = String((e as Error).message);
-      try { reportPerpsIncident(this.journalPath, why); } catch { /* stderr emitted first */ }
+      const why = String((e as Error).message).slice(0, 200);
+      try { reportPerpsIncident(this.journalPath, incident); } catch { /* stderr emitted first */ }
       return { ok: false, state: "UNKNOWN", why, actions };
     } finally {
       release?.();
