@@ -6,12 +6,14 @@
  *   bun scripts/research-pipeline.ts status | cancel <jobId> --reason "<why>" | dashboard
  * Data: /workspace/data/research (jobs/, jobs-audit.jsonl, seeds/, alexandria-archive.jsonl, reports/, dashboard.json)
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Archive, incrementalValue, matchOutcomes, type IndexPoint } from "../src/lib/research/alexandria-archive";
 import { ACTIVE_STAGES, JobStore, PROMPT_VERSION, SCENARIOS, drive, estimateCostUsd, extractStructured, type JobSpec, type Scenario } from "../src/lib/research/pipeline";
 import { catalystsFromCalendar, officialSeeder, meterSpent, mirofishTransport } from "../src/lib/research/pipeline.server";
 import { officialCalendarPath, type OfficialCalendar } from "../src/lib/desk/official-calendar";
+import { PRICES } from "../src/lib/research/llm-meter";
+import { researchLock } from "../src/lib/research/storage";
 
 const DIR = process.env.RESEARCH_DIR || "/workspace/data/research";
 mkdirSync(DIR, { recursive: true });
@@ -27,6 +29,12 @@ const MODEL_VERSION = (() => {
 })();
 const cal = (): OfficialCalendar | null => { try { return JSON.parse(readFileSync(officialCalendarPath(), "utf8")) as OfficialCalendar; } catch { return null; } };
 
+function costBasis() {
+  const model = Object.keys(PRICES).find(m => MODEL_VERSION.split("+").includes(m));
+  if (!model) throw new Error("no versioned price assumptions for the configured model; paid research refused");
+  return { modelVersion: MODEL_VERSION, priceVersion: "research-list-price/2026-10-09", source: PRICES[model].source, agents: Number(opt("--estimated-agents", "12")), inPerM: PRICES[model].inPerM, outPerM: PRICES[model].outPerM };
+}
+
 function deps() {
   return {
     transport: mirofishTransport(), seeder: officialSeeder, seedDir: join(DIR, "seeds"), pollMs: 5000, meterSpentUsd: meterSpent(join(DIR, "llm-usage.jsonl")),
@@ -39,14 +47,15 @@ function specFor(kind: string, scenario: Scenario, seed: number, rounds: number,
   const cats = c ? catalystsFromCalendar(c, Date.now(), hours * 3600_000) : [];
   const catalyst = cats.find((x) => x.kind === kind);
   if (!catalyst) throw new Error(`no verified upcoming ${kind} event in the official calendar`);
-  return { catalyst, scenario, seed, maxRounds: rounds, budgetUsd: budget, promptVersion: PROMPT_VERSION };
+  return { catalyst, scenario, seed, maxRounds: rounds, budgetUsd: budget, catalystBudgetUsd: Number(opt("--catalyst-budget", String(budget))), costBasis: costBasis(), promptVersion: PROMPT_VERSION };
 }
 
 if (cmd === "plan") {
   const hours = Number(opt("--hours", "120")), seeds = Number(opt("--seeds", "1")), rounds = Number(opt("--rounds", "5")), dayBudget = Number(opt("--day-budget", "3"));
   const c = cal();
   const cats = c ? catalystsFromCalendar(c, Date.now(), hours * 3600_000) : [];
-  const plan = cats.flatMap((catalyst) => SCENARIOS.flatMap((scenario) => Array.from({ length: seeds }, (_, i) => ({ catalyst: catalyst.id, when: catalyst.when, scenario, seed: i + 1, rounds, estUsd: estimateCostUsd({ maxRounds: rounds }) }))));
+  const basis = costBasis();
+  const plan = cats.flatMap((catalyst) => SCENARIOS.flatMap((scenario) => Array.from({ length: seeds }, (_, i) => ({ catalyst: catalyst.id, when: catalyst.when, scenario, seed: i + 1, rounds, estUsd: estimateCostUsd({ maxRounds: rounds, costBasis: basis }) }))));
   const total = plan.reduce((a, p) => a + p.estUsd, 0);
   console.log(JSON.stringify({ catalysts: cats.map((x) => ({ id: x.id, name: x.name, when: x.when })), jobs: plan.length, estimatedTotalUsd: Number(total.toFixed(2)), dayBudgetUsd: dayBudget, withinBudget: total <= dayBudget, note: "dry plan; enqueue needs owner approval above the ~$1 smoke limit" }, null, 1));
 } else if (cmd === "enqueue") {
@@ -54,13 +63,8 @@ if (cmd === "plan") {
   console.log(JSON.stringify(store.create(spec, Date.now(), MODEL_VERSION), (k, v) => (k === "history" ? undefined : v), 1));
 } else if (cmd === "run") {
   const lock = join(DIR, "runner.pid");
-  if (existsSync(lock)) {
-    const pid = Number(readFileSync(lock, "utf8"));
-    try { process.kill(pid, 0); console.error(`runner already running (pid ${pid})`); process.exit(1); } catch { /* stale lock */ }
-  }
-  writeFileSync(lock, String(process.pid));
-  const release = () => { try { unlinkSync(lock); } catch { /* gone */ } };
-  process.on("SIGTERM", () => { release(); process.exit(0); });
+  // Do not clear a crashed runner's lock until its backend work and meter tag have been reconciled.
+  const release = researchLock(lock);
   try {
     for (;;) {
       const next = store.list().find((j) => (ACTIVE_STAGES as readonly string[]).includes(j.stage));
@@ -68,6 +72,10 @@ if (cmd === "plan") {
       writeFileSync(join(DIR, "meter-tag"), next.id); // attribute LLM spend to this job
       const done = await drive(store, next.id, deps(), { maxMinutes: Number(opt("--max-minutes", "90")) });
       console.log(new Date().toISOString(), next.id, done?.stage, done?.error ?? "", JSON.stringify(done?.ids ?? {}));
+      if (done.stage !== "done") {
+        console.error("Queue paused: inspect backend work and reconcile this job's meter tag before restarting the runner.");
+        break; // Do not attribute a failed/cancelled job's late remote work to the next queued job.
+      }
       if (args.includes("--one")) break;
     }
   } finally { release(); }
@@ -120,3 +128,4 @@ if (cmd === "plan") {
   writeFileSync(join(DIR, "dashboard.json"), JSON.stringify(dash, null, 1));
   console.log(`wrote ${join(DIR, "dashboard.json")} (${dash.scenarios.jobs.length} jobs, ${items.length} archived)`);
 }
+

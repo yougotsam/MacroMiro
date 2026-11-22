@@ -6,9 +6,10 @@
  * Gate: MiroFish-derived features may only affect decisions after (1) proven out-of-sample value here AND (2) an owner
  * flag. The flag is false and nothing on the order path imports this module (research-isolation tests).
  */
-import { appendFileSync, renameSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCENARIO_BRIEF, type Job, type ScenarioExtract } from "./pipeline";
+import { atomicResearchWrite, researchLock } from "./storage";
 
 export const MIROFISH_FEATURES_APPROVED = false as const;
 export const HORIZONS_MIN = [15, 60, 240] as const;
@@ -32,28 +33,39 @@ export class Archive {
   get file() { return join(this.dir, "alexandria-archive.jsonl"); }
   all(): ArchiveItem[] {
     if (!existsSync(this.file)) return [];
-    return readFileSync(this.file, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as ArchiveItem]; } catch { return []; } });
+    return readFileSync(this.file, "utf8").split("\n").filter(Boolean).map((l) => {
+      try { return JSON.parse(l) as ArchiveItem; } catch {
+        appendFileSync(join(this.dir, "jobs-audit.jsonl"), JSON.stringify({ at: new Date().toISOString(), note: "ARCHIVE_RECORD_UNREADABLE" }) + "\n");
+        throw new Error("research archive is unreadable; inspect before appending");
+      }
+    });
   }
   /** idempotent by id (a resumed job never archives twice) */
   add(item: ArchiveItem) {
-    if (this.all().some((x) => x.id === item.id)) return item.id;
-    appendFileSync(this.file, JSON.stringify(item) + "\n");
-    return item.id;
+    const release = researchLock(join(this.dir, "archive.lock"));
+    try {
+      const items = this.all();
+      if (items.some((x) => x.id === item.id)) return item.id;
+      atomicResearchWrite(this.file, [...items, item].map(x => JSON.stringify(x)).join("\n") + "\n");
+      return item.id;
+    } finally { release(); }
   }
   /** re-derive fields of an existing item (e.g. parser fix); atomic rewrite, ids/report untouched */
   update(id: string, patch: Partial<Pick<ArchiveItem, "extracted" | "cost">>) {
+    const release = researchLock(join(this.dir, "archive.lock"));
+    try {
     const items = this.all();
     const it = items.find((x) => x.id === id);
     if (!it) return false;
     Object.assign(it, patch);
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, items.map((x) => JSON.stringify(x)).join("\n") + "\n");
-    renameSync(tmp, this.file);
+    atomicResearchWrite(this.file, items.map((x) => JSON.stringify(x)).join("\n") + "\n");
     return true;
+    } finally { release(); }
   }
   archiveJob(job: Job, markdown: string, extracted: ScenarioExtract, regime = "unknown") {
     const reportFile = join(this.dir, "reports", `${job.id}.md`);
-    writeFileSync(reportFile, markdown);
+    if (existsSync(reportFile) && readFileSync(reportFile, "utf8") !== markdown) throw new Error("same archive job id has a different report");
+    atomicResearchWrite(reportFile, markdown);
     return this.add({
       id: job.id, kind: "simulation", archivedAt: new Date().toISOString(),
       catalyst: { ...job.spec.catalyst }, scenario: job.spec.scenario, seed: job.spec.seed, assets: job.spec.catalyst.assets, regime,
@@ -124,3 +136,4 @@ export function incrementalValue(matches: Match[], trainFrac = 0.6) {
     featuresApprovedForDecisions: MIROFISH_FEATURES_APPROVED,
   };
 }
+

@@ -9,7 +9,7 @@ import { MAJOR_EVENT, officialCalendarPath, verifyCalendar, type OfficialCalenda
 import { checkProvenance, publishedAtOf, SEED_DOCS, type SeedDoc } from "./provenance";
 import { authHeaders } from "./mirofish-auth";
 import type { Catalyst, CatalystKind, Seeder, Transport } from "./pipeline";
-import type { LedgerEntry } from "./llm-meter";
+export { meterSpent } from "./cost-ledger.server";
 
 export const OFFICIAL_SEED_PAGES: Partial<Record<CatalystKind, string[]>> = {
   cpi: ["https://www.bls.gov/news.release/cpi.nr0.htm", "https://www.clevelandfed.org/indicators-and-data/inflation-nowcasting"],
@@ -158,18 +158,11 @@ export function mirofishTransport(base = process.env.MIROFISH_URL || "http://127
     let body: BodyInit | undefined;
     if (init.json !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(init.json); }
     else if (init.form) body = init.form;
-    const r = await fetch(`${base.replace(/\/+$/, "")}${path}`, { method: init.method, headers, body, signal: AbortSignal.timeout(init.timeoutMs) });
+    const timeout = AbortSignal.timeout(init.timeoutMs);
+    const r = await fetch(`${base.replace(/\/+$/, "")}${path}`, { method: init.method, headers, body, signal: init.signal ? AbortSignal.any([timeout, init.signal]) : timeout });
     const txt = await r.text();
     let parsed: unknown = null;
     try { parsed = JSON.parse(txt); } catch { parsed = null; }
     return { status: r.status, body: parsed };
-  };
-}
-
-export function meterSpent(ledger = "/workspace/data/research/llm-usage.jsonl") {
-  return (jobId: string) => {
-    if (!existsSync(ledger)) return null;
-    const rows = readFileSync(ledger, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as LedgerEntry).filter((e) => e.tag === jobId);
-    return rows.length ? Number(rows.reduce((a, e) => a + e.costUsd, 0).toFixed(4)) : null;
   };
 }
