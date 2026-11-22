@@ -37,6 +37,7 @@ function costBasis() {
 
 function deps() {
   return {
+    modelVersion: MODEL_VERSION,
     transport: mirofishTransport(), seeder: officialSeeder, seedDir: join(DIR, "seeds"), pollMs: 5000, meterSpentUsd: meterSpent(join(DIR, "llm-usage.jsonl")),
     archiver: async (job: Parameters<Archive["archiveJob"]>[0], md: string) => archive.archiveJob(job, md, extractStructured(md)),
   };

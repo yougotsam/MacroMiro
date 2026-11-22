@@ -126,10 +126,13 @@ export class JobStore {
     mkdirSync(join(dir, "jobs"), { recursive: true });
   }
   private path(id: string) { return join(this.dir, "jobs", `${id}.json`); }
+  private cancelPath(id: string) { return join(this.dir, "jobs", `${id}.cancel`); }
   audit(job: Job, note: string) {
     appendFileSync(join(this.dir, "jobs-audit.jsonl"), JSON.stringify({ at: new Date().toISOString(), id: job.id, key: job.key, stage: job.stage, note }) + "\n");
   }
   save(job: Job, note?: string) {
+    // A separate cancel process can race a worker's older JSON snapshot. Cancellation is monotonic.
+    if (existsSync(this.cancelPath(job.id))) job.cancelRequested = true;
     job.updatedAt = new Date().toISOString();
     if (note) {
       job.history.push({ at: job.updatedAt, stage: job.stage, note: note.slice(0, 300) });
@@ -141,6 +144,7 @@ export class JobStore {
     try {
       const job = JSON.parse(readFileSync(this.path(id), "utf8")) as Job;
       if (job?.id !== id || !job.spec || !job.cost || !job.stage) throw new Error("invalid job record");
+      if (existsSync(this.cancelPath(id))) job.cancelRequested = true;
       return job;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -196,6 +200,7 @@ export class JobStore {
     const j = this.get(id);
     if (!j) return null;
     if (!(ACTIVE_STAGES as readonly string[]).includes(j.stage)) return j;
+    atomicResearchWrite(this.cancelPath(id), "cancel requested\n");
     j.cancelRequested = true;
     this.save(j, `cancel requested: ${reason}`);
     return j;
@@ -232,7 +237,7 @@ const need = (v: string, what: string, path: string) => { if (!v) throw new Town
 export type Seeder = (c: Catalyst, simStartMs?: number) => Promise<{ text: string; sources: Job["seed"]["sources"]; spark: Job["seed"]["spark"]; rejected?: Job["seed"]["rejected"] }>;
 /** Must be idempotent by job.id, including a crash after committing but before returning its receipt. */
 export type Archiver = (job: Job, reportMarkdown: string) => Promise<string | null>;
-export type Deps = { transport: Transport; seeder: Seeder; archiver: Archiver; seedDir: string; pollMs?: number; meterSpentUsd?: (jobId: string) => number | null; checkBudget?: (job: Job) => void };
+export type Deps = { transport: Transport; seeder: Seeder; archiver: Archiver; seedDir: string; pollMs?: number; meterSpentUsd?: (jobId: string) => number | null; checkBudget?: (job: Job) => void; modelVersion?: string };
 
 /** The meter returns a cumulative ledger total. Never sum snapshots or replace a known cost with null. */
 export function refreshJobCost(job: Job, d: Pick<Deps, "meterSpentUsd">, stage: Stage = job.stage) {
@@ -474,6 +479,7 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
     if (!job) throw new Error(`research job ${id} not found`);
     refreshJobCost(job, d);
     if (!(ACTIVE_STAGES as readonly string[]).includes(job.stage)) {
+      if (job.stage === "done" && job.cancelRequested) { job.stage = "cancelled"; job.result = null; }
       store.save(job);
       return job;
     }
@@ -504,7 +510,10 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
     try {
       const deps: Deps = { ...d, checkBudget: j => checkResearchBudget(store, j), transport: (path, init) => {
         // Budget gates block new paid work, never retrieval/archiving of an already-paid report.
-        if (init.method === "POST" && ["/api/graph/ontology/generate", "/api/graph/build", "/api/simulation/create", "/api/simulation/prepare", "/api/simulation/start", "/api/report/generate"].includes(path)) checkResearchBudget(store, job);
+        if (init.method === "POST" && ["/api/graph/ontology/generate", "/api/graph/build", "/api/simulation/create", "/api/simulation/prepare", "/api/simulation/start", "/api/report/generate"].includes(path)) {
+          if (d.modelVersion && d.modelVersion !== job.modelVersion) throw new TownError("configured model changed; reconcile the job cost basis before paid work", 0, false);
+          checkResearchBudget(store, job);
+        }
         return d.transport(path, { ...init, signal: controller.signal, timeoutMs: Math.max(1, Math.min(init.timeoutMs, deadline - Date.now())) });
       } };
       wait = await step(job, deps);

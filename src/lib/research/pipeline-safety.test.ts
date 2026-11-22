@@ -198,6 +198,23 @@ describe("scenario identity, freshness and budget admission", () => {
 });
 
 describe("shutdown, cancellation and deadlines", () => {
+  it("a stale worker save cannot overwrite a concurrent cancel", async () => {
+    const x = setup("ontology");
+    x.store.cancel(x.job.id, "operator");
+    x.store.save(x.job); // Snapshot read before the other process cancelled.
+    expect(x.store.get(x.job.id)!.cancelRequested).toBe(true);
+    let calls = 0; x.d.transport = async () => { calls++; return ok({}); };
+    expect((await drive(x.store, x.job.id, x.d)).stage).toBe("cancelled");
+    expect(calls).toBe(0);
+  });
+  it("resuming against a changed configured model cannot spend under the old cost basis", async () => {
+    const x = setup("ontology"); x.d.modelVersion = "different-runtime-model";
+    let calls = 0; x.d.transport = async () => { calls++; return ok({}); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.error).toContain("configured model changed");
+    expect(done.totalRetries).toBe(1);
+    expect(calls).toBe(0);
+  });
   it("env_alive false during active rounds does not kill a healthy simulation", async () => {
     const x = setup("run"), calls: string[] = []; x.job.ids.runStarted = true;
     x.d.transport = async path => { calls.push(path); return ok(path.endsWith("run-status") ? { runner_status: "running", current_round: 1 } : { env_alive: false }); };
