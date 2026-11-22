@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Archive, incrementalValue, matchOutcomes, type IndexPoint } from "../src/lib/research/alexandria-archive";
-import { ACTIVE_STAGES, JobStore, PROMPT_VERSION, SCENARIOS, drive, estimateCostUsd, extractStructured, type JobSpec, type Scenario } from "../src/lib/research/pipeline";
+import { ACTIVE_STAGES, JobStore, PROMPT_VERSION, SCENARIOS, drive, estimateCostUsd, extractStructured, recoverArchive, type JobSpec, type Scenario } from "../src/lib/research/pipeline";
 import { catalystsFromCalendar, officialSeeder, meterSpent, mirofishTransport } from "../src/lib/research/pipeline.server";
 import { officialCalendarPath, type OfficialCalendar } from "../src/lib/desk/official-calendar";
 import { PRICES } from "../src/lib/research/llm-meter";
@@ -38,6 +38,9 @@ function deps() {
     modelVersion: MODEL_VERSION,
     transport: mirofishTransport(), seeder: officialSeeder, seedDir: join(DIR, "seeds"), pollMs: 5000, meterSpentUsd: meterSpent(join(DIR, "llm-usage.jsonl")),
     archiver: async (job: Parameters<Archive["archiveJob"]>[0], md: string) => archive.archiveJob(job, md, extractStructured(md)),
+    syncArchiveCost: (job: Parameters<Archive["archiveJob"]>[0]) => {
+      if (!archive.update(job.id, { cost: { estimatedUsd: job.cost.estimatedUsd, actualUsd: job.cost.actualUsd } })) throw new Error("archive cost target missing");
+    },
   };
 }
 
@@ -78,6 +81,8 @@ if (cmd === "plan") {
       if (args.includes("--one")) break;
     }
   } finally { release(); }
+} else if (cmd === "recover-archive") {
+  console.log(JSON.stringify(await recoverArchive(store, args[1], deps())));
 } else if (cmd === "cancel") {
   console.log(JSON.stringify(store.cancel(args[1], opt("--reason", "operator cancel"))?.stage ?? "not found"));
 } else if (cmd === "reextract") {

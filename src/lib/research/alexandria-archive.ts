@@ -8,7 +8,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SCENARIO_BRIEF, type Job, type ScenarioExtract } from "./pipeline";
+import { EXTRACT_FIELDS, SCENARIO_BRIEF, type Job, type ScenarioExtract } from "./pipeline";
 import { atomicResearchWrite, researchLock } from "./storage";
 
 export const MIROFISH_FEATURES_APPROVED = false as const;
@@ -28,13 +28,32 @@ export type ArchiveItem = {
   note: "simulated agents are not real order flow; scenario text is not a probability";
 };
 
+function validArchiveItem(x: ArchiveItem) {
+  const text = (v: unknown) => typeof v === "string";
+  const date = (v: unknown) => text(v) && Number.isFinite(Date.parse(v as string));
+  const texts = (v: unknown) => Array.isArray(v) && v.every(text);
+  const money = (v: unknown) => v === null || typeof v === "number" && Number.isFinite(v) && v >= 0;
+  return !!x && typeof x === "object" && !Array.isArray(x) && text(x.id) && ["simulation", "event"].includes(x.kind) && date(x.archivedAt)
+    && !!x.catalyst && text(x.catalyst.id) && text(x.catalyst.kind) && text(x.catalyst.name) && (x.catalyst.when === null || date(x.catalyst.when)) && texts(x.catalyst.sources) && typeof x.catalyst.verified === "boolean"
+    && (x.scenario === null || text(x.scenario)) && (x.seed === null || typeof x.seed === "number" && Number.isFinite(x.seed)) && texts(x.assets) && text(x.regime)
+    && (x.reportFile === null || text(x.reportFile)) && Array.isArray(x.sources) && x.sources.every(s => s && text(s.url) && text(s.title) && date(s.fetchedAt))
+    && text(x.modelVersion) && (x.promptVersion === null || text(x.promptVersion)) && !!x.cost && money(x.cost.estimatedUsd) && money(x.cost.actualUsd)
+    && (x.extracted === null || typeof x.extracted === "object" && typeof x.extracted.complete === "boolean" && EXTRACT_FIELDS.every(f => x.extracted![f] === null || text(x.extracted![f])))
+    && (x.mirofish === null || typeof x.mirofish === "object" && text(x.mirofish.simulationId) && text(x.mirofish.reportId) && Number.isFinite(x.mirofish.rounds) && Number.isFinite(x.mirofish.actions))
+    && x.note === "simulated agents are not real order flow; scenario text is not a probability";
+}
+
 export class Archive {
   constructor(readonly dir: string) { mkdirSync(join(dir, "reports"), { recursive: true }); }
   get file() { return join(this.dir, "alexandria-archive.jsonl"); }
   all(): ArchiveItem[] {
     if (!existsSync(this.file)) return [];
     return readFileSync(this.file, "utf8").split("\n").filter(Boolean).map((l) => {
-      try { return JSON.parse(l) as ArchiveItem; } catch {
+      try {
+        const item = JSON.parse(l) as ArchiveItem;
+        if (!validArchiveItem(item)) throw new Error("invalid archive record");
+        return item;
+      } catch {
         appendFileSync(join(this.dir, "jobs-audit.jsonl"), JSON.stringify({ at: new Date().toISOString(), note: "ARCHIVE_RECORD_UNREADABLE" }) + "\n");
         throw new Error("research archive is unreadable; inspect before appending");
       }

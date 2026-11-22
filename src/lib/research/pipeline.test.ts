@@ -21,6 +21,7 @@ function fakeTown(over: Record<string, (n: number) => { status: number; body: un
     "/api/graph/build": () => ok({ task_id: "t1" }),
     "/api/graph/task/t1": () => ok({ status: "completed", result: { graph_id: "g1" } }),
     "/api/simulation/create": () => ok({ simulation_id: "sim_1" }),
+    "/api/simulation/entities/g1?enrich=false": () => ok({ filtered_count: 12, preparation_population_cap_enforced: true }),
     "/api/simulation/prepare": () => ok({ task_id: "p1" }),
     "/api/simulation/prepare/status": () => ok({ status: "ready" }),
     "/api/simulation/sim_1": () => ok({ profiles_count: 12 }),

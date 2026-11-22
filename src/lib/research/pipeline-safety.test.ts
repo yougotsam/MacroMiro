@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Archive } from "./alexandria-archive";
-import { ACTIVE_STAGES, SCENARIOS, JobStore, drive, estimateCostUsd, extractStructured, jobKey, refreshJobCost, step, TownError, type Deps, type JobSpec, type Stage } from "./pipeline";
+import { ACTIVE_STAGES, SCENARIOS, JobStore, drive, estimateCostUsd, extractStructured, jobKey, refreshJobCost, recoverArchive, step, TownError, type Deps, type JobSpec, type Stage } from "./pipeline";
+import { atomicResearchWrite } from "./storage";
 import { meterSpent } from "./cost-ledger.server";
 import { researchModelVersion } from "./model-config.server";
 
@@ -20,7 +21,7 @@ const noSleep = async () => undefined;
 function setup(stage: Stage = "extract", over: Partial<JobSpec> = {}) {
   const dir = tmp(), store = new JobStore(dir), job = store.create(spec(over), now).job;
   job.stage = stage;
-  Object.assign(job.ids, { projectId: "p", simulationId: "s", reportId: "r" });
+  Object.assign(job.ids, { projectId: "p", graphId: "g", simulationId: "s", reportId: "r" });
   job.seed.file = join(dir, "seed.md");
   writeFileSync(job.seed.file, "x".repeat(300));
   store.save(job);
@@ -29,6 +30,7 @@ function setup(stage: Stage = "extract", over: Partial<JobSpec> = {}) {
     transport: async () => ok({ status: "completed", markdown_content: report, profiles_count: 12 }),
     seedDir: dir, seeder: async () => ({ text: "x".repeat(300), sources: [{ url: "https://www.bls.gov/", title: "test", fetchedAt: new Date(now).toISOString() }], spark: null }),
     archiver: async (j, md) => archive.archiveJob(j, md, extractStructured(md)), pollMs: 1,
+    syncArchiveCost: j => { archive.update(j.id, { cost: { estimatedUsd: j.cost.estimatedUsd, actualUsd: j.cost.actualUsd } }); },
   };
   return { dir, store, job, archive, d };
 }
@@ -162,9 +164,9 @@ describe("scenario identity, freshness and budget admission", () => {
   });
   it("enforces aggregate reservations across worlds, seeds and failed attempts", () => {
     const s = new JobStore(tmp());
-    const cap = estimateCostUsd(spec()) * 2 + 0.001;
+    const cap = estimateCostUsd(spec()) * 3 + 0.001;
     const a = s.create(spec({ catalystBudgetUsd: cap }), now).job;
-    a.stage = "failed"; a.cost.actualUsd = 0.1; s.save(a);
+    a.stage = "failed"; a.cost.actualUsd = estimateCostUsd(spec()) * 2; s.save(a);
     s.create(spec({ scenario: "bullish", catalystBudgetUsd: cap }), now);
     expect(() => s.create(spec({ scenario: "bearish", catalystBudgetUsd: cap }), now)).toThrow("catalyst budget");
     expect(() => s.create(spec({ seed: 2, catalystBudgetUsd: 100 }), now)).toThrow("catalyst budget");
@@ -286,12 +288,12 @@ describe("shutdown, cancellation and deadlines", () => {
     expect(done.progress.message).toContain("unconfirmed");
   });
   it("operator cancel aborts an in-flight ontology request and still meters it", async () => {
-    const x = setup("ontology"); let aborted = false;
+    const x = setup("ontology"); let aborted = false, spent = 0;
     x.d.transport = async (_p, init) => new Promise((_resolve, reject) => {
-      init.signal!.addEventListener("abort", () => { aborted = true; reject(new Error("aborted")); }, { once: true });
+      init.signal!.addEventListener("abort", () => { aborted = true; spent = 0.2; reject(new Error("aborted")); }, { once: true });
       setTimeout(() => x.store.cancel(x.job.id, "operator"), 5);
     });
-    x.d.meterSpentUsd = () => 0.2;
+    x.d.meterSpentUsd = () => spent;
     const done = await drive(x.store, x.job.id, x.d, { cancelPollMs: 5 });
     expect(aborted).toBe(true);
     expect(done.stage).toBe("cancelled");
@@ -306,4 +308,133 @@ describe("shutdown, cancellation and deadlines", () => {
     expect(done.error).toContain("timed out");
     expect(calls).toBe(0);
   });
+});
+
+
+describe("reviewed storage and provider boundaries", () => {
+  it("temporary-file symlinks cannot truncate another file", () => {
+    const dir = tmp(), target = join(dir, "evidence"), dest = join(dir, "record");
+    writeFileSync(target, "keep this evidence");
+    symlinkSync(target, `${dest}.${process.pid}.tmp`);
+    atomicResearchWrite(dest, "new record");
+    expect(readFileSync(target, "utf8")).toBe("keep this evidence");
+    expect(readFileSync(dest, "utf8")).toBe("new record");
+  });
+  it("valid JSON with an unsupported job stage is audited as corrupt", () => {
+    const x = setup();
+    writeFileSync(join(x.dir, "jobs", `${x.job.id}.json`), JSON.stringify({ ...x.job, stage: "unrecognized" }));
+    expect(() => x.store.get(x.job.id)).toThrow("unreadable");
+    writeFileSync(join(x.dir, "jobs", `${x.job.id}.json`), JSON.stringify({ ...x.job, cost: { ...x.job.cost, basis: { modelVersion: "unknown" } } }));
+    expect(() => x.store.get(x.job.id)).toThrow("unreadable");
+    expect(readFileSync(join(x.dir, "jobs-audit.jsonl"), "utf8")).toContain("JOB_RECORD_UNREADABLE");
+  });
+  it("parseable but malformed archive rows are audited before queries", () => {
+    const x = setup();
+    writeFileSync(x.archive.file, '{"id":"broken"}\n');
+    expect(() => x.archive.all()).toThrow("unreadable");
+    expect(readFileSync(join(x.dir, "jobs-audit.jsonl"), "utf8")).toContain("ARCHIVE_RECORD_UNREADABLE");
+  });
+  it("an unpriced legacy job cannot invoke a potentially paid seeder", async () => {
+    const x = setup("seed", { costBasis: undefined }); let seeds = 0;
+    const seeder = x.d.seeder; x.d.seeder = async (...args) => { seeds++; return seeder(...args); };
+    expect((await drive(x.store, x.job.id, x.d)).stage).toBe("failed");
+    expect(seeds).toBe(0);
+  });
+  it("seeding receives cancellation and records spend added during abort", async () => {
+    const x = setup("seed"); let spent = 0;
+    x.d.meterSpentUsd = () => spent;
+    x.d.seeder = async (_c, _now, ctx) => new Promise((_resolve, reject) => {
+      ctx!.signal!.addEventListener("abort", () => { spent = 0.3; reject(new Error("cancelled source")); }, { once: true });
+      setTimeout(() => x.store.cancel(x.job.id, "operator"), 5);
+    });
+    const done = await drive(x.store, x.job.id, x.d, { cancelPollMs: 5 });
+    expect(done.stage).toBe("cancelled");
+    expect(done.cost.actualUsd).toBe(0.3);
+  });
+  it("population is priced before paid preparation and unknown/oversized populations refuse it", async () => {
+    for (const count of [500, null]) {
+      const x = setup("prepare", { budgetUsd: 0.9 }); const calls: string[] = [];
+      x.d.transport = async path => { calls.push(path); return ok({ filtered_count: count, preparation_population_cap_enforced: true }); };
+      expect((await drive(x.store, x.job.id, x.d)).stage).toBe("failed");
+      expect(calls).not.toContain("/api/simulation/prepare");
+    }
+  });
+  it("preparation sends the admitted population cap to the backend", async () => {
+    const x = setup("prepare"); let request: unknown;
+    x.d.transport = async (path, init) => {
+      if (path.includes("/entities/")) return ok({ filtered_count: 12, preparation_population_cap_enforced: true });
+      request = init.json; return ok({ task_id: "prep" });
+    };
+    await step(x.job, x.d);
+    expect(request).toEqual({ simulation_id: "s", parallel_profile_count: 3, max_agents: 12 });
+  });
+  it("a staged report survives a crash before pending metadata is saved", async () => {
+    const x = setup();
+    await step(x.job, x.d); // File committed, but deliberately discard the unsaved metadata.
+    x.d.transport = async () => { throw new Error("backend unavailable"); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(readFileSync(x.archive.all()[0].reportFile!, "utf8")).toBe(report);
+  });
+  it("cancellation retains and archives an already completed report without returning a result", async () => {
+    const x = setup(); await step(x.job, x.d); x.store.save(x.job);
+    x.store.cancel(x.job.id, "operator");
+    x.d.transport = async () => { throw new Error("no more backend requests allowed"); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.stage).toBe("cancelled");
+    expect(done.result).toBeNull();
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("an explicit archive-only retry recovers a previously exhausted archive", async () => {
+    const x = setup(), archiver = x.d.archiver;
+    x.d.archiver = async () => null;
+    expect((await drive(x.store, x.job.id, x.d, { sleepFn: noSleep })).stage).toBe("failed");
+    x.d.archiver = archiver;
+    x.d.transport = async () => { throw new Error("no remote work during archive retry"); };
+    expect((await recoverArchive(x.store, x.job.id, x.d)).stage).toBe("done");
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("late cost observations are synchronized to the archived report", async () => {
+    const x = setup(), archiver = x.d.archiver; let spent = 0.2;
+    x.d.meterSpentUsd = () => spent;
+    x.d.archiver = async (j, md) => { const receipt = await archiver(j, md); spent = 0.4; return receipt; };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.cost.actualUsd).toBe(0.4);
+    expect(x.archive.all()[0].cost.actualUsd).toBe(0.4);
+  });
+  it("lifetime retries accumulate across failures separated by successful stages", async () => {
+    const x = setup(), transport = x.d.transport, archiver = x.d.archiver; let gets = 0, archives = 0;
+    x.d.transport = async (...args) => ++gets === 1 ? { status: 502, body: { success: false, error: "temporary" } } : transport(...args);
+    x.d.archiver = async (...args) => { if (++archives === 1) throw new Error("temporary archive failure"); return archiver(...args); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(done.totalRetries).toBe(2);
+    expect(done.retries).toBe(0);
+  });
+});
+
+
+it("an older backend cannot silently ignore the profile population cap", async () => {
+  const x = setup("prepare"); const calls: string[] = [];
+  x.d.transport = async path => { calls.push(path); return ok({ filtered_count: 12 }); };
+  expect((await drive(x.store, x.job.id, x.d)).error).toContain("cap support unverified");
+  expect(calls).not.toContain("/api/simulation/prepare");
+});
+
+it("the real source-fetch adapter aborts without falling through to another provider", async () => {
+  const { fetchText } = await import("./pipeline.server");
+  const { scrapeArticle } = await import("../live/firecrawl.server");
+  const fetchBefore = globalThis.fetch, controller = new AbortController(); let calls = 0;
+  globalThis.fetch = (async (_url, init) => {
+    calls++;
+    return new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(new Error("abort")), { once: true });
+      setTimeout(() => controller.abort(), 5);
+    });
+  }) as typeof fetch;
+  try {
+    await expect(fetchText("https://www.bls.gov/news.release/cpi.nr0.htm", { signal: controller.signal })).rejects.toThrow();
+    await expect(scrapeArticle("https://www.bls.gov/news.release/cpi.nr0.htm", controller.signal)).rejects.toThrow();
+    expect(calls).toBe(1);
+  } finally { globalThis.fetch = fetchBefore; }
 });

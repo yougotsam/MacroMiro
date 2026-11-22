@@ -45,7 +45,7 @@ export type Job = {
   };
   progress: { round: number; totalRounds: number; actions: number; message: string; agents?: number | null };
   result: null | { reportChars: number; extracted: ScenarioExtract; archivedAs: string | null; completedAt: string };
-  cost: { estimatedUsd: number; actualUsd: number | null; basis?: CostBasis; meterStatus?: "OK" | "UNAVAILABLE"; meterError?: string | null; meteredAt?: string; checkpoints?: Partial<Record<Stage, number>> };
+  cost: { estimatedUsd: number; actualUsd: number | null; basis?: CostBasis; meterStatus?: "OK" | "UNAVAILABLE"; meterError?: string | null; meteredAt?: string; checkpoints?: Partial<Record<Stage, number>>; archiveSyncState?: "OK" | "UNAVAILABLE" };
   modelVersion: string; reuseUntil: string;
   history: Array<{ at: string; stage: Stage; note: string }>;
 };
@@ -122,6 +122,41 @@ function parseBlock(block: string): ScenarioExtract {
 
 // ---------------------------------------------------------------------------------------------- store
 
+const record = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
+const nonnegative = (x: unknown) => typeof x === "number" && Number.isFinite(x) && x >= 0;
+const nullableText = (x: unknown) => x === null || typeof x === "string";
+const dateText = (x: unknown) => typeof x === "string" && Number.isFinite(Date.parse(x));
+const strings = (x: unknown) => Array.isArray(x) && x.every(v => typeof v === "string");
+const isStage = (x: unknown) => [...ACTIVE_STAGES, "done", "failed", "cancelled"].includes(x as Stage);
+function validExtract(x: unknown) {
+  return record(x) && typeof x.complete === "boolean" && EXTRACT_FIELDS.every(f => nullableText(x[f]));
+}
+function validBasis(x: unknown) {
+  return record(x) && typeof x.modelVersion === "string" && typeof x.priceVersion === "string" && !!x.priceVersion && typeof x.source === "string" && !!x.source
+    && Number.isInteger(x.agents) && (x.agents as number) > 0 && nonnegative(x.inPerM) && nonnegative(x.outPerM);
+}
+function validSavedJob(j: Job, id: string) {
+  if (!record(j) || j.id !== id || typeof j.key !== "string" || !isStage(j.stage) || !record(j.spec) || !record(j.ids) || !record(j.cost) || !record(j.seed) || !record(j.progress)) return false;
+  const s = j.spec, c = s.catalyst;
+  if (!record(c) || typeof c.id !== "string" || !CATALYST_KINDS.includes(c.kind) || typeof c.name !== "string" || !nullableText(c.when) || !strings(c.assets) || !strings(c.sources) || typeof c.verified !== "boolean") return false;
+  if (!SCENARIOS.includes(s.scenario) || !Number.isFinite(s.seed) || !Number.isInteger(s.maxRounds) || s.maxRounds < 1 || s.maxRounds > MAX_ROUNDS_CAP || !nonnegative(s.budgetUsd) || typeof s.promptVersion !== "string") return false;
+  if (![j.createdAt, j.updatedAt, j.reuseUntil].every(dateText) || j.heartbeatAt !== null && !dateText(j.heartbeatAt) || typeof j.modelVersion !== "string") return false;
+  if (![j.retries, j.attempts].every(v => Number.isInteger(v) && v >= 0) || typeof j.cancelRequested !== "boolean" || !nullableText(j.error) || j.failedAt !== null && !isStage(j.failedAt)) return false;
+  if (!Array.isArray(j.history) || !j.history.every(h => record(h) && dateText(h.at) && isStage(h.stage) && typeof h.note === "string")) return false;
+  if (!["projectId", "graphTask", "graphId", "simulationId", "prepTask", "reportId", "reportTask"].every(k => typeof j.ids[k as keyof Job["ids"]] === "string") || typeof j.ids.runStarted !== "boolean") return false;
+  if (!nonnegative(j.cost.estimatedUsd) || j.cost.actualUsd !== null && !nonnegative(j.cost.actualUsd)) return false;
+  if (j.cost.basis !== undefined && (!validBasis(j.cost.basis) || j.cost.basis.modelVersion !== j.modelVersion) || s.costBasis !== undefined && !validBasis(s.costBasis)) return false;
+  if (s.catalystBudgetUsd !== undefined && (!nonnegative(s.catalystBudgetUsd) || s.catalystBudgetUsd <= 0)) return false;
+  if (j.totalRetries !== undefined && (!Number.isInteger(j.totalRetries) || j.totalRetries < 0) || j.ids.runStartUncertain !== undefined && typeof j.ids.runStartUncertain !== "boolean") return false;
+  if (j.deadlineAt !== undefined && !dateText(j.deadlineAt) || j.reportRecoveryDeadlineAt !== undefined && !dateText(j.reportRecoveryDeadlineAt)) return false;
+  if (!nonnegative(j.seed.chars) || !nullableText(j.seed.file) || !Array.isArray(j.seed.sources) || !j.seed.sources.every(s => record(s) && typeof s.url === "string" && typeof s.title === "string" && dateText(s.fetchedAt))) return false;
+  if (![j.progress.round, j.progress.totalRounds, j.progress.actions].every(nonnegative) || typeof j.progress.message !== "string") return false;
+  if (j.result !== null && (!record(j.result) || !nonnegative(j.result.reportChars) || !validExtract(j.result.extracted) || !nullableText(j.result.archivedAs) || !dateText(j.result.completedAt))) return false;
+  if (j.pendingReport && (!record(j.pendingReport) || typeof j.pendingReport.file !== "string" || !/^[a-f0-9]{64}$/.test(j.pendingReport.sha256) || !nonnegative(j.pendingReport.chars) || !validExtract(j.pendingReport.extracted))) return false;
+  if (j.pendingReport?.archivedAs !== undefined && (typeof j.pendingReport.archivedAs !== "string" || !j.pendingReport.archivedAs)) return false;
+  return true;
+}
+
 export class JobStore {
   constructor(readonly dir: string) {
     mkdirSync(join(dir, "jobs"), { recursive: true });
@@ -144,7 +179,7 @@ export class JobStore {
   get(id: string): Job | null {
     try {
       const job = JSON.parse(readFileSync(this.path(id), "utf8")) as Job;
-      if (job?.id !== id || !job.spec || !job.cost || !job.stage) throw new Error("invalid job record");
+      if (!validSavedJob(job, id)) throw new Error("invalid job record");
       if (existsSync(this.cancelPath(id))) job.cancelRequested = true;
       return job;
     } catch (e) {
@@ -235,10 +270,11 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const need = (v: string, what: string, path: string) => { if (!v) throw new TownError(`${path} malformed response (no ${what})`, 200, false); return v; };
 
-export type Seeder = (c: Catalyst, simStartMs?: number) => Promise<{ text: string; sources: Job["seed"]["sources"]; spark: Job["seed"]["spark"]; rejected?: Job["seed"]["rejected"] }>;
+export type SeedContext = { signal?: AbortSignal; deadlineMs?: number; checkBudget?: () => void };
+export type Seeder = (c: Catalyst, simStartMs?: number, context?: SeedContext) => Promise<{ text: string; sources: Job["seed"]["sources"]; spark: Job["seed"]["spark"]; rejected?: Job["seed"]["rejected"] }>;
 /** Must be idempotent by job.id, including a crash after committing but before returning its receipt. */
 export type Archiver = (job: Job, reportMarkdown: string) => Promise<string | null>;
-export type Deps = { transport: Transport; seeder: Seeder; archiver: Archiver; seedDir: string; pollMs?: number; meterSpentUsd?: (jobId: string) => number | null; checkBudget?: (job: Job) => void; modelVersion?: string; checkpoint?: (job: Job, note: string) => void };
+export type Deps = { transport: Transport; seeder: Seeder; archiver: Archiver; seedDir: string; pollMs?: number; meterSpentUsd?: (jobId: string) => number | null; checkBudget?: (job: Job) => void; modelVersion?: string; checkpoint?: (job: Job, note: string) => void; syncArchiveCost?: (job: Job) => Promise<void> | void };
 
 /** The meter returns a cumulative ledger total. Never sum snapshots or replace a known cost with null. */
 export function refreshJobCost(job: Job, d: Pick<Deps, "meterSpentUsd">, stage: Stage = job.stage) {
@@ -274,10 +310,25 @@ async function preparedAgentCount(job: Job, d: Deps) {
   job.progress.agents = agents;
   if (job.cost.basis) {
     job.cost.basis = { ...job.cost.basis, agents };
-    job.cost.estimatedUsd = estimateCostUsd({ ...job.spec, costBasis: job.cost.basis });
+    job.cost.estimatedUsd = Math.max(job.cost.estimatedUsd, estimateCostUsd({ ...job.spec, costBasis: job.cost.basis }));
     if (job.cost.estimatedUsd > job.spec.budgetUsd) throw new TownError("actual agent count exceeds job compute budget", 0, false);
     d.checkBudget?.(job);
   }
+}
+
+async function preparationPopulation(job: Job, d: Deps) {
+  const graphId = need(job.ids.graphId, "graph_id", "prepare population");
+  const r = await call(d.transport, `/api/simulation/entities/${encodeURIComponent(graphId)}?enrich=false`, { method: "GET", timeoutMs: 30_000 });
+  if (r.preparation_population_cap_enforced !== true) throw new TownError("backend population cap support unverified; refusing paid preparation", 0, false);
+  const agents = num(r.filtered_count);
+  if (agents == null || !Number.isInteger(agents) || agents < 1) throw new TownError("preparation population unknown; refusing paid profile generation", 0, false);
+  if (!job.cost.basis) throw new TownError("model-versioned cost basis required before preparation", 0, false);
+  job.cost.basis = { ...job.cost.basis, agents };
+  job.cost.estimatedUsd = Math.max(job.cost.estimatedUsd, estimateCostUsd({ ...job.spec, costBasis: job.cost.basis }));
+  if (job.cost.estimatedUsd > job.spec.budgetUsd) throw new TownError("preparation population exceeds job compute budget", 0, false);
+  d.checkBudget?.(job);
+  d.checkpoint?.(job, `population ${agents}: reserved estimate $${job.cost.estimatedUsd} before profile generation`);
+  return agents;
 }
 
 /** One step. Returns ms to wait before the next step. Mutates job; the runner saves it. */
@@ -342,7 +393,8 @@ export async function step(job: Job, d: Deps): Promise<number> {
     }
     case "prepare": {
       if (!job.ids.prepTask) {
-        const r = await call(T, "/api/simulation/prepare", { method: "POST", json: { simulation_id: job.ids.simulationId, parallel_profile_count: 3 }, timeoutMs: 240_000 });
+        const maxAgents = await preparationPopulation(job, d);
+        const r = await call(T, "/api/simulation/prepare", { method: "POST", json: { simulation_id: job.ids.simulationId, parallel_profile_count: 3, max_agents: maxAgents }, timeoutMs: 240_000 });
         if (r.already_prepared === true) { await preparedAgentCount(job, d); job.stage = "run"; return 0; }
         job.ids.prepTask = need(str(r.task_id), "task_id", "/api/simulation/prepare");
         return poll;
@@ -416,13 +468,17 @@ export async function step(job: Job, d: Deps): Promise<number> {
       return 0;
     }
     case "extract": {
-      const r = await call(T, `/api/report/${encodeURIComponent(job.ids.reportId)}`, { method: "GET", timeoutMs: 30_000 });
-      const md = str(r.markdown_content);
-      if (!md.trim() || str(r.status) && str(r.status) !== "completed") throw new TownError("report incomplete (no markdown / not completed); nothing archived", 200, false);
-      const extracted = extractStructured(md);
       const file = join(d.seedDir, `${job.id}.report.md`);
       mkdirSync(d.seedDir, { recursive: true });
-      atomicResearchWrite(file, md);
+      let md = existsSync(file) ? readFileSync(file, "utf8") : "";
+      if (!existsSync(file)) {
+        const r = await call(T, `/api/report/${encodeURIComponent(job.ids.reportId)}`, { method: "GET", timeoutMs: 30_000 });
+        md = str(r.markdown_content);
+        if (!md.trim() || str(r.status) && str(r.status) !== "completed") throw new TownError("report incomplete (no markdown / not completed); nothing archived", 200, false);
+        atomicResearchWrite(file, md);
+      }
+      if (!md.trim()) throw new TownError("staged report is empty; inspect local evidence", 0, false);
+      const extracted = extractStructured(md);
       job.pendingReport = { file, sha256: createHash("sha256").update(md).digest("hex"), chars: md.length, extracted };
       job.stage = "archive";
       return 0;
@@ -459,6 +515,27 @@ export async function step(job: Job, d: Deps): Promise<number> {
 export const MAX_RETRIES = 6;
 export const MAX_STOP_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const recoverableReport = (job: Job) => job.stage === "extract" || job.stage === "report" && !!job.ids.reportId || job.stage === "archive" && !!job.pendingReport;
+
+async function syncArchivedCost(job: Job, d: Deps) {
+  if (!(job.pendingReport?.archivedAs || job.result?.archivedAs) || !d.syncArchiveCost) return;
+  try { await d.syncArchiveCost(job); job.cost.archiveSyncState = "OK"; }
+  catch { job.cost.archiveSyncState = "UNAVAILABLE"; } // Report remains preserved; reconciliation is visible.
+}
+
+/** Explicit operator retry of local report archival, never a new simulation or report-generation request. */
+export async function recoverArchive(store: JobStore, id: string, d: Deps) {
+  const job = store.get(id);
+  if (!job || !["failed", "cancelled"].includes(job.stage)) throw new Error("archive recovery requires a failed/cancelled job");
+  if (!job.pendingReport && !existsSync(join(d.seedDir, `${job.id}.report.md`))) throw new Error("no staged report available for archive recovery");
+  job.stage = job.pendingReport ? "archive" : "extract";
+  job.retries = 0;
+  job.error = null;
+  job.deadlineAt = new Date(Date.now() - 1).toISOString();
+  job.reportRecoveryDeadlineAt = new Date(Date.now() + 5 * 60_000).toISOString();
+  store.save(job, "operator requested bounded archive-only recovery");
+  return drive(store, id, d);
+}
 
 /** Drive one job to a terminal stage. One worker per store, with a durable deadline across restarts. */
 export async function drive(store: JobStore, id: string, d: Deps, opts: { maxMinutes?: number; sleepFn?: (ms: number) => Promise<void>; cancelPollMs?: number } = {}) {
@@ -486,6 +563,7 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
     refreshJobCost(job, d);
     if (!(ACTIVE_STAGES as readonly string[]).includes(job.stage)) {
       if (job.stage === "done" && job.cancelRequested) { job.stage = "cancelled"; job.result = null; }
+      await syncArchivedCost(job, d);
       store.save(job);
       return job;
     }
@@ -495,17 +573,18 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
     }
     const executionDeadline = Date.parse(job.deadlineAt);
     let deadline = executionDeadline;
-    const recoverableReport = job.stage === "extract" || job.stage === "report" && !!job.ids.reportId || job.stage === "archive" && !!job.pendingReport;
-    if (Number.isFinite(executionDeadline) && Date.now() >= executionDeadline && recoverableReport) {
+    const recoveryOnly = recoverableReport(job) && (job.cancelRequested || Number.isFinite(executionDeadline) && Date.now() >= executionDeadline);
+    if (recoveryOnly) {
       if (!job.reportRecoveryDeadlineAt) {
         job.reportRecoveryDeadlineAt = new Date(Date.now() + 5 * 60_000).toISOString();
         store.save(job, "bounded completed-report recovery opened; new paid work remains forbidden");
       }
       deadline = Date.parse(job.reportRecoveryDeadlineAt);
     }
-    if (job.cancelRequested || !Number.isFinite(deadline) || Date.now() >= deadline) {
+    if (job.cancelRequested && !recoveryOnly || !Number.isFinite(deadline) || Date.now() >= deadline) {
       await stop(job);
       refreshJobCost(job, d);
+      await syncArchivedCost(job, d);
       job.failedAt = job.stage;
       job.stage = job.cancelRequested ? "cancelled" : "failed";
       job.error = job.cancelRequested ? null : "timed out; incomplete run has no result";
@@ -518,17 +597,23 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
     const controller = new AbortController();
     const timer = setInterval(() => {
       try {
-        if (store.get(id)?.cancelRequested || Date.now() >= deadline) controller.abort();
+        if (!recoveryOnly && store.get(id)?.cancelRequested || Date.now() >= deadline) controller.abort();
       } catch { controller.abort(); }
     }, opts.cancelPollMs ?? 250);
+    const admitPaidWork = () => {
+      if (recoveryOnly || Date.now() >= executionDeadline) throw new TownError("execution deadline passed or recovery only; new paid work refused", 0, false);
+      if (store.get(id)?.cancelRequested) throw new TownError("cancel requested; new paid work refused", 0, false);
+      if (d.modelVersion && d.modelVersion !== job.modelVersion) throw new TownError("configured model changed; reconcile the job cost basis before paid work", 0, false);
+      checkResearchBudget(store, job);
+    };
     try {
-      const deps: Deps = { ...d, checkpoint: (j, note) => store.save(j, note), checkBudget: j => checkResearchBudget(store, j), transport: (path, init) => {
+      const deps: Deps = { ...d, checkpoint: (j, note) => store.save(j, note), checkBudget: j => checkResearchBudget(store, j), seeder: (c, now) => {
+        admitPaidWork();
+        return d.seeder(c, now, { signal: controller.signal, deadlineMs: deadline, checkBudget: admitPaidWork });
+      }, transport: (path, init) => {
         // Budget gates block new paid work, never retrieval/archiving of an already-paid report.
         if (init.method === "POST" && ["/api/graph/ontology/generate", "/api/graph/build", "/api/simulation/create", "/api/simulation/prepare", "/api/simulation/start", "/api/report/generate"].includes(path)) {
-          if (Date.now() >= executionDeadline) throw new TownError("execution deadline passed; new paid work refused", 0, false);
-          if (store.get(id)?.cancelRequested) throw new TownError("cancel requested; new paid work refused", 0, false);
-          if (d.modelVersion && d.modelVersion !== job.modelVersion) throw new TownError("configured model changed; reconcile the job cost basis before paid work", 0, false);
-          checkResearchBudget(store, job);
+          admitPaidWork();
         }
         return d.transport(path, { ...init, signal: controller.signal, timeoutMs: Math.max(1, Math.min(init.timeoutMs, deadline - Date.now())) });
       } };
@@ -553,15 +638,18 @@ async function driveLocked(store: JobStore, id: string, d: Deps, opts: { maxMinu
     } finally {
       clearInterval(timer);
       refreshJobCost(job, d, before); // Includes failed/cancelled expensive calls; never throws.
+      await syncArchivedCost(job, d);
     }
     job.heartbeatAt = new Date().toISOString();
     if (store.get(id)?.cancelRequested) {
       job.cancelRequested = true;
-      await stop(job);
-      refreshJobCost(job, d, before);
-      job.failedAt = before;
-      job.stage = "cancelled";
-      job.result = null;
+      if (!recoverableReport(job)) {
+        await stop(job);
+        refreshJobCost(job, d, before);
+        job.failedAt = before;
+        job.stage = "cancelled";
+        job.result = null;
+      }
       wait = 0;
     }
     store.save(job, job.stage !== before ? `${before} → ${job.stage}${job.error ? ` (${job.error})` : ""}` : job.error ?? undefined);

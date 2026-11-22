@@ -11,3 +11,8 @@ Local change: `.env.example` points at xAI Grok (`grok-4.7`). See `SETUP.md`.
 - `7b2a39c` private backend: loopback bind, bearer token on /api (`MIROFISH_AUTH_TOKEN`), local-only CORS, no request-body logging, optional LLM cost meter (`MIROFISH_LLM_METER_URL`)
 - `37748b0` `OASIS_START_HOUR` so the sim clock can start at event time
 MacroMiro's client (`src/lib/research/mirofish-auth.ts`) reads the token from `MIROFISH_ENV_FILE`; point it at `mirofish/.env`.
+
+## Research runner reliability follow-up
+
+The entities response advertises preparation population-cap support. The preparation API accepts `max_agents`, and the simulation manager enforces it against the actual filtered population before LLM profile generation. Deploy this bundled-backend change with the corresponding research runner; the runner refuses paid preparation when support is not advertised.
+

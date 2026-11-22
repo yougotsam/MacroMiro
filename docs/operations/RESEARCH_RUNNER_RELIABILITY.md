@@ -44,7 +44,7 @@ Production blockers remain: select/supervise the persistent host, verify actual 
 
 ## Verification
 
-- Full suite: 1,256 passed, 0 failed across 96 files, including 33 new runner regressions. Research subset: 71 passed. Typecheck and safe Vite build passed. Lint: 0 errors, 84 warnings, unchanged from the base.
+- Full suite: 1,270 passed, 0 failed across 96 files, including 47 new runner regressions. Research subset: 85 passed. Typecheck and safe Vite build passed. Lint: 0 errors, 84 warnings, unchanged from the base.
 - Test invocation: `FIRECRAWL_API_KEY=fc-test-no-network-credential bun test`. This is a nonfunctional fixture for existing Firecrawl tests whose requests are injected mocks. Without it, the same six missing-credential failures occur on both untouched `87803f4` (1,217 pass / 6 fail) and this branch (1,243 pass / 6 fail, before the final two regressions). With it the untouched base passes all 1,223 tests. No real service credential was supplied.
 - Scenarios cover failed-stage metering, billing read failure, cumulative totals, late cost overrun, archive commit/receipt crash windows, corrupt records, event expiry, all four keys, aggregate reservations, actual agent counts, unknown start state, bounded shutdown, cancellation and durable deadlines. Existing research-isolation tests remain passing.
 - Fake transports and local temporary stores establish code behavior. They do not establish actual MiroFish/provider billing, persistent-host supervision or real alert delivery.
@@ -52,3 +52,14 @@ Production blockers remain: select/supervise the persistent host, verify actual 
 - Built-preview startup reproduced the existing missing `_libs/pglite.data` asset before the browser could connect. The browser render check is blocked on that infrastructure issue; no fresh successful render is claimed for this patch. The Vercel branch deployment reported READY, which is not worker/runtime validation.
 
 The automated review's three findings (interrupted start, expired extract recovery, configured model path) have focused reproductions and fixes. Remote stop acknowledgment remains unconfirmed without backend reconciliation; a cancelled local job is not proof remote work ended.
+
+## Additional review closure
+
+- Temporary files use unpredictable names, exclusive creation and mode 0600, preventing a planted temporary-file symlink from truncating another file.
+- Seeding passes the same model/cost admission gate before any possible paid fallback. Cancellation/deadline signals reach direct HTTP, asynchronous curl and Firecrawl requests. Cancellation never falls through to another provider. Existing provider credit permissions remain required.
+- Before preparation, fetch the filtered population, reserve its larger estimate and require literal backend population-cap support. Pass `max_agents` to the backend; the manager rechecks the actual population before LLM profile generation. This closes the population-change window. Deploy the runner and bundled backend changes together: older backends fail closed before preparation. Estimates never decrease below an earlier reservation merely because fewer profiles finished.
+- Recover a staged report even if a crash occurred before its job metadata was saved. Cancellation can finish bounded read-only retrieval/archival of an already-created report while keeping the job cancelled and its result null. `bun scripts/research-pipeline.ts recover-archive <jobId>` explicitly retries failed/cancelled staged archival; it cannot start a simulation or generate a report.
+- Synchronize newly observed costs back to the archive after archival; a failed synchronization is visible as `archiveSyncState: UNAVAILABLE` and never destroys the report. Validate saved job/archive structures, not just JSON syntax.
+- Strengthened tests use actual failed spend above estimates, multiple separated failures, and spend that appears only after cancellation. Added four Python tests for the backend population guard and compiled the changed backend modules.
+
+SIGTERM/forced shutdown remains an uncertain interruption: stranded locks deliberately require operator inspection of the process, backend and meter tag. They are not cleared by age or automatically on termination. This favors avoiding duplicate remote work over unattended restart. A production supervisor still needs an operational reconciliation/shutdown drill; this PR does not authorize automatic restart past an uncertain lock.
