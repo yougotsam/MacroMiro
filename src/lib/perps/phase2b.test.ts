@@ -77,10 +77,11 @@ describe("perps OMS (locked) against an in-memory exchange", () => {
     expect(x.orders).toHaveLength(0);
   });
   it("the stub transport still refuses, and a fake exchange receives a send", async () => {
-    expect(PERPS_ORDERS_LOCKED).toBe(false);
+    expect(PERPS_ORDERS_LOCKED).toBe(true);
     await expect(lockedTransport.createOrder(toCreateReq(i))).rejects.toThrow(/LOCKED/);
     const x = new FakeExchange();
-    const o = new PerpsOms(x);
+    expect((await new PerpsOms(x).submit(i)).status).toMatch(/LOCKED/);
+    const o = new PerpsOms(x, null, true, () => ({ ok: true, why: "isolated test" }));
     expect((await o.submit(i)).status).toBe("ACK");
     expect(x.orders.length).toBe(1);
   });

@@ -44,3 +44,18 @@ The supplied audit jumps from §1.6 to §8.1. Sections 1.7–8.0 here are a **re
 6. **Live:** Demo shadow parity, evidence-based limits and separate explicit owner release. **Live orders stay off.**
 
 This iteration is a tested **foundation**, not the entire 40-test suite, complete strategy, archive or live system.
+
+## Emergency-stop review branch · November 21
+
+The HTTP entry route stays hard-locked. The independent watchdog runs on a persistent trading host. A Vercel website preview only exercises the website.
+
+| Operator control | Behavior |
+|---|---|
+| Shared journal | Set `MACROMIRO_PERPS_JOURNAL` to the same existing journal on one local filesystem for both processes. Start from an accounted-for, dedicated desk. Incomplete history, foreign orders, or ambiguous positions halt reconciliation. |
+| Reconciliation | The existing opt-in `scripts/perps/fill-guardian.ts` checks journal identities, venue orders, signed filled quantities, current positions and brackets each successful cycle. It writes the worker heartbeat only after those checks pass. On mismatch it persists the stop and emits a SEV1. |
+| Independent watchdog | After the first healthy reconciliation, supervise `bun scripts/perps/watchdog.ts` in a separate process. It polls every second. A missing, invalid, or 15-second-old worker heartbeat latches the stop. These timings are engineering settings. |
+| Operator halt | `bun scripts/perps/watchdog.ts --kill` sets a durable file latch immediately. Its default mode requires filesystem access only. It exits with status 2 on a halt. Read the alert file beside the journal (`.alerts.jsonl`) and route stderr to the supervisor. An optional HTTPS `MACROMIRO_PERPS_ALERT_WEBHOOK` receives a SEV1 with an idempotency key. A failed page can be retried by rerunning the watchdog. |
+| Dedicated demo flatten | Only the explicit `--flatten-demo` option on a watchdog running with `KALSHI_PERPS_ENV=demo` can cancel orders and attempt a reduce-only demo flatten. It compares `PERPS_KILL_TOKEN` with the owner-only `PERPS_KILL_TOKEN_FILE`. Venue bulk cancellation is account-wide on this legacy path. Use only a dedicated demo account. Scoped lifecycle cleanup remains closed. |
+| Unknown exposure | The stop drains admitted submissions and protective writes for up to five seconds before cancellation. An unresolved client ID, stale lease, incomplete read, or partial flatten returns UNKNOWN and leaves entries blocked. A successful flatten requires venue readback before clearing brackets. The file latch survives restarts. No command here rearms the desk. |
+
+For a stranded lease, inspect the venue orders, fills, positions, triggers, owning process and journal before operator intervention. Never clear a lease based on its age. The next release gate is authenticated demo validation with continuous reconciliation, working operator alert delivery and a supervised runtime. Historical archives and owner risk parameters are separate workstreams.

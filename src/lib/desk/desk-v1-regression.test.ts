@@ -91,7 +91,11 @@ describe("one order path", () => {
     expect(scopedRead).toMatch(/\bread:\s*async/);
     expect(scopedRead).not.toMatch(/\bwrite\s*:/);
     const perpsApi = text.get(join(SRC, "routes/api/live/perp-fire.ts"))!;
-    expect(perpsApi).toMatch(/locked:\s*true/);
+    const omni = text.get(join(SRC, "routes/api/live/omni.ts"))!;
+    for (const route of [perpsApi, omni]) expect(route).toMatch(/import \{ PERPS_ORDERS_LOCKED[^}]*\} from "@\/lib\/perps\/order-adapter"/);
+    expect(perpsApi).toContain("status: PERPS_ORDER_REFUSAL.status");
+    expect(perpsApi).toMatch(/locked:\s*PERPS_ORDERS_LOCKED/);
+    expect(omni).toMatch(/perps:\s*Boolean\(PERPS_ORDERS_LOCKED\)/);
     expect(perpsApi).toMatch(/sendsOrders:\s*false/);
     expect(perpsApi).not.toMatch(/liveMarginTransport|new PerpsOms\(|postMarginOrder\(/);
   });

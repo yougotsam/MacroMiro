@@ -41,7 +41,7 @@ export async function pollOnce(now = Date.now()): Promise<WatchResult> {
   const open = acc ? Object.values(acc.positions).filter((p) => p.q !== 0).length : 0;
   if (acc && dd.breached && open > 0) {
     const fx = new FakeExchange(); for (const [t, p] of Object.entries(acc.positions)) fx.pos.set(t, { ...p });
-    const oms = new PerpsOms(fx, `${root()}/perps/paper-oms-journal.jsonl`, false);
+    const oms = new PerpsOms(fx, `${root()}/perps/paper-oms-journal.jsonl`, true);
     const tok = `watchdog-${now}`;
     const r = await oms.killAndFlatten(tok, tok, acc.books ?? {}, `watchdog-dd-${now}`);
     const after = Object.fromEntries((await fx.positions()).map((p) => [p.market_ticker, { q: Number(p.position), e: Number(p.entry_price) }]));

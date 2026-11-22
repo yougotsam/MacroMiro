@@ -51,7 +51,7 @@ export function parseCandles(raw: { candlesticks?: Array<Record<string, any>> },
 
 export function perpsReader(get: Get = signedGet) {
   return {
-    enabled: async () => Boolean(((await get("/enabled")) as { enabled?: boolean }).enabled),
+    enabled: async () => ((await get("/enabled")) as { enabled?: unknown } | null)?.enabled === true,
     exchangeStatus: async () => (await get("/exchange/status")) as { exchange_active: boolean; trading_active: boolean },
     markets: async () => (((await get("/markets?limit=200")) as { markets: Record<string, any>[] }).markets ?? []).map(parseMarket),
     market: async (t: string) => parseMarket(((await get(`/markets/${t}`)) as { market: Record<string, any> }).market),
