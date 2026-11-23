@@ -1,0 +1,440 @@
+import { describe, expect, it } from "bun:test";
+import { mkdtempSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Archive } from "./alexandria-archive";
+import { ACTIVE_STAGES, SCENARIOS, JobStore, drive, estimateCostUsd, extractStructured, jobKey, refreshJobCost, recoverArchive, step, TownError, type Deps, type JobSpec, type Stage } from "./pipeline";
+import { atomicResearchWrite } from "./storage";
+import { meterSpent } from "./cost-ledger.server";
+import { researchModelVersion } from "./model-config.server";
+
+const tmp = () => mkdtempSync(join(tmpdir(), "town-safety-"));
+const now = Date.parse("2026-11-22T12:00:00Z");
+const spec = (over: Partial<JobSpec> = {}): JobSpec => ({
+  catalyst: { id: "cpi-test", kind: "cpi", name: "CPI", when: new Date(now + 3 * 86400000).toISOString(), assets: ["BTC"], sources: ["https://www.bls.gov/"], verified: true },
+  scenario: "baseline", seed: 1, maxRounds: 3, budgetUsd: 5, catalystBudgetUsd: 20, promptVersion: "test",
+  costBasis: { modelVersion: "unknown", priceVersion: "test-only", source: "fixture", agents: 12, inPerM: 0.75, outPerM: 3.75 }, ...over,
+});
+const report = "# Paid report\n## Structured summary\nLean: bullish, target $68,000 with 80% probability\nCrowding: 68k accounts at 68000.\nContradictions: conflicting narratives\n";
+const ok = (data: object) => ({ status: 200, body: { success: true, data } });
+const noSleep = async () => undefined;
+function setup(stage: Stage = "extract", over: Partial<JobSpec> = {}) {
+  const dir = tmp(), store = new JobStore(dir), job = store.create(spec(over), now).job;
+  job.stage = stage;
+  Object.assign(job.ids, { projectId: "p", graphId: "g", simulationId: "s", reportId: "r" });
+  job.seed.file = join(dir, "seed.md");
+  writeFileSync(job.seed.file, "x".repeat(300));
+  store.save(job);
+  const archive = new Archive(dir);
+  const d: Deps = {
+    transport: async () => ok({ status: "completed", markdown_content: report, profiles_count: 12 }),
+    seedDir: dir, seeder: async () => ({ text: "x".repeat(300), sources: [{ url: "https://www.bls.gov/", title: "test", fetchedAt: new Date(now).toISOString() }], spark: null }),
+    archiver: async (j, md) => archive.archiveJob(j, md, extractStructured(md)), pollMs: 1,
+    syncArchiveCost: j => { archive.update(j.id, { cost: { estimatedUsd: j.cost.estimatedUsd, actualUsd: j.cost.actualUsd } }); },
+  };
+  return { dir, store, job, archive, d };
+}
+
+describe("research runner accounting and archive recovery", () => {
+  for (const stage of ["ontology", "prepare", "run", "report"] as Stage[]) {
+    it(`records costs when ${stage} fails`, async () => {
+      const x = setup(stage); let spent = 0;
+      if (stage === "report") { x.job.ids.reportId = ""; x.store.save(x.job); }
+      x.d.transport = async () => { spent = 0.1234; return { status: 400, body: { success: false, error: "stage failed" } }; };
+      x.d.meterSpentUsd = () => spent;
+      const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+      expect(done.stage).toBe("failed");
+      expect(done.cost.actualUsd).toBe(0.1234);
+      expect(done.cost.checkpoints?.[stage]).toBe(0.1234);
+      expect(done.result).toBeNull();
+    });
+  }
+  it("meter failure cannot destroy a completed report", async () => {
+    const x = setup();
+    x.d.meterSpentUsd = () => { throw new Error("private upstream billing payload"); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(done.cost.actualUsd).toBeNull();
+    expect(done.cost.meterStatus).toBe("UNAVAILABLE");
+    expect(JSON.stringify(done)).not.toContain("private upstream");
+    expect(readFileSync(x.archive.all()[0].reportFile!, "utf8")).toBe(report);
+  });
+  it("a late cost overrun does not block retrieval of an already generated report", async () => {
+    const x = setup("report");
+    x.d.meterSpentUsd = () => 6;
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(done.cost.actualUsd).toBe(6);
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("cumulative snapshots are not added and unavailable/regressing reads preserve known cost", () => {
+    const { job } = setup();
+    for (let i = 0; i < 5; i++) refreshJobCost(job, { meterSpentUsd: () => 0.25 });
+    expect(job.cost.actualUsd).toBe(0.25);
+    refreshJobCost(job, { meterSpentUsd: () => null });
+    refreshJobCost(job, { meterSpentUsd: () => 0.1 });
+    expect(job.cost.actualUsd).toBe(0.25);
+    expect(job.cost.meterStatus).toBe("UNAVAILABLE");
+  });
+  it("archive is a persisted stage and archive commit followed by lost response is idempotent", async () => {
+    const x = setup(); let calls = 0;
+    x.d.archiver = async (j, md) => {
+      const id = x.archive.archiveJob(j, md, extractStructured(md));
+      if (++calls === 1) throw new TownError("lost response after commit", 0, true);
+      return id;
+    };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(x.archive.all()).toHaveLength(1);
+    expect(done.history.some(h => h.stage === "archive" && h.note === "extract → archive")).toBe(true);
+    expect(ACTIVE_STAGES).toContain("archive");
+  });
+  it("crash after archive receipt but before job save resumes without another archive call", async () => {
+    const x = setup();
+    await step(x.job, x.d); x.store.save(x.job);
+    const save = x.store.save.bind(x.store); let crashed = false, calls = 0;
+    x.store.save = (j, note) => {
+      if (j.stage === "archive" && j.pendingReport?.archivedAs && !crashed) { crashed = true; throw new Error("simulated process crash"); }
+      save(j, note);
+    };
+    const archive = x.d.archiver;
+    x.d.archiver = async (j, md) => { calls++; return archive(j, md); };
+    await expect(drive(x.store, x.job.id, x.d, { sleepFn: noSleep })).rejects.toThrow("simulated process crash");
+    x.store.save = save;
+    x.d.transport = async () => { throw new Error("backend now unavailable"); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(calls).toBe(1);
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("null archive receipt fails visibly and leaves the paid report staged", async () => {
+    const x = setup(); x.d.archiver = async () => null;
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("failed");
+    expect(done.result).toBeNull();
+    expect(readFileSync(done.pendingReport!.file, "utf8")).toBe(report);
+  });
+  it("corrupt job records are audited and throw instead of silently disappearing", async () => {
+    const x = setup();
+    writeFileSync(join(x.dir, "jobs", `${x.job.id}.json`), "{torn");
+    await expect(drive(x.store, x.job.id, x.d)).rejects.toThrow("unreadable");
+    expect(readFileSync(join(x.dir, "jobs-audit.jsonl"), "utf8")).toContain("JOB_RECORD_UNREADABLE");
+  });
+  it("torn or invalid billing records mark costs unavailable rather than fabricating zero", () => {
+    const x = setup(), file = join(x.dir, "usage.jsonl");
+    writeFileSync(file, JSON.stringify({ tag: x.job.id, costUsd: 0.2 }) + "\n{torn");
+    x.job.cost.actualUsd = 0.1;
+    refreshJobCost(x.job, { meterSpentUsd: meterSpent(file) });
+    expect(x.job.cost.actualUsd).toBe(0.1);
+    expect(x.job.cost.meterStatus).toBe("UNAVAILABLE");
+  });
+  it("extracts no numeric claims while the raw report stays intact", () => {
+    const out = extractStructured(report);
+    expect(JSON.stringify(out)).not.toMatch(/68000|68,000|68k|80%|\$68/);
+    expect(out.lean).toMatch(/^bullish/);
+  });
+});
+
+describe("scenario identity, freshness and budget admission", () => {
+  it("key includes catalyst, scenario, seed and prompt version", () => {
+    const keys = SCENARIOS.map(scenario => jobKey(spec({ scenario })));
+    expect(new Set(keys).size).toBe(4);
+    expect(jobKey(spec({ seed: 2 }))).not.toBe(keys[0]);
+    expect(jobKey(spec({ promptVersion: "new" }))).not.toBe(keys[0]);
+    expect(jobKey(spec({ catalyst: { ...spec().catalyst, id: "different-event" } }))).not.toBe(keys[0]);
+  });
+  it("future-event report expires at release, not a day later", () => {
+    const s = new JobStore(tmp()), j = s.create(spec(), now).job;
+    j.stage = "done"; s.save(j);
+    expect(j.reuseUntil).toBe(j.spec.catalyst.when!);
+    expect(s.create(spec(), Date.parse(j.reuseUntil) - 1).created).toBe(false);
+    expect(s.create(spec(), Date.parse(j.reuseUntil)).created).toBe(true);
+  });
+  it("past-event reuse expires at event plus one day, not now plus one day", () => {
+    const s = new JobStore(tmp()), when = now - 2 * 86400000;
+    const j = s.create(spec({ catalyst: { ...spec().catalyst, when: new Date(when).toISOString() } }), now).job;
+    expect(Date.parse(j.reuseUntil)).toBe(when + 86400000);
+  });
+  it("old pre-event records with the longer legacy TTL cannot be reused after release", () => {
+    const s = new JobStore(tmp()), j = s.create(spec(), now).job;
+    j.stage = "done";
+    j.reuseUntil = new Date(Date.parse(j.spec.catalyst.when!) + 86400000).toISOString();
+    s.save(j);
+    expect(s.create(spec(), Date.parse(j.spec.catalyst.when!) + 1).created).toBe(true);
+  });
+  it("enforces aggregate reservations across worlds, seeds and failed attempts", () => {
+    const s = new JobStore(tmp());
+    const cap = estimateCostUsd(spec()) * 3 + 0.001;
+    const a = s.create(spec({ catalystBudgetUsd: cap }), now).job;
+    a.stage = "failed"; a.cost.actualUsd = estimateCostUsd(spec()) * 2; s.save(a);
+    s.create(spec({ scenario: "bullish", catalystBudgetUsd: cap }), now);
+    expect(() => s.create(spec({ scenario: "bearish", catalystBudgetUsd: cap }), now)).toThrow("catalyst budget");
+    expect(() => s.create(spec({ seed: 2, catalystBudgetUsd: 100 }), now)).toThrow("catalyst budget");
+  });
+  it("does not silently assign another model's price assumptions", () => {
+    const s = new JobStore(tmp());
+    expect(() => s.create(spec(), now, "other-model")).toThrow("mismatched model");
+    expect(estimateCostUsd(spec({ costBasis: { ...spec().costBasis!, inPerM: 1.5, outPerM: 7.5 } }))).toBe(2 * estimateCostUsd(spec()));
+  });
+  it("unknown cost basis prevents a legacy job from spending", async () => {
+    const x = setup("ontology", { costBasis: undefined }); let calls = 0;
+    x.d.transport = async () => { calls++; return ok({}); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.error).toContain("cost basis required");
+    expect(done.totalRetries).toBe(1);
+    expect(calls).toBe(0);
+  });
+  it("actual agent count is checked before start, not confused with profile-generation concurrency", async () => {
+    const x = setup("run", { budgetUsd: 0.9 }); const calls: string[] = [];
+    x.d.transport = async path => { calls.push(path); return ok(path.endsWith("run-status") ? { runner_status: "idle" } : { profiles_count: 500 }); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("failed");
+    expect(done.progress.agents).toBe(500);
+    expect(calls).not.toContain("/api/simulation/start");
+  });
+  it("unknown backend start state never causes a new POST start", async () => {
+    const x = setup("run"), calls: string[] = [];
+    x.d.transport = async path => { calls.push(path); return { status: 502, body: { success: false, error: "unavailable" } }; };
+    expect((await drive(x.store, x.job.id, x.d, { sleepFn: noSleep })).stage).toBe("failed");
+    expect(calls).not.toContain("/api/simulation/start");
+  });
+});
+
+describe("shutdown, cancellation and deadlines", () => {
+  it("cancel during an accepted but unacknowledged start attempts remote shutdown", async () => {
+    const x = setup("run"); let remoteRunning = false, stops = 0;
+    x.d.transport = async (path, init) => {
+      if (path.endsWith("run-status")) return ok({ runner_status: "idle" });
+      if (path === "/api/simulation/s") return ok({ profiles_count: 12 });
+      if (path === "/api/simulation/stop") { stops++; remoteRunning = false; return ok({}); }
+      if (path === "/api/simulation/start") {
+        expect(x.store.get(x.job.id)!.ids.runStartUncertain).toBe(true);
+        remoteRunning = true;
+        return new Promise((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(new Error("response aborted")), { once: true });
+          setTimeout(() => x.store.cancel(x.job.id, "operator"), 5);
+        });
+      }
+      throw new Error("unexpected request");
+    };
+    const done = await drive(x.store, x.job.id, x.d, { cancelPollMs: 5 });
+    expect(done.stage).toBe("cancelled");
+    expect(stops).toBeGreaterThan(0);
+    expect(remoteRunning).toBe(false);
+  });
+  it("a persisted uncertain start is not resent merely because status still says idle", async () => {
+    const x = setup("run"); x.job.ids.runStartUncertain = true; x.store.save(x.job);
+    const paths: string[] = [];
+    x.d.transport = async path => { paths.push(path); return ok({ runner_status: "idle" }); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.stage).toBe("failed");
+    expect(paths).not.toContain("/api/simulation/start");
+    expect(paths).toContain("/api/simulation/stop");
+  });
+  it("expired extract jobs receive bounded read-only completed-report recovery", async () => {
+    const x = setup("extract"); x.job.deadlineAt = new Date(Date.now() - 1).toISOString(); x.store.save(x.job);
+    const calls: string[] = []; const transport = x.d.transport;
+    x.d.transport = async (path, init) => { calls.push(init.method); return transport(path, init); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.stage).toBe("done");
+    expect(done.reportRecoveryDeadlineAt).toBeDefined();
+    expect(calls).toEqual(["GET"]);
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("report recovery deadline is not renewed by another restart", async () => {
+    const x = setup("extract");
+    x.job.deadlineAt = x.job.reportRecoveryDeadlineAt = new Date(Date.now() - 1).toISOString(); x.store.save(x.job);
+    let calls = 0; x.d.transport = async () => { calls++; return ok({}); };
+    expect((await drive(x.store, x.job.id, x.d)).stage).toBe("failed");
+    expect(calls).toBe(0);
+  });
+  it("model assumptions use the configured backend env file and its override semantics", () => {
+    const file = join(tmp(), "backend.env");
+    writeFileSync(file, 'LLM_MODEL_NAME="gemini-3.8-flash"\n');
+    expect(researchModelVersion("test", { MIROFISH_ENV_FILE: file, LLM_MODEL_NAME: "ignored", MIROFISH_COMMIT: "abc" })).toBe("mirofish@abc+gemini-3.8-flash+test");
+    expect(() => researchModelVersion("test", { MIROFISH_ENV_FILE: file + ".missing" })).toThrow("unreadable");
+  });
+  it("a stale worker save cannot overwrite a concurrent cancel", async () => {
+    const x = setup("ontology");
+    x.store.cancel(x.job.id, "operator");
+    x.store.save(x.job); // Snapshot read before the other process cancelled.
+    expect(x.store.get(x.job.id)!.cancelRequested).toBe(true);
+    let calls = 0; x.d.transport = async () => { calls++; return ok({}); };
+    expect((await drive(x.store, x.job.id, x.d)).stage).toBe("cancelled");
+    expect(calls).toBe(0);
+  });
+  it("resuming against a changed configured model cannot spend under the old cost basis", async () => {
+    const x = setup("ontology"); x.d.modelVersion = "different-runtime-model";
+    let calls = 0; x.d.transport = async () => { calls++; return ok({}); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.error).toContain("configured model changed");
+    expect(done.totalRetries).toBe(1);
+    expect(calls).toBe(0);
+  });
+  it("env_alive false during active rounds does not kill a healthy simulation", async () => {
+    const x = setup("run"), calls: string[] = []; x.job.ids.runStarted = true;
+    x.d.transport = async path => { calls.push(path); return ok(path.endsWith("run-status") ? { runner_status: "running", current_round: 1 } : { env_alive: false }); };
+    await step(x.job, x.d);
+    expect(calls).not.toContain("/api/simulation/stop");
+    expect(x.job.stage).toBe("run");
+  });
+  it("interview-wait shutdown is visible and capped even when backend never acknowledges", async () => {
+    const x = setup("run"), calls: string[] = []; x.job.ids.runStarted = true; x.store.save(x.job);
+    x.d.transport = async path => { calls.push(path); return ok(path.endsWith("run-status") ? { runner_status: "running", current_round: 3 } : { env_alive: true }); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("failed");
+    expect(done.error).toContain("shutdown unconfirmed");
+    expect(calls.filter(p => p === "/api/simulation/stop")).toHaveLength(3);
+    expect(done.progress.message).toContain("unconfirmed");
+  });
+  it("operator cancel aborts an in-flight ontology request and still meters it", async () => {
+    const x = setup("ontology"); let aborted = false, spent = 0;
+    x.d.transport = async (_p, init) => new Promise((_resolve, reject) => {
+      init.signal!.addEventListener("abort", () => { aborted = true; spent = 0.2; reject(new Error("aborted")); }, { once: true });
+      setTimeout(() => x.store.cancel(x.job.id, "operator"), 5);
+    });
+    x.d.meterSpentUsd = () => spent;
+    const done = await drive(x.store, x.job.id, x.d, { cancelPollMs: 5 });
+    expect(aborted).toBe(true);
+    expect(done.stage).toBe("cancelled");
+    expect(done.cost.actualUsd).toBe(0.2);
+    expect(done.result).toBeNull();
+  });
+  it("restart does not reset the execution deadline", async () => {
+    const x = setup("ontology"); x.job.deadlineAt = new Date(Date.now() - 1).toISOString(); x.store.save(x.job);
+    let calls = 0; x.d.transport = async () => { calls++; return ok({}); };
+    const done = await drive(x.store, x.job.id, x.d, { maxMinutes: 120 });
+    expect(done.stage).toBe("failed");
+    expect(done.error).toContain("timed out");
+    expect(calls).toBe(0);
+  });
+});
+
+
+describe("reviewed storage and provider boundaries", () => {
+  it("temporary-file symlinks cannot truncate another file", () => {
+    const dir = tmp(), target = join(dir, "evidence"), dest = join(dir, "record");
+    writeFileSync(target, "keep this evidence");
+    symlinkSync(target, `${dest}.${process.pid}.tmp`);
+    atomicResearchWrite(dest, "new record");
+    expect(readFileSync(target, "utf8")).toBe("keep this evidence");
+    expect(readFileSync(dest, "utf8")).toBe("new record");
+  });
+  it("valid JSON with an unsupported job stage is audited as corrupt", () => {
+    const x = setup();
+    writeFileSync(join(x.dir, "jobs", `${x.job.id}.json`), JSON.stringify({ ...x.job, stage: "unrecognized" }));
+    expect(() => x.store.get(x.job.id)).toThrow("unreadable");
+    writeFileSync(join(x.dir, "jobs", `${x.job.id}.json`), JSON.stringify({ ...x.job, cost: { ...x.job.cost, basis: { modelVersion: "unknown" } } }));
+    expect(() => x.store.get(x.job.id)).toThrow("unreadable");
+    expect(readFileSync(join(x.dir, "jobs-audit.jsonl"), "utf8")).toContain("JOB_RECORD_UNREADABLE");
+  });
+  it("parseable but malformed archive rows are audited before queries", () => {
+    const x = setup();
+    writeFileSync(x.archive.file, '{"id":"broken"}\n');
+    expect(() => x.archive.all()).toThrow("unreadable");
+    expect(readFileSync(join(x.dir, "jobs-audit.jsonl"), "utf8")).toContain("ARCHIVE_RECORD_UNREADABLE");
+  });
+  it("an unpriced legacy job cannot invoke a potentially paid seeder", async () => {
+    const x = setup("seed", { costBasis: undefined }); let seeds = 0;
+    const seeder = x.d.seeder; x.d.seeder = async (...args) => { seeds++; return seeder(...args); };
+    expect((await drive(x.store, x.job.id, x.d)).stage).toBe("failed");
+    expect(seeds).toBe(0);
+  });
+  it("seeding receives cancellation and records spend added during abort", async () => {
+    const x = setup("seed"); let spent = 0;
+    x.d.meterSpentUsd = () => spent;
+    x.d.seeder = async (_c, _now, ctx) => new Promise((_resolve, reject) => {
+      ctx!.signal!.addEventListener("abort", () => { spent = 0.3; reject(new Error("cancelled source")); }, { once: true });
+      setTimeout(() => x.store.cancel(x.job.id, "operator"), 5);
+    });
+    const done = await drive(x.store, x.job.id, x.d, { cancelPollMs: 5 });
+    expect(done.stage).toBe("cancelled");
+    expect(done.cost.actualUsd).toBe(0.3);
+  });
+  it("population is priced before paid preparation and unknown/oversized populations refuse it", async () => {
+    for (const count of [500, null]) {
+      const x = setup("prepare", { budgetUsd: 0.9 }); const calls: string[] = [];
+      x.d.transport = async path => { calls.push(path); return ok({ filtered_count: count, preparation_population_cap_enforced: true }); };
+      expect((await drive(x.store, x.job.id, x.d)).stage).toBe("failed");
+      expect(calls).not.toContain("/api/simulation/prepare");
+    }
+  });
+  it("preparation sends the admitted population cap to the backend", async () => {
+    const x = setup("prepare"); let request: unknown;
+    x.d.transport = async (path, init) => {
+      if (path.includes("/entities/")) return ok({ filtered_count: 12, preparation_population_cap_enforced: true });
+      request = init.json; return ok({ task_id: "prep" });
+    };
+    await step(x.job, x.d);
+    expect(request).toEqual({ simulation_id: "s", parallel_profile_count: 3, max_agents: 12 });
+  });
+  it("a staged report survives a crash before pending metadata is saved", async () => {
+    const x = setup();
+    await step(x.job, x.d); // File committed, but deliberately discard the unsaved metadata.
+    x.d.transport = async () => { throw new Error("backend unavailable"); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(readFileSync(x.archive.all()[0].reportFile!, "utf8")).toBe(report);
+  });
+  it("cancellation retains and archives an already completed report without returning a result", async () => {
+    const x = setup(); await step(x.job, x.d); x.store.save(x.job);
+    x.store.cancel(x.job.id, "operator");
+    x.d.transport = async () => { throw new Error("no more backend requests allowed"); };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.stage).toBe("cancelled");
+    expect(done.result).toBeNull();
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("an explicit archive-only retry recovers a previously exhausted archive", async () => {
+    const x = setup(), archiver = x.d.archiver;
+    x.d.archiver = async () => null;
+    expect((await drive(x.store, x.job.id, x.d, { sleepFn: noSleep })).stage).toBe("failed");
+    x.d.archiver = archiver;
+    x.d.transport = async () => { throw new Error("no remote work during archive retry"); };
+    expect((await recoverArchive(x.store, x.job.id, x.d)).stage).toBe("done");
+    expect(x.archive.all()).toHaveLength(1);
+  });
+  it("late cost observations are synchronized to the archived report", async () => {
+    const x = setup(), archiver = x.d.archiver; let spent = 0.2;
+    x.d.meterSpentUsd = () => spent;
+    x.d.archiver = async (j, md) => { const receipt = await archiver(j, md); spent = 0.4; return receipt; };
+    const done = await drive(x.store, x.job.id, x.d);
+    expect(done.cost.actualUsd).toBe(0.4);
+    expect(x.archive.all()[0].cost.actualUsd).toBe(0.4);
+  });
+  it("lifetime retries accumulate across failures separated by successful stages", async () => {
+    const x = setup(), transport = x.d.transport, archiver = x.d.archiver; let gets = 0, archives = 0;
+    x.d.transport = async (...args) => ++gets === 1 ? { status: 502, body: { success: false, error: "temporary" } } : transport(...args);
+    x.d.archiver = async (...args) => { if (++archives === 1) throw new Error("temporary archive failure"); return archiver(...args); };
+    const done = await drive(x.store, x.job.id, x.d, { sleepFn: noSleep });
+    expect(done.stage).toBe("done");
+    expect(done.totalRetries).toBe(2);
+    expect(done.retries).toBe(0);
+  });
+});
+
+
+it("an older backend cannot silently ignore the profile population cap", async () => {
+  const x = setup("prepare"); const calls: string[] = [];
+  x.d.transport = async path => { calls.push(path); return ok({ filtered_count: 12 }); };
+  expect((await drive(x.store, x.job.id, x.d)).error).toContain("cap support unverified");
+  expect(calls).not.toContain("/api/simulation/prepare");
+});
+
+it("the real source-fetch adapter aborts without falling through to another provider", async () => {
+  const { fetchText } = await import("./pipeline.server");
+  const { scrapeArticle } = await import("../live/firecrawl.server");
+  const fetchBefore = globalThis.fetch, controller = new AbortController(); let calls = 0;
+  globalThis.fetch = (async (_url, init) => {
+    calls++;
+    return new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(new Error("abort")), { once: true });
+      setTimeout(() => controller.abort(), 5);
+    });
+  }) as typeof fetch;
+  try {
+    await expect(fetchText("https://www.bls.gov/news.release/cpi.nr0.htm", { signal: controller.signal })).rejects.toThrow();
+    await expect(scrapeArticle("https://www.bls.gov/news.release/cpi.nr0.htm", controller.signal)).rejects.toThrow();
+    expect(calls).toBe(1);
+  } finally { globalThis.fetch = fetchBefore; }
+});

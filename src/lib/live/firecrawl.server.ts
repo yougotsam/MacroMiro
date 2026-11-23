@@ -214,7 +214,8 @@ export async function searchNews(query: string, limit = 5, tbs = "qdr:d") {
 }
 
 /** One article as main-content markdown (cached 10 minutes). */
-export async function scrapeArticle(url: string): Promise<{ ok: true; markdown: string; title: string } | { ok: false; error: string }> {
+export async function scrapeArticle(url: string, signal?: AbortSignal): Promise<{ ok: true; markdown: string; title: string } | { ok: false; error: string }> {
+  signal?.throwIfAborted();
   const hit = pageCache.get(`article:${url}`);
   if (hit && Date.now() - hit.at < 10 * 60_000) return { ok: true, markdown: hit.markdown, title: "" };
   if (!firecrawlReady()) return { ok: false, error: "no key" };
@@ -224,7 +225,7 @@ export async function scrapeArticle(url: string): Promise<{ ok: true; markdown: 
   try {
     res = await fetch(`${API}/scrape`, {
       method: "POST",
-      signal: AbortSignal.timeout(45000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000),
       headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
       body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
     });
@@ -237,3 +238,4 @@ export async function scrapeArticle(url: string): Promise<{ ok: true; markdown: 
   pageCache.set(`article:${url}`, { at: Date.now(), markdown });
   return { ok: true, markdown, title: String(json.data?.metadata?.title ?? "") };
 }
+

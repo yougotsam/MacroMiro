@@ -2,14 +2,14 @@
  * Real adapters for the research pipeline: Firecrawl seeder (+ Spark2 card when fresh), authenticated MiroFish
  * transport (127.0.0.1 only), catalysts from the verified official calendar, and the cost meter reader.
  */
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { scrapeArticle } from "@/lib/live/firecrawl.server";
 import { MAJOR_EVENT, officialCalendarPath, verifyCalendar, type OfficialCalendar } from "@/lib/desk/official-calendar";
 import { checkProvenance, publishedAtOf, SEED_DOCS, type SeedDoc } from "./provenance";
 import { authHeaders } from "./mirofish-auth";
-import type { Catalyst, CatalystKind, Seeder, Transport } from "./pipeline";
-import type { LedgerEntry } from "./llm-meter";
+import type { Catalyst, CatalystKind, Seeder, SeedContext, Transport } from "./pipeline";
+export { meterSpent } from "./cost-ledger.server";
 
 export const OFFICIAL_SEED_PAGES: Partial<Record<CatalystKind, string[]>> = {
   cpi: ["https://www.bls.gov/news.release/cpi.nr0.htm", "https://www.clevelandfed.org/indicators-and-data/inflation-nowcasting"],
@@ -45,15 +45,13 @@ function htmlText(h: string) {
 }
 
 /** some official sites reject runtime TLS fingerprints; plain curl (no shell, fixed args, GET only) as a fallback */
-function curlGet(url: string): string | null {
-  try {
-    const p = spawnSync("curl", [ "-s", "-L", "--max-time", "20", "--compressed", "-A", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", "-H", "Accept: text/html,application/xhtml+xml,*/*;q=0.8", "-H", "Accept-Language: en-US,en;q=0.9", "-H", `Referer: ${new URL(url).origin}/`, "-w", "\n%{http_code}", url], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
-    const out = String(p.stdout ?? "");
-    const code = out.slice(out.lastIndexOf("\n") + 1);
-    return code === "200" ? out.slice(0, out.lastIndexOf("\n")) : null;
-  } catch {
-    return null;
-  }
+function curlGet(url: string, context: SeedContext): Promise<string | null> {
+  return new Promise(resolve => {
+    execFile("curl", [ "-s", "-L", "--max-time", "20", "--compressed", "-A", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", "-H", "Accept: text/html,application/xhtml+xml,*/*;q=0.8", "-H", "Accept-Language: en-US,en;q=0.9", "-H", `Referer: ${new URL(url).origin}/`, "-w", "\n%{http_code}", url], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, signal: context.signal, timeout: Math.max(1, Math.min(20_000, (context.deadlineMs ?? Infinity) - Date.now())) }, (error, stdout) => {
+      const out = String(stdout ?? ""), code = out.slice(out.lastIndexOf("\n") + 1);
+      resolve(!error && code === "200" ? out.slice(0, out.lastIndexOf("\n")) : null);
+    });
+  });
 }
 
 export const KIND_WORDS: Partial<Record<CatalystKind, RegExp>> = { cpi: /consumer price index/i, ppi: /producer price index/i, nfp: /employment situation|nonfarm payroll/i, fomc: /FOMC|Federal Open Market Committee/i };
@@ -78,14 +76,20 @@ function recordProvider(provider: "firecrawl" | "zep" | "other", units: number, 
   } catch { /* accounting only */ }
 }
 
-export async function fetchText(url: string): Promise<{ text: string; title: string; via: string }> {
-  const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", accept: "text/html,application/xhtml+xml,*/*;q=0.8", "accept-language": "en-US,en;q=0.9", referer: `${new URL(url).origin}/` }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
+export async function fetchText(url: string, context: SeedContext = {}): Promise<{ text: string; title: string; via: string }> {
+  context.signal?.throwIfAborted();
+  const timeout = AbortSignal.timeout(Math.max(1, Math.min(20_000, (context.deadlineMs ?? Infinity) - Date.now())));
+  const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", accept: "text/html,application/xhtml+xml,*/*;q=0.8", "accept-language": "en-US,en;q=0.9", referer: `${new URL(url).origin}/` }, signal: context.signal ? AbortSignal.any([context.signal, timeout]) : timeout }).catch(() => null);
+  context.signal?.throwIfAborted();
   let raw = r?.ok && r.url.split("#")[0] === url ? await r.text() : "";
   let via = "direct GET";
-  if (!raw) { raw = curlGet(url) ?? ""; via = "direct GET (curl)"; }
+  if (!raw) { raw = await curlGet(url, context) ?? ""; via = "direct GET (curl)"; }
+  context.signal?.throwIfAborted();
   if (raw) return { text: htmlText(raw), title: raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? "", via };
-  const fc = await scrapeArticle(url).catch(() => ({ ok: false as const, error: "firecrawl failed" }));
+  context.checkBudget?.();
+  const fc = await scrapeArticle(url, context.signal).catch(() => ({ ok: false as const, error: "firecrawl failed" }));
   recordProvider("firecrawl", 1, "scrape credit (attempt)");
+  context.signal?.throwIfAborted();
   return fc.ok ? { text: fc.markdown, title: fc.title, via: "firecrawl" } : { text: "", title: "", via: "none" };
 }
 
@@ -120,7 +124,8 @@ function calendarDoc(c: Catalyst, calPath = officialCalendarPath()): SeedDoc | n
  * catalyst-specific, publication timestamp from the document, published before the sim start and before the event).
  * Rejected documents are recorded with their reason. No Spark card or news: they are not verified catalyst documents.
  */
-export const officialSeeder: Seeder = async (c, simStartMs = Date.now()) => {
+export const officialSeeder: Seeder = async (c, simStartMs = Date.now(), context = {}) => {
+  context.signal?.throwIfAborted();
   const eventMs = Date.parse(c.when ?? "");
   const accepted: SeedDoc[] = [];
   const rejected: Array<{ url: string; reason: string }> = [];
@@ -131,9 +136,10 @@ export const officialSeeder: Seeder = async (c, simStartMs = Date.now()) => {
   const cal = calendarDoc(c);
   if (cal && (SEED_DOCS[c.kind] ?? []).some((d) => d.url === cal.url)) consider(cal);
   for (const { url, docType } of SEED_DOCS[c.kind] ?? []) {
+    context.signal?.throwIfAborted();
     if (/\.ics$/.test(url)) continue;
     const fetchedAt = new Date().toISOString();
-    const { text, title, via } = await fetchText(url);
+    const { text, title, via } = await fetchText(url, context);
     if (!text) { rejected.push({ url, reason: "fetch_failed" }); continue; }
     const pub = publishedAtOf(docType, url, text);
     consider({ url, title: `${title || url} [${via}]`, text: docType === "nowcast" ? nowcastTables(text) : mainText(text, c), publishedAt: pub.at, publishedBasis: pub.basis, fetchedAt, docType });
@@ -158,18 +164,11 @@ export function mirofishTransport(base = process.env.MIROFISH_URL || "http://127
     let body: BodyInit | undefined;
     if (init.json !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(init.json); }
     else if (init.form) body = init.form;
-    const r = await fetch(`${base.replace(/\/+$/, "")}${path}`, { method: init.method, headers, body, signal: AbortSignal.timeout(init.timeoutMs) });
+    const timeout = AbortSignal.timeout(init.timeoutMs);
+    const r = await fetch(`${base.replace(/\/+$/, "")}${path}`, { method: init.method, headers, body, signal: init.signal ? AbortSignal.any([timeout, init.signal]) : timeout });
     const txt = await r.text();
     let parsed: unknown = null;
     try { parsed = JSON.parse(txt); } catch { parsed = null; }
     return { status: r.status, body: parsed };
-  };
-}
-
-export function meterSpent(ledger = "/workspace/data/research/llm-usage.jsonl") {
-  return (jobId: string) => {
-    if (!existsSync(ledger)) return null;
-    const rows = readFileSync(ledger, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as LedgerEntry).filter((e) => e.tag === jobId);
-    return rows.length ? Number(rows.reduce((a, e) => a + e.costUsd, 0).toFixed(4)) : null;
   };
 }

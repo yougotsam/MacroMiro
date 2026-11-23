@@ -13,6 +13,7 @@ from ..config import Config
 from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
+from ..services.population_budget import enforce_population_cap
 from ..services.simulation_runner import (
     SimulationRunner,
     RunnerStatus,
@@ -108,7 +109,7 @@ def get_graph_entities(graph_id: str):
         
         return jsonify({
             "success": True,
-            "data": result.to_dict()
+            "data": {**result.to_dict(), "preparation_population_cap_enforced": True}
         })
         
     except Exception as e:
@@ -497,6 +498,8 @@ def prepare_simulation():
         entity_types_list = data.get('entity_types')
         use_llm_for_profiles = data.get('use_llm_for_profiles', True)
         parallel_profile_count = data.get('parallel_profile_count', 5)
+        max_agents = data.get('max_agents')
+        enforce_population_cap(0, max_agents)
         
         # ========== 同步获取实体数量（在后台任务启动前） ==========
         # 这样前端在调用prepare后立即就能获取到预期Agent总数
@@ -617,7 +620,8 @@ def prepare_simulation():
                     defined_entity_types=entity_types_list,
                     use_llm_for_profiles=use_llm_for_profiles,
                     progress_callback=progress_callback,
-                    parallel_profile_count=parallel_profile_count
+                    parallel_profile_count=parallel_profile_count,
+                    max_agents=max_agents
                 )
 
                 if result_state.status == SimulationStatus.FAILED:
@@ -2880,3 +2884,4 @@ def close_simulation_env():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+

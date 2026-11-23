@@ -17,6 +17,7 @@ from ..utils.logger import get_logger
 from .zep_entity_reader import ZepEntityReader, FilteredEntities
 from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
 from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
+from .population_budget import enforce_population_cap
 from ..utils.locale import t
 
 logger = get_logger('mirofish.simulation')
@@ -249,7 +250,8 @@ class SimulationManager:
         defined_entity_types: Optional[List[str]] = None,
         use_llm_for_profiles: bool = True,
         progress_callback: Optional[callable] = None,
-        parallel_profile_count: int = 3
+        parallel_profile_count: int = 3,
+        max_agents: Optional[int] = None
     ) -> SimulationState:
         """
         准备模拟环境（全程自动化）
@@ -303,6 +305,7 @@ class SimulationManager:
             )
             
             state.entities_count = filtered.filtered_count
+            enforce_population_cap(filtered.filtered_count, max_agents)
             state.entity_types = list(filtered.entity_types)
             
             if progress_callback:
@@ -562,3 +565,4 @@ class SimulationManager:
                 f"   - 并行运行双平台: python {scripts_dir}/run_parallel_simulation.py --config {config_path}"
             )
         }
+

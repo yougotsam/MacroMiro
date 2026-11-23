@@ -7,7 +7,7 @@ import { costOf, estimateUsage, upstreamOf, usageFrom } from "./llm-meter";
 import { drive, extractStructured, JobStore, requirementFor, step, TownError, type Catalyst, type Deps, type Job, type JobSpec, type Transport } from "./pipeline";
 
 const CPI: Catalyst = { id: "cpi-2026-10-14T12:30", kind: "cpi", name: "Consumer Price Index", when: "2026-10-14T12:30:00.000Z", assets: ["BTC", "GOLD"], sources: ["https://www.bls.gov/x"], verified: true };
-const spec = (over: Partial<JobSpec> = {}): JobSpec => ({ catalyst: CPI, scenario: "baseline", seed: 1, maxRounds: 3, budgetUsd: 0.9, promptVersion: "scenario-v1", ...over });
+const spec = (over: Partial<JobSpec> = {}): JobSpec => ({ catalyst: CPI, scenario: "baseline", seed: 1, maxRounds: 3, budgetUsd: 0.9, catalystBudgetUsd: 3.6, costBasis: { modelVersion: "unknown", priceVersion: "test-only", source: "fixture", agents: 12, inPerM: 0.75, outPerM: 3.75 }, promptVersion: "scenario-v1", ...over });
 const tmp = () => mkdtempSync(join(tmpdir(), "rp-"));
 const NOW = Date.parse("2026-10-09T13:00:00Z");
 const REPORT = "# R\ntext\n## Structured summary\nSentiment propagation: fear spreads from rates desks to crypto.\nContradictions: dovish Fed talk vs sticky shelter.\nCrowding: long BTC crowded, 80% of agents long.\nLiquidity hypotheses: thin books after 8:30.\nInvalidation conditions: core CPI below 0.2.\nSource confidence: medium — official schedule only.\nDisagreement: analysts split.\nLean: bearish for BTC on a hot print.\n";
@@ -21,8 +21,10 @@ function fakeTown(over: Record<string, (n: number) => { status: number; body: un
     "/api/graph/build": () => ok({ task_id: "t1" }),
     "/api/graph/task/t1": () => ok({ status: "completed", result: { graph_id: "g1" } }),
     "/api/simulation/create": () => ok({ simulation_id: "sim_1" }),
+    "/api/simulation/entities/g1?enrich=false": () => ok({ filtered_count: 12, preparation_population_cap_enforced: true }),
     "/api/simulation/prepare": () => ok({ task_id: "p1" }),
     "/api/simulation/prepare/status": () => ok({ status: "ready" }),
+    "/api/simulation/sim_1": () => ok({ profiles_count: 12 }),
     "/api/simulation/sim_1/run-status": (n) => ok({ runner_status: n <= 1 ? "idle" : "completed", current_round: 3, total_rounds: 3, total_actions_count: 20 }),
     "/api/simulation/start": () => ok({ max_rounds_applied: 3 }),
     "/api/report/generate": () => ok({ report_id: "r1", task_id: "rt1" }),
@@ -333,3 +335,4 @@ describe("cost report by provider", () => {
     expect(r.firecrawl.credits).toBe(1);
   });
 });
+

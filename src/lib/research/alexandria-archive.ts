@@ -6,9 +6,10 @@
  * Gate: MiroFish-derived features may only affect decisions after (1) proven out-of-sample value here AND (2) an owner
  * flag. The flag is false and nothing on the order path imports this module (research-isolation tests).
  */
-import { appendFileSync, renameSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SCENARIO_BRIEF, type Job, type ScenarioExtract } from "./pipeline";
+import { EXTRACT_FIELDS, SCENARIO_BRIEF, type Job, type ScenarioExtract } from "./pipeline";
+import { atomicResearchWrite, researchLock } from "./storage";
 
 export const MIROFISH_FEATURES_APPROVED = false as const;
 export const HORIZONS_MIN = [15, 60, 240] as const;
@@ -27,33 +28,63 @@ export type ArchiveItem = {
   note: "simulated agents are not real order flow; scenario text is not a probability";
 };
 
+function validArchiveItem(x: ArchiveItem) {
+  const text = (v: unknown) => typeof v === "string";
+  const date = (v: unknown) => text(v) && Number.isFinite(Date.parse(v as string));
+  const texts = (v: unknown) => Array.isArray(v) && v.every(text);
+  const money = (v: unknown) => v === null || typeof v === "number" && Number.isFinite(v) && v >= 0;
+  return !!x && typeof x === "object" && !Array.isArray(x) && text(x.id) && ["simulation", "event"].includes(x.kind) && date(x.archivedAt)
+    && !!x.catalyst && text(x.catalyst.id) && text(x.catalyst.kind) && text(x.catalyst.name) && (x.catalyst.when === null || date(x.catalyst.when)) && texts(x.catalyst.sources) && typeof x.catalyst.verified === "boolean"
+    && (x.scenario === null || text(x.scenario)) && (x.seed === null || typeof x.seed === "number" && Number.isFinite(x.seed)) && texts(x.assets) && text(x.regime)
+    && (x.reportFile === null || text(x.reportFile)) && Array.isArray(x.sources) && x.sources.every(s => s && text(s.url) && text(s.title) && date(s.fetchedAt))
+    && text(x.modelVersion) && (x.promptVersion === null || text(x.promptVersion)) && !!x.cost && money(x.cost.estimatedUsd) && money(x.cost.actualUsd)
+    && (x.extracted === null || typeof x.extracted === "object" && typeof x.extracted.complete === "boolean" && EXTRACT_FIELDS.every(f => x.extracted![f] === null || text(x.extracted![f])))
+    && (x.mirofish === null || typeof x.mirofish === "object" && text(x.mirofish.simulationId) && text(x.mirofish.reportId) && Number.isFinite(x.mirofish.rounds) && Number.isFinite(x.mirofish.actions))
+    && x.note === "simulated agents are not real order flow; scenario text is not a probability";
+}
+
 export class Archive {
   constructor(readonly dir: string) { mkdirSync(join(dir, "reports"), { recursive: true }); }
   get file() { return join(this.dir, "alexandria-archive.jsonl"); }
   all(): ArchiveItem[] {
     if (!existsSync(this.file)) return [];
-    return readFileSync(this.file, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as ArchiveItem]; } catch { return []; } });
+    return readFileSync(this.file, "utf8").split("\n").filter(Boolean).map((l) => {
+      try {
+        const item = JSON.parse(l) as ArchiveItem;
+        if (!validArchiveItem(item)) throw new Error("invalid archive record");
+        return item;
+      } catch {
+        appendFileSync(join(this.dir, "jobs-audit.jsonl"), JSON.stringify({ at: new Date().toISOString(), note: "ARCHIVE_RECORD_UNREADABLE" }) + "\n");
+        throw new Error("research archive is unreadable; inspect before appending");
+      }
+    });
   }
   /** idempotent by id (a resumed job never archives twice) */
   add(item: ArchiveItem) {
-    if (this.all().some((x) => x.id === item.id)) return item.id;
-    appendFileSync(this.file, JSON.stringify(item) + "\n");
-    return item.id;
+    const release = researchLock(join(this.dir, "archive.lock"));
+    try {
+      const items = this.all();
+      if (items.some((x) => x.id === item.id)) return item.id;
+      atomicResearchWrite(this.file, [...items, item].map(x => JSON.stringify(x)).join("\n") + "\n");
+      return item.id;
+    } finally { release(); }
   }
   /** re-derive fields of an existing item (e.g. parser fix); atomic rewrite, ids/report untouched */
   update(id: string, patch: Partial<Pick<ArchiveItem, "extracted" | "cost">>) {
+    const release = researchLock(join(this.dir, "archive.lock"));
+    try {
     const items = this.all();
     const it = items.find((x) => x.id === id);
     if (!it) return false;
     Object.assign(it, patch);
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, items.map((x) => JSON.stringify(x)).join("\n") + "\n");
-    renameSync(tmp, this.file);
+    atomicResearchWrite(this.file, items.map((x) => JSON.stringify(x)).join("\n") + "\n");
     return true;
+    } finally { release(); }
   }
   archiveJob(job: Job, markdown: string, extracted: ScenarioExtract, regime = "unknown") {
     const reportFile = join(this.dir, "reports", `${job.id}.md`);
-    writeFileSync(reportFile, markdown);
+    if (existsSync(reportFile) && readFileSync(reportFile, "utf8") !== markdown) throw new Error("same archive job id has a different report");
+    atomicResearchWrite(reportFile, markdown);
     return this.add({
       id: job.id, kind: "simulation", archivedAt: new Date().toISOString(),
       catalyst: { ...job.spec.catalyst }, scenario: job.spec.scenario, seed: job.spec.seed, assets: job.spec.catalyst.assets, regime,
@@ -124,3 +155,4 @@ export function incrementalValue(matches: Match[], trainFrac = 0.6) {
     featuresApprovedForDecisions: MIROFISH_FEATURES_APPROVED,
   };
 }
+
